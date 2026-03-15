@@ -31,7 +31,7 @@ pub struct RunModel {
 impl RunModel {
     pub fn new() -> Self {
         RunModel {
-            cmap: ContextMap::new(1 << 21), // 2MB
+            cmap: ContextMap::new(1 << 22), // 4MB
             smap: StateMap::new(),
             run_len: 0,
             last_byte: 0,

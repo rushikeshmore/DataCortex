@@ -61,7 +61,7 @@ pub struct JsonModel {
 impl JsonModel {
     pub fn new() -> Self {
         JsonModel {
-            cmap: ContextMap::new(1 << 22), // 4MB
+            cmap: ContextMap::new(1 << 23), // 8MB
             smap: StateMap::new(),
             state: JsonState::TopLevel,
             in_key: false,

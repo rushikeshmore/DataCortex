@@ -9,8 +9,8 @@ Input → Format Detection → Preprocessing → CM Engine (or Fast zstd) → .d
 ```
 - `crates/datacortex-core/` — Core library
   - `format/` — Detection (7 types) + JSON key interning + transform pipeline
-  - `model/` — Order0-4, match model, word model, CMEngine orchestrator
-  - `state/` — StateTable (256-state), StateMap (adaptive), ContextMap (lossy hash)
+  - `model/` — Order0-7, match model, word model, sparse, run, JSON; CMEngine orchestrator
+  - `state/` — StateTable (256-state), StateMap (adaptive), ContextMap (lossy hash, checksum, 2-way assoc)
   - `mixer/` — Triple logistic mixer (fine 64K + med 16K + coarse 4K), squash/stretch, 3-stage APM
   - `entropy/` — Binary arithmetic coder (12-bit, carry-free)
   - `codec.rs` — Pipeline orchestrator (Fast=zstd, Balanced=CM, Max=CM)
@@ -21,7 +21,7 @@ Input → Format Detection → Preprocessing → CM Engine (or Fast zstd) → .d
 - `benchmarks/` — baseline.json
 
 ## Current Status
-**Phase 3 complete.** 2.34 bpb alice29. 123 tests. Next: Phase 4 (format context + RPT).
+**Phase 5 complete.** 2.17 bpb alice29. 146 tests. ~256MB memory. Next: Phase 6 (RWKV for Max mode).
 
 ## Build & Test
 ```bash
@@ -48,13 +48,14 @@ cargo bench --bench compress_bench  # Tier 2: full benchmark (~1 min)
 - η=2 for fine mixer (64K weights), η=4 for coarse (4K). Don't increase without A/B test.
 - 2-stage APM for Balanced, 3-stage only for Max mode on large files.
 
-## V3 Engine (Phase 3 — implemented)
-- 7 models: Order-0 (256 direct), Order-1 (8MB), Order-2 (2MB), Order-3 (4MB), Order-4 (4MB), Match (8MB ring + 2M hash), Word (2MB)
-- Triple logistic mixer: fine (64K, η=2), medium (16K, η=3), coarse (4K, η=4)
-- 3-stage APM cascade: 2K/16K/4K contexts, 50/25/25% blend
-- StateTable (256-state), StateMap (adaptive 1/n), ContextMap (lossy hash)
+## V3 Engine (Phase 5 — current)
+- 13 models: Order-0 (256 direct), Order-1 (32MB), Order-2 (16MB), Order-3 (32MB checksum), Order-4 (32MB checksum), Order-5 (32MB assoc), Order-6 (16MB assoc), Order-7 (32MB assoc), Match (16MB ring + 8M hash, multi-candidate), Word (16MB), Sparse (16MB), Run (4MB), JSON (8MB)
+- Triple logistic mixer: fine (64K, η=2), medium (16K, η=3), coarse (4K, η=4). Run-length context in mixer hash.
+- 3-stage APM cascade: 2K/16K/4K contexts, 55/30/25% blend. APM3 uses c2 top bits.
+- StateTable (256-state PAQ8), StateMap (adaptive 1/n), ContextMap (lossy/checksum/2-way assoc)
 - Binary AC: 12-bit precision, carry-free
 - JSON key interning: Balanced/Max only (hurts Fast due to zstd redundancy)
+- Total memory: ~256MB
 
 ## Corpus (Tier 1 — run on every cargo test)
 - `corpus/alice29.txt` — English prose (152 KB)

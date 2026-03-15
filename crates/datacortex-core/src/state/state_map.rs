@@ -62,7 +62,7 @@ impl StateMap {
     /// Update the probability for the given state after observing `bit`.
     /// Uses adaptive learning: p += (target - p) / (count + MIN_DENOM).
     /// Learning rate decreases as count increases (1/n convergence).
-    #[inline]
+    #[inline(always)]
     pub fn update(&mut self, state: u8, bit: u8) {
         let e = &mut self.entries[state as usize];
         let target = if bit != 0 { 4095i32 } else { 0i32 };

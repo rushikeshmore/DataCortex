@@ -31,7 +31,7 @@ impl ArithmeticEncoder {
     }
 
     /// Encode a single bit with probability `p` of bit=1 (12-bit, [1, 4095]).
-    #[inline]
+    #[inline(always)]
     pub fn encode(&mut self, bit: u8, p: u32) {
         debug_assert!(
             (1..=4095).contains(&p),
@@ -105,7 +105,7 @@ impl<'a> ArithmeticDecoder<'a> {
     }
 
     /// Decode a single bit given probability `p` of bit=1 (12-bit, [1, 4095]).
-    #[inline]
+    #[inline(always)]
     pub fn decode(&mut self, p: u32) -> u8 {
         debug_assert!(
             (1..=4095).contains(&p),

@@ -35,7 +35,7 @@ impl ContextModel {
 
     /// Predict probability of bit=1 for the given context hash.
     /// Returns 12-bit probability in [1, 4095].
-    #[inline]
+    #[inline(always)]
     pub fn predict(&mut self, hash: u32) -> u32 {
         let state = self.cmap.get(hash);
         self.last_state = state;
@@ -45,7 +45,7 @@ impl ContextModel {
 
     /// Update the model after observing `bit`.
     /// Must be called after predict() with the same context.
-    #[inline]
+    #[inline(always)]
     pub fn update(&mut self, bit: u8) {
         // Update StateMap probability for the state we predicted from.
         self.smap.update(self.last_state, bit);
@@ -81,7 +81,7 @@ impl ChecksumContextModel {
 
     /// Predict probability of bit=1 for the given context hash.
     /// Returns 12-bit probability in [1, 4095].
-    #[inline]
+    #[inline(always)]
     pub fn predict(&mut self, hash: u32) -> u32 {
         let state = self.cmap.get(hash);
         self.last_state = state;
@@ -90,7 +90,7 @@ impl ChecksumContextModel {
     }
 
     /// Update the model after observing `bit`.
-    #[inline]
+    #[inline(always)]
     pub fn update(&mut self, bit: u8) {
         self.smap.update(self.last_state, bit);
         let new_state = StateTable::next(self.last_state, bit);
@@ -119,7 +119,7 @@ impl AssociativeContextModel {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn predict(&mut self, hash: u32) -> u32 {
         let state = self.cmap.get(hash);
         self.last_state = state;
@@ -127,7 +127,7 @@ impl AssociativeContextModel {
         self.smap.predict(state)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn update(&mut self, bit: u8) {
         self.smap.update(self.last_state, bit);
         let new_state = StateTable::next(self.last_state, bit);

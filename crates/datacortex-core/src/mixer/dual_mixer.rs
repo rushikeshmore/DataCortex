@@ -11,7 +11,7 @@
 use crate::mixer::logistic::{squash, stretch};
 
 /// Number of models feeding the mixer.
-pub const NUM_MODELS: usize = 12; // order0..6, match, word, sparse, run, json
+pub const NUM_MODELS: usize = 13; // order0..7, match, word, sparse, run, json
 
 /// Fine mixer: 64K weight sets.
 const FINE_SETS: usize = 65536;
@@ -26,11 +26,12 @@ const COARSE_SETS: usize = 4096;
 const W_SCALE: i32 = 4096;
 
 /// Initial weights per model (non-uniform).
-/// order0=200, order1=300, order2=350, order3=450, order4=450, order5=450, order6=300,
+/// order0=200, order1=300, order2=350, order3=450, order4=450, order5=450, order6=300, order7=250,
 /// match=300, word=250, sparse=250, run=200, json=250
-/// Sum = 3750
-const INITIAL_WEIGHTS: [i32; NUM_MODELS] =
-    [200, 300, 350, 450, 450, 450, 300, 300, 250, 250, 200, 250];
+/// Sum = 4000
+const INITIAL_WEIGHTS: [i32; NUM_MODELS] = [
+    200, 300, 350, 450, 450, 450, 300, 250, 300, 250, 250, 200, 250,
+];
 
 /// Fine mixer learning rate.
 const FINE_LR: i32 = 2;
@@ -76,8 +77,9 @@ impl DualMixer {
     }
 
     /// Mix model predictions to produce a final 12-bit probability.
-    #[inline]
+    #[inline(always)]
     #[allow(clippy::needless_range_loop)]
+    #[allow(clippy::too_many_arguments)]
     pub fn predict(
         &mut self,
         predictions: &[u32; NUM_MODELS],
@@ -86,6 +88,7 @@ impl DualMixer {
         bpos: u8,
         byte_class: u8,
         match_len_q: u8,
+        run_q: u8,
     ) -> u32 {
         // Stretch all predictions to log-odds.
         for i in 0..NUM_MODELS {
@@ -93,9 +96,9 @@ impl DualMixer {
         }
 
         // Fine mixer context: full hash.
-        self.last_fine_ctx = fine_context(c0, c1, bpos, byte_class, match_len_q);
-        // Medium mixer context: (c0, c1_top4, bpos).
-        self.last_medium_ctx = medium_context(c0, c1, bpos);
+        self.last_fine_ctx = fine_context(c0, c1, bpos, byte_class, match_len_q, run_q);
+        // Medium mixer context: (c0, c1_top4, bpos, bclass).
+        self.last_medium_ctx = medium_context(c0, c1, bpos, run_q);
         // Coarse mixer context: (c0, bpos).
         self.last_coarse_ctx = coarse_context(c0, bpos);
 
@@ -126,7 +129,7 @@ impl DualMixer {
     }
 
     /// Update weights after observing `bit`.
-    #[inline]
+    #[inline(always)]
     #[allow(clippy::needless_range_loop)]
     pub fn update(&mut self, bit: u8) {
         let error = (bit as i32) * 4096 - self.last_p as i32;
@@ -180,29 +183,31 @@ pub fn byte_class(b: u8) -> u8 {
 }
 
 /// Compute fine mixer context index (0..65535).
-/// Uses c0 partial byte, c1 top bits, bpos, byte class, and match info.
+/// Uses c0 partial byte, c1 top bits, bpos, byte class, match info, and run length.
 #[inline]
-fn fine_context(c0: u32, c1: u8, bpos: u8, bclass: u8, match_q: u8) -> usize {
-    // Hash together: c0(8b) + c1_top2(2b) + bpos(3b) + bclass(3b) + match_q(2b)
-    // = 18 bits, fold to 16 bits for 64K sets
+fn fine_context(c0: u32, c1: u8, bpos: u8, bclass: u8, match_q: u8, run_q: u8) -> usize {
+    // Hash together: c0(8b) + c1_top2(2b) + bpos(3b) + bclass(3b) + match_q(2b) + run_q(2b)
+    // = 20 bits, fold to 16 bits for 64K sets
     let mut h: usize = c0 as usize & 0xFF;
     h = h.wrapping_mul(97) + (c1 as usize >> 6);
     h = h.wrapping_mul(97) + bpos as usize;
     h = h.wrapping_mul(97) + (bclass as usize & 0x7);
     h = h.wrapping_mul(97) + (match_q as usize & 0x3);
+    h = h.wrapping_mul(97) + (run_q as usize & 0x3);
     h & (FINE_SETS - 1)
 }
 
 /// Compute medium mixer context index (0..16383).
-/// Uses c0, c1 top nibble, bpos, and byte class.
+/// Uses c0, c1 top nibble, bpos, byte class, and run quantized.
 #[inline]
-fn medium_context(c0: u32, c1: u8, bpos: u8) -> usize {
-    // c0 (8 bits) + c1_top4 (4 bits) + bpos (3 bits) + bclass (3 bits) = 18 bits -> hash to 14 bits
+fn medium_context(c0: u32, c1: u8, bpos: u8, run_q: u8) -> usize {
+    // c0 (8 bits) + c1_top4 (4 bits) + bpos (3 bits) + bclass (3 bits) + run_q (2 bits) = 20 bits -> hash to 14 bits
     let bclass = byte_class(c1);
     let mut h: usize = c0 as usize & 0xFF;
     h = h.wrapping_mul(67) + (c1 as usize >> 4);
     h = h.wrapping_mul(67) + bpos as usize;
     h = h.wrapping_mul(67) + bclass as usize;
+    h = h.wrapping_mul(67) + (run_q as usize & 0x3);
     h & (MEDIUM_SETS - 1)
 }
 
@@ -220,7 +225,7 @@ mod tests {
     fn initial_prediction_near_balanced() {
         let mut mixer = DualMixer::new();
         let preds = [2048u32; NUM_MODELS];
-        let p = mixer.predict(&preds, 1, 0, 0, 0, 0);
+        let p = mixer.predict(&preds, 1, 0, 0, 0, 0, 0);
         assert!(
             (1900..=2100).contains(&p),
             "initial prediction should be near 2048, got {p}"
@@ -231,9 +236,9 @@ mod tests {
     fn prediction_in_range() {
         let mut mixer = DualMixer::new();
         let preds = [
-            100, 4000, 2048, 3000, 500, 2048, 1500, 2048, 2048, 2048, 2048, 2048,
+            100, 4000, 2048, 3000, 500, 2048, 1500, 2048, 2048, 2048, 2048, 2048, 2048,
         ];
-        let p = mixer.predict(&preds, 128, b'a', 3, 4, 1);
+        let p = mixer.predict(&preds, 128, b'a', 3, 4, 1, 0);
         assert!((1..=4095).contains(&p), "prediction out of range: {p}");
     }
 
@@ -241,7 +246,7 @@ mod tests {
     fn update_changes_weights() {
         let mut mixer = DualMixer::new();
         let preds = [2048u32; NUM_MODELS];
-        mixer.predict(&preds, 1, 0, 0, 0, 0);
+        mixer.predict(&preds, 1, 0, 0, 0, 0, 0);
         let before = mixer.fine_weights[mixer.last_fine_ctx];
         mixer.update(1);
         let after = mixer.fine_weights[mixer.last_fine_ctx];
@@ -253,16 +258,16 @@ mod tests {
         let mut mixer = DualMixer::new();
         for _ in 0..100 {
             let preds = [
-                3500, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
+                3500, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
             ];
-            let p = mixer.predict(&preds, 1, 0, 0, 0, 0);
+            let p = mixer.predict(&preds, 1, 0, 0, 0, 0, 0);
             let _ = p;
             mixer.update(1);
         }
         let preds = [
-            3500, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
+            3500, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
         ];
-        let p = mixer.predict(&preds, 1, 0, 0, 0, 0);
+        let p = mixer.predict(&preds, 1, 0, 0, 0, 0, 0);
         assert!(p > 2500, "mixer should have learned to trust model 0: {p}");
     }
 
@@ -281,7 +286,7 @@ mod tests {
     fn fine_context_in_range() {
         for c0 in [1u32, 128, 255] {
             for bpos in 0..8u8 {
-                let ctx = fine_context(c0, 0xFF, bpos, 7, 3);
+                let ctx = fine_context(c0, 0xFF, bpos, 7, 3, 3);
                 assert!(ctx < FINE_SETS, "fine context out of range: {ctx}");
             }
         }
@@ -291,7 +296,7 @@ mod tests {
     fn medium_context_in_range() {
         for c0 in [1u32, 128, 255] {
             for bpos in 0..8u8 {
-                let ctx = medium_context(c0, 0xFF, bpos);
+                let ctx = medium_context(c0, 0xFF, bpos, 3);
                 assert!(ctx < MEDIUM_SETS, "medium context out of range: {ctx}");
             }
         }

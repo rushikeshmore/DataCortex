@@ -61,7 +61,7 @@ impl APMStage {
     /// `context`: context index (0..num_contexts-1).
     ///
     /// Returns: refined 12-bit probability [1, 4095].
-    #[inline]
+    #[inline(always)]
     pub fn predict(&mut self, prob: u32, context: usize) -> u32 {
         let ctx = context % self.num_contexts;
         self.last_ctx = ctx;
@@ -89,7 +89,7 @@ impl APMStage {
 
     /// Update the APM after observing `bit`.
     /// Must be called after predict().
-    #[inline]
+    #[inline(always)]
     pub fn update(&mut self, bit: u8) {
         let target = if bit != 0 { 4095u32 } else { 1u32 };
         let t = &mut self.table[self.last_ctx];

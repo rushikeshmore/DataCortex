@@ -33,12 +33,12 @@ pub struct SparseModel {
 impl SparseModel {
     pub fn new() -> Self {
         SparseModel {
-            cmap_gap2: ContextMap::new(1 << 22), // 4MB
+            cmap_gap2: ContextMap::new(1 << 23), // 8MB
             smap_gap2: StateMap::new(),
             last_state_gap2: 0,
             last_hash_gap2: 0,
 
-            cmap_gap3: ContextMap::new(1 << 22), // 4MB
+            cmap_gap3: ContextMap::new(1 << 23), // 8MB
             smap_gap3: StateMap::new(),
             last_state_gap3: 0,
             last_hash_gap3: 0,
