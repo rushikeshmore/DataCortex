@@ -316,7 +316,7 @@ pub fn compress_with_model<W: Write>(
                 if let Some(mpath) = resolve_model_path(model_path) {
                     match datacortex_neural::LlmPredictor::new(&mpath) {
                         Ok(mut llm) => {
-                            let mut meta_mixer = datacortex_neural::MetaMixer::new(25);
+                            let mut meta_mixer = datacortex_neural::MetaMixer::new(5);
                             eprintln!(
                                 "[neural] Max mode: dual-path CM+LLM ({} bytes mapped)",
                                 llm.mapped_bytes()
@@ -422,7 +422,7 @@ pub fn decompress_with_model<R: Read>(
                     if let Some(mpath) = resolve_model_path(model_path) {
                         match datacortex_neural::LlmPredictor::new(&mpath) {
                             Ok(mut llm) => {
-                                let mut meta_mixer = datacortex_neural::MetaMixer::new(25);
+                                let mut meta_mixer = datacortex_neural::MetaMixer::new(5);
                                 eprintln!(
                                     "[neural] decompressing with dual-path CM+LLM ({} bytes mapped)",
                                     llm.mapped_bytes()

@@ -246,16 +246,26 @@ impl LlmPredictor {
     /// Convert raw token logits into normalized byte probabilities.
     /// For each byte 0-255, find the corresponding token's logit.
     /// Apply softmax over the 256 byte-tokens only.
+    ///
+    /// Unmapped bytes get the MEAN logit of mapped bytes (neutral "I don't know"
+    /// rather than -100 "impossible"). This prevents the LLM from catastrophically
+    /// mispredicting when the actual byte is unmapped.
     fn extract_byte_probs(&mut self, logits: &[f32]) {
-        // Step 1: Collect logits for mapped byte tokens.
-        let mut byte_logits = [-100.0f32; 256]; // Very negative default for unmapped.
+        // Step 1: Collect logits for mapped byte tokens + compute mean.
+        let mut byte_logits = [0.0f32; 256];
+        let mut mapped_flags = [false; 256];
         let mut max_logit = f32::NEG_INFINITY;
+        let mut logit_sum = 0.0f64;
+        let mut mapped_n = 0usize;
 
         for byte_val in 0..256usize {
             if let Some(token) = self.byte_to_token[byte_val] {
                 let token_id = token.0 as usize;
                 if token_id < logits.len() {
                     byte_logits[byte_val] = logits[token_id];
+                    mapped_flags[byte_val] = true;
+                    logit_sum += logits[token_id] as f64;
+                    mapped_n += 1;
                     if logits[token_id] > max_logit {
                         max_logit = logits[token_id];
                     }
@@ -263,21 +273,30 @@ impl LlmPredictor {
             }
         }
 
-        // Step 2: Softmax over byte logits (numerically stable).
-        if max_logit == f32::NEG_INFINITY {
-            // No mapped bytes at all -- uniform.
+        if mapped_n == 0 {
             self.cached_byte_probs = [1.0 / 256.0; 256];
             return;
         }
 
-        let mut sum = 0.0f64; // Use f64 for sum to avoid precision loss.
+        // Assign unmapped bytes the mean logit (neutral prediction).
+        let mean_logit = (logit_sum / mapped_n as f64) as f32;
+        for byte_val in 0..256 {
+            if !mapped_flags[byte_val] {
+                byte_logits[byte_val] = mean_logit;
+                if mean_logit > max_logit {
+                    max_logit = mean_logit;
+                }
+            }
+        }
+
+        // Step 2: Softmax over all 256 byte logits (numerically stable).
+        let mut sum = 0.0f64;
         for byte_val in 0..256 {
             let exp = ((byte_logits[byte_val] - max_logit) as f64).exp();
             self.cached_byte_probs[byte_val] = exp as f32;
             sum += exp;
         }
 
-        // Normalize.
         if sum > 0.0 {
             let inv_sum = (1.0 / sum) as f32;
             for p in self.cached_byte_probs.iter_mut() {
