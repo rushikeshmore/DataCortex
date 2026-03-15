@@ -17,6 +17,7 @@ rust-version = "1.85"
 
 [workspace.dependencies]
 datacortex-core = { path = "crates/datacortex-core" }
+datacortex-neural = { path = "crates/datacortex-neural" }
 crc32fast = "1"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

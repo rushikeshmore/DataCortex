@@ -3,6 +3,7 @@
 //! Phase 1: Format preprocessing + zstd (Fast mode).
 //! Phase 3: Full CM engine with higher-order models + mixer + APM (Balanced mode, ~256MB).
 //! Phase 5: Full CM engine with 2x context maps (Max mode, ~512MB).
+//! Phase 6: Dual-path CM + LLM with MetaMixer (Max mode with `neural` feature).
 
 use std::io::{self, Cursor, Read, Write};
 
@@ -60,6 +61,159 @@ fn cm_decompress(compressed: &[u8], original_size: usize, config: CMConfig) -> V
     output
 }
 
+// ─── Neural dual-path (CM + LLM) ─────────────────────────────────────────────
+// Feature-gated: only available when `neural` is enabled.
+// The LLM predictor runs alongside the CM engine. A MetaMixer blends them.
+// CRITICAL: encoder and decoder must produce IDENTICAL LLM + CM state.
+
+/// Compress using dual-path: CM engine + LLM predictor + MetaMixer.
+/// Only used for Max mode with neural feature enabled.
+#[cfg(feature = "neural")]
+fn neural_compress(
+    data: &[u8],
+    config: CMConfig,
+    llm: &mut datacortex_neural::LlmPredictor,
+    meta_mixer: &mut datacortex_neural::MetaMixer,
+) -> Vec<u8> {
+    let mut engine = CMEngine::with_config(config);
+    let mut encoder = ArithmeticEncoder::new();
+
+    // For the first byte, LLM has no context. Feed a zero byte to prime it.
+    // We need the LLM to have predicted byte probs BEFORE we start encoding.
+    // Strategy: process byte-by-byte. After encoding byte N, feed byte N to LLM
+    // to get predictions for byte N+1.
+
+    let total_bytes = data.len();
+    let mut bytes_processed = 0;
+    let report_interval = total_bytes / 20; // Report every 5%.
+
+    for (byte_idx, &byte) in data.iter().enumerate() {
+        // At this point, LLM has been fed bytes 0..byte_idx-1.
+        // LLM's cached_byte_probs predict byte_idx.
+
+        for bpos in 0..8u8 {
+            let bit = (byte >> (7 - bpos)) & 1;
+
+            // CM prediction.
+            let p_cm = engine.predict();
+
+            // LLM bit prediction.
+            // c0 is the partial byte being built: starts at 1, accumulates bits.
+            let partial = if bpos == 0 {
+                1u32
+            } else {
+                // Build partial from the bits we've already encoded for this byte.
+                let mut p = 1u32;
+                for prev_bpos in 0..bpos {
+                    let prev_bit = (byte >> (7 - prev_bpos)) & 1;
+                    p = (p << 1) | prev_bit as u32;
+                }
+                p
+            };
+            let p_llm = llm.predict_bit(bpos, partial);
+
+            // Meta-mixer blend.
+            let p_final = meta_mixer.blend(p_cm, p_llm);
+
+            encoder.encode(bit, p_final);
+            engine.update(bit);
+            meta_mixer.update(bit);
+        }
+
+        // Feed the completed byte to the LLM for next-byte prediction.
+        if let Err(e) = llm.predict_byte_probs(byte) {
+            // If LLM fails, it will return uniform on next call. Log but don't abort.
+            if byte_idx < 5 {
+                eprintln!("[neural] LLM predict error at byte {byte_idx}: {e}");
+            }
+        }
+
+        bytes_processed += 1;
+        if report_interval > 0 && bytes_processed % report_interval == 0 {
+            let pct = bytes_processed * 100 / total_bytes;
+            eprint!("\r[neural] compressing... {pct}%");
+        }
+    }
+
+    if total_bytes > 1000 {
+        eprintln!("\r[neural] compressing... 100%");
+    }
+
+    encoder.finish()
+}
+
+/// Decompress using dual-path: CM engine + LLM predictor + MetaMixer.
+/// Must produce IDENTICAL LLM + CM state as the encoder.
+#[cfg(feature = "neural")]
+fn neural_decompress(
+    compressed: &[u8],
+    original_size: usize,
+    config: CMConfig,
+    llm: &mut datacortex_neural::LlmPredictor,
+    meta_mixer: &mut datacortex_neural::MetaMixer,
+) -> Vec<u8> {
+    let mut engine = CMEngine::with_config(config);
+    let mut decoder = ArithmeticDecoder::new(compressed);
+    let mut output = Vec::with_capacity(original_size);
+
+    let report_interval = if original_size > 0 {
+        original_size / 20
+    } else {
+        1
+    };
+
+    for byte_idx in 0..original_size {
+        let mut byte_val: u8 = 0;
+
+        for bpos in 0..8u8 {
+            // CM prediction.
+            let p_cm = engine.predict();
+
+            // LLM bit prediction (using same partial byte state as encoder).
+            let partial = if bpos == 0 {
+                1u32
+            } else {
+                // Build partial from bits already decoded for this byte.
+                let mut p = 1u32;
+                for prev_bpos in 0..bpos {
+                    let prev_bit = (byte_val >> (7 - prev_bpos)) & 1;
+                    p = (p << 1) | prev_bit as u32;
+                }
+                p
+            };
+            let p_llm = llm.predict_bit(bpos, partial);
+
+            // Meta-mixer blend.
+            let p_final = meta_mixer.blend(p_cm, p_llm);
+
+            let bit = decoder.decode(p_final);
+            engine.update(bit);
+            meta_mixer.update(bit);
+            byte_val |= bit << (7 - bpos);
+        }
+
+        output.push(byte_val);
+
+        // Feed decoded byte to LLM (same as encoder did).
+        if let Err(e) = llm.predict_byte_probs(byte_val) {
+            if byte_idx < 5 {
+                eprintln!("[neural] LLM predict error at byte {byte_idx}: {e}");
+            }
+        }
+
+        if report_interval > 0 && (byte_idx + 1) % report_interval == 0 {
+            let pct = (byte_idx + 1) * 100 / original_size;
+            eprint!("\r[neural] decompressing... {pct}%");
+        }
+    }
+
+    if original_size > 1000 {
+        eprintln!("\r[neural] decompressing... 100%");
+    }
+
+    output
+}
+
 /// Get the CMConfig for a given mode.
 fn cm_config_for_mode(mode: Mode) -> CMConfig {
     match mode {
@@ -69,11 +223,62 @@ fn cm_config_for_mode(mode: Mode) -> CMConfig {
     }
 }
 
+/// Resolve the model path from:
+/// 1. Explicit path (--model-path CLI flag)
+/// 2. DATACORTEX_MODEL environment variable
+/// 3. Default: ~/.datacortex/models/SmolLM2-135M-Instruct-Q8_0.gguf
+#[cfg(feature = "neural")]
+fn resolve_model_path(explicit: Option<&str>) -> Option<String> {
+    if let Some(p) = explicit {
+        if std::path::Path::new(p).exists() {
+            return Some(p.to_string());
+        }
+        eprintln!("[neural] explicit model path not found: {p}");
+        return None;
+    }
+
+    if let Ok(p) = std::env::var("DATACORTEX_MODEL") {
+        if p.is_empty() {
+            // Explicitly set to empty = disable neural.
+            return None;
+        }
+        if std::path::Path::new(&p).exists() {
+            return Some(p);
+        }
+        eprintln!("[neural] DATACORTEX_MODEL path not found: {p}");
+        return None; // Don't fall through to default.
+    }
+
+    // Default location.
+    if let Some(home) = std::env::var_os("HOME") {
+        let default = format!(
+            "{}/.datacortex/models/SmolLM2-135M-Instruct-Q8_0.gguf",
+            home.to_string_lossy()
+        );
+        if std::path::Path::new(&default).exists() {
+            return Some(default);
+        }
+    }
+
+    None
+}
+
 /// Compress `data` into .dcx format, writing to `output`.
 pub fn compress<W: Write>(
     data: &[u8],
     mode: Mode,
     format_override: Option<FormatHint>,
+    output: &mut W,
+) -> io::Result<()> {
+    compress_with_model(data, mode, format_override, None, output)
+}
+
+/// Compress with optional explicit model path (for neural Max mode).
+pub fn compress_with_model<W: Write>(
+    data: &[u8],
+    mode: Mode,
+    format_override: Option<FormatHint>,
+    model_path: Option<&str>,
     output: &mut W,
 ) -> io::Result<()> {
     let format_hint = format_override.unwrap_or_else(|| detect_format(data));
@@ -93,16 +298,70 @@ pub fn compress<W: Write>(
         Mode::Fast => {
             zstd::bulk::compress(&preprocessed, zstd_level(mode)).map_err(io::Error::other)?
         }
-        // Balanced/Max mode: CM engine with mode-appropriate config.
-        // Prepend the preprocessed size (8 bytes LE) so the decoder knows how many
-        // bytes to reconstruct (transforms can change data size).
-        Mode::Balanced | Mode::Max => {
+        // Balanced mode: CM engine only.
+        Mode::Balanced => {
             let config = cm_config_for_mode(mode);
             let cm_data = cm_compress(&preprocessed, config);
             let mut payload = Vec::with_capacity(8 + cm_data.len());
             payload.extend_from_slice(&(preprocessed.len() as u64).to_le_bytes());
             payload.extend_from_slice(&cm_data);
             payload
+        }
+        // Max mode: try neural dual-path, fall back to CM-only.
+        Mode::Max => {
+            let config = cm_config_for_mode(mode);
+
+            #[cfg(feature = "neural")]
+            {
+                if let Some(mpath) = resolve_model_path(model_path) {
+                    match datacortex_neural::LlmPredictor::new(&mpath) {
+                        Ok(mut llm) => {
+                            let mut meta_mixer = datacortex_neural::MetaMixer::new(25);
+                            eprintln!(
+                                "[neural] Max mode: dual-path CM+LLM ({} bytes mapped)",
+                                llm.mapped_bytes()
+                            );
+                            let cm_data =
+                                neural_compress(&preprocessed, config, &mut llm, &mut meta_mixer);
+                            let mut payload = Vec::with_capacity(8 + cm_data.len());
+                            // Byte 0 of the 8-byte size prefix: set bit 7 to flag neural mode.
+                            // This lets the decompressor know to use neural path.
+                            let size_with_flag = preprocessed.len() as u64 | (1u64 << 63);
+                            payload.extend_from_slice(&size_with_flag.to_le_bytes());
+                            payload.extend_from_slice(&cm_data);
+                            payload
+                        }
+                        Err(e) => {
+                            eprintln!("[neural] LLM init failed, falling back to CM-only: {e}");
+                            let cm_data = cm_compress(&preprocessed, config);
+                            let mut payload = Vec::with_capacity(8 + cm_data.len());
+                            payload.extend_from_slice(&(preprocessed.len() as u64).to_le_bytes());
+                            payload.extend_from_slice(&cm_data);
+                            payload
+                        }
+                    }
+                } else {
+                    eprintln!(
+                        "[neural] no model found, Max mode using CM-only. \
+                         Set DATACORTEX_MODEL or use --model-path."
+                    );
+                    let cm_data = cm_compress(&preprocessed, config);
+                    let mut payload = Vec::with_capacity(8 + cm_data.len());
+                    payload.extend_from_slice(&(preprocessed.len() as u64).to_le_bytes());
+                    payload.extend_from_slice(&cm_data);
+                    payload
+                }
+            }
+
+            #[cfg(not(feature = "neural"))]
+            {
+                let _ = model_path; // suppress unused warning
+                let cm_data = cm_compress(&preprocessed, config);
+                let mut payload = Vec::with_capacity(8 + cm_data.len());
+                payload.extend_from_slice(&(preprocessed.len() as u64).to_le_bytes());
+                payload.extend_from_slice(&cm_data);
+                payload
+            }
         }
     };
 
@@ -123,6 +382,14 @@ pub fn compress<W: Write>(
 
 /// Decompress a .dcx file from `input`, returning the original data.
 pub fn decompress<R: Read>(input: &mut R) -> io::Result<Vec<u8>> {
+    decompress_with_model(input, None)
+}
+
+/// Decompress with optional explicit model path (for neural Max mode).
+pub fn decompress_with_model<R: Read>(
+    input: &mut R,
+    model_path: Option<&str>,
+) -> io::Result<Vec<u8>> {
     let header = DcxHeader::read_from(input)?;
 
     let mut compressed = vec![0u8; header.compressed_size as usize];
@@ -142,10 +409,62 @@ pub fn decompress<R: Read>(input: &mut R) -> io::Result<Vec<u8>> {
                     "CM mode compressed data too short",
                 ));
             }
-            let preprocessed_size =
-                u64::from_le_bytes(compressed[..8].try_into().unwrap()) as usize;
+            let size_raw = u64::from_le_bytes(compressed[..8].try_into().unwrap());
+
+            // Check if bit 63 is set (neural flag).
+            let neural_flag = size_raw & (1u64 << 63) != 0;
+            let preprocessed_size = (size_raw & !(1u64 << 63)) as usize;
             let config = cm_config_for_mode(header.mode);
-            cm_decompress(&compressed[8..], preprocessed_size, config)
+
+            if neural_flag {
+                #[cfg(feature = "neural")]
+                {
+                    if let Some(mpath) = resolve_model_path(model_path) {
+                        match datacortex_neural::LlmPredictor::new(&mpath) {
+                            Ok(mut llm) => {
+                                let mut meta_mixer = datacortex_neural::MetaMixer::new(25);
+                                eprintln!(
+                                    "[neural] decompressing with dual-path CM+LLM ({} bytes mapped)",
+                                    llm.mapped_bytes()
+                                );
+                                neural_decompress(
+                                    &compressed[8..],
+                                    preprocessed_size,
+                                    config,
+                                    &mut llm,
+                                    &mut meta_mixer,
+                                )
+                            }
+                            Err(e) => {
+                                return Err(io::Error::new(
+                                    io::ErrorKind::Other,
+                                    format!(
+                                        "file was compressed with neural mode but LLM failed to load: {e}"
+                                    ),
+                                ));
+                            }
+                        }
+                    } else {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "file was compressed with neural mode but no model found. \
+                             Set DATACORTEX_MODEL or use --model-path.",
+                        ));
+                    }
+                }
+
+                #[cfg(not(feature = "neural"))]
+                {
+                    let _ = model_path;
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "file was compressed with neural mode but this build lacks the \
+                         `neural` feature. Rebuild with --features neural.",
+                    ));
+                }
+            } else {
+                cm_decompress(&compressed[8..], preprocessed_size, config)
+            }
         }
     };
 
@@ -191,6 +510,18 @@ pub fn compress_to_vec(
 ) -> io::Result<Vec<u8>> {
     let mut buf = Vec::new();
     compress(data, mode, format_override, &mut buf)?;
+    Ok(buf)
+}
+
+/// Compress to Vec with explicit model path.
+pub fn compress_to_vec_with_model(
+    data: &[u8],
+    mode: Mode,
+    format_override: Option<FormatHint>,
+    model_path: Option<&str>,
+) -> io::Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    compress_with_model(data, mode, format_override, model_path, &mut buf)?;
     Ok(buf)
 }
 

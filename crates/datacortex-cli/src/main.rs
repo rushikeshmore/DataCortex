@@ -6,9 +6,9 @@ use std::time::Instant;
 use clap::{Parser, Subcommand};
 use datacortex_core::{
     codec::compress_to_vec,
-    compress,
+    compress_with_model,
     dcx::{FormatHint, Mode},
-    decompress, detect_format,
+    decompress_with_model, detect_format,
     format::detect_from_extension,
     raw_zstd_compress, read_header,
 };
@@ -42,6 +42,10 @@ struct Cli {
     /// Show detailed output (per-model predictions in bench)
     #[arg(short, long, global = true)]
     verbose: bool,
+
+    /// Path to GGUF model for neural Max mode (or set DATACORTEX_MODEL env var)
+    #[arg(long, global = true)]
+    model_path: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -123,6 +127,7 @@ fn cmd_compress(
     output: Option<&Path>,
     mode: Mode,
     format_override: Option<FormatHint>,
+    model_path: Option<&str>,
     quiet: bool,
     verbose: bool,
 ) -> io::Result<()> {
@@ -169,7 +174,7 @@ fn cmd_compress(
 
     let start = Instant::now();
     let mut out = BufWriter::new(fs::File::create(&output_path)?);
-    compress(&data, mode, Some(format), &mut out)?;
+    compress_with_model(&data, mode, Some(format), model_path, &mut out)?;
     let elapsed = start.elapsed();
 
     let output_size = fs::metadata(&output_path)?.len();
@@ -194,7 +199,12 @@ fn cmd_compress(
     Ok(())
 }
 
-fn cmd_decompress(input: &Path, output: &Path, quiet: bool) -> io::Result<()> {
+fn cmd_decompress(
+    input: &Path,
+    output: &Path,
+    model_path: Option<&str>,
+    quiet: bool,
+) -> io::Result<()> {
     if !input.exists() {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
@@ -212,7 +222,7 @@ fn cmd_decompress(input: &Path, output: &Path, quiet: bool) -> io::Result<()> {
     let mut reader = BufReader::new(file);
 
     let start = Instant::now();
-    let data = decompress(&mut reader)?;
+    let data = decompress_with_model(&mut reader, model_path)?;
     let elapsed = start.elapsed();
 
     fs::write(output, &data)?;
@@ -594,11 +604,14 @@ fn main() {
                 output.as_deref(),
                 mode,
                 format,
+                cli.model_path.as_deref(),
                 cli.quiet,
                 cli.verbose,
             )
         }
-        Command::Decompress { input, output } => cmd_decompress(input, output, cli.quiet),
+        Command::Decompress { input, output } => {
+            cmd_decompress(input, output, cli.model_path.as_deref(), cli.quiet)
+        }
         Command::Bench {
             dir,
             mode,

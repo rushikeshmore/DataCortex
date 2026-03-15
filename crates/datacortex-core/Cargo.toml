@@ -16,5 +16,10 @@ crc32fast = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 zstd = { workspace = true }
+datacortex-neural = { path = "../datacortex-neural", optional = true }
+
+[features]
+default = []
+neural = ["datacortex-neural/neural"]
 
 [dev-dependencies]

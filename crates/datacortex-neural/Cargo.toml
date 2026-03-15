@@ -1,6 +1,6 @@
 [package]
 name = "datacortex-neural"
-description = "DataCortex neural models — RWKV for Max mode (feature-gated, not yet implemented)"
+description = "DataCortex neural predictor — LLM byte-level prediction for Max mode (feature-gated)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,3 +11,9 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+llama-cpp-2 = { version = "0.1", optional = true }
+encoding_rs = { version = "0.8", optional = true }
+
+[features]
+default = []
+neural = ["llama-cpp-2", "encoding_rs"]

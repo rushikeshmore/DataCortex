@@ -11,7 +11,10 @@ pub mod model;
 pub mod ramanujan;
 pub mod state;
 
-pub use codec::{compress, decompress, raw_zstd_compress, read_header};
+pub use codec::{
+    compress, compress_with_model, decompress, decompress_with_model, raw_zstd_compress,
+    read_header,
+};
 pub use dcx::{DcxHeader, FormatHint, Mode};
 pub use format::detect_format;
 pub use model::{CMConfig, CMEngine};
