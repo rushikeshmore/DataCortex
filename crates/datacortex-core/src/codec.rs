@@ -3,6 +3,7 @@
 //! Phase 0: Identity compression (Max mode placeholder).
 //! Phase 1: Format preprocessing + zstd (Fast mode).
 //! Phase 2: Order-0 CM engine (Balanced mode).
+//! Phase 3: Full CM engine with higher-order models + mixer + APM (Balanced mode).
 
 use std::io::{self, Cursor, Read, Write};
 
@@ -10,7 +11,7 @@ use crate::dcx::{DcxHeader, FormatHint, Mode};
 use crate::entropy::arithmetic::{ArithmeticDecoder, ArithmeticEncoder};
 use crate::format::transform::TransformChain;
 use crate::format::{detect_format, preprocess, reverse_preprocess};
-use crate::model::Order0Model;
+use crate::model::CMEngine;
 
 /// zstd compression level per mode (for Fast mode).
 fn zstd_level(mode: Mode) -> i32 {
@@ -21,43 +22,40 @@ fn zstd_level(mode: Mode) -> i32 {
     }
 }
 
-/// Compress data using the Order-0 CM engine (Balanced mode).
+/// Compress data using the full CM engine (Phase 3 — Balanced mode).
 /// Returns the compressed byte stream.
 fn cm_compress(data: &[u8]) -> Vec<u8> {
-    let mut model = Order0Model::new();
+    let mut engine = CMEngine::new();
     let mut encoder = ArithmeticEncoder::new();
 
     for &byte in data {
-        let mut c: usize = 1; // partial byte context, starts at 1
         for bpos in 0..8 {
             let bit = (byte >> (7 - bpos)) & 1;
-            let p = model.predict(c);
+            let p = engine.predict();
             encoder.encode(bit, p);
-            model.update(c, bit);
-            c = (c << 1) | bit as usize;
+            engine.update(bit);
         }
     }
 
     encoder.finish()
 }
 
-/// Decompress data using the Order-0 CM engine (Balanced mode).
+/// Decompress data using the full CM engine (Phase 3 — Balanced mode).
 /// `compressed` is the arithmetic-coded stream, `original_size` is the expected output length.
 fn cm_decompress(compressed: &[u8], original_size: usize) -> Vec<u8> {
-    let mut model = Order0Model::new();
+    let mut engine = CMEngine::new();
     let mut decoder = ArithmeticDecoder::new(compressed);
     let mut output = Vec::with_capacity(original_size);
 
     for _ in 0..original_size {
-        let mut c: usize = 1; // partial byte context, starts at 1
-        for _ in 0..8 {
-            let p = model.predict(c);
+        let mut byte_val: u8 = 0;
+        for bpos in 0..8 {
+            let p = engine.predict();
             let bit = decoder.decode(p);
-            model.update(c, bit);
-            c = (c << 1) | bit as usize;
+            engine.update(bit);
+            byte_val |= bit << (7 - bpos);
         }
-        // c is now byte_value + 256; extract the byte.
-        output.push((c & 0xFF) as u8);
+        output.push(byte_val);
     }
 
     output

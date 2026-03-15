@@ -14,3 +14,4 @@ pub mod state;
 pub use codec::{compress, decompress, raw_zstd_compress, read_header};
 pub use dcx::{DcxHeader, FormatHint, Mode};
 pub use format::detect_format;
+pub use model::CMEngine;

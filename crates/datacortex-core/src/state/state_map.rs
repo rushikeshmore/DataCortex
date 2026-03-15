@@ -6,7 +6,8 @@
 use super::state_table::StateTable;
 
 /// Maximum learning count (limits adaptation speed).
-const MAX_COUNT: u16 = 512;
+/// Lower = adapts faster to changing statistics. 64 for fast adaptation.
+const MAX_COUNT: u16 = 64;
 
 /// A single entry in the state map.
 #[derive(Clone, Copy)]

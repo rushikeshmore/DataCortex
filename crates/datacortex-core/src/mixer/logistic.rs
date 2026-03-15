@@ -12,7 +12,7 @@
 //! These are analytical inverses of each other.
 //! K=64 gives a steep sigmoid covering nearly all of [1, 4095].
 
-/// Steepness parameter. Smaller = steeper (wider coverage of probability range).
+/// Steepness parameter. K=64 gives a steep sigmoid covering nearly all of [1, 4095].
 const K: i32 = 64;
 
 /// Squash table. 16384 entries covering d in [-8192, 8191].
