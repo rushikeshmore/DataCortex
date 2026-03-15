@@ -145,6 +145,8 @@ pub struct CMEngine {
     apm2: APMStage,
     /// APM Stage 3: 4K contexts (match_q * c1_top4 * bpos), 20% blend.
     apm3: APMStage,
+    /// APM Stage 4: 4K contexts (byte_class pair transition + run), 15% blend.
+    apm4: APMStage,
 
     // --- Context state ---
     /// Partial byte being decoded (1-255). Starts at 1.
@@ -197,6 +199,7 @@ impl CMEngine {
             apm1: APMStage::new(2048, 55),  // c0(256) * bpos(8) = 2048
             apm2: APMStage::new(16384, 30), // c1*bpos*byte_class = 256*8*8 = 16K
             apm3: APMStage::new(4096, 25), // match_q(4) * c2_top2(4) * c1_top4(16) * bpos(8) = 2048, use 4K
+            apm4: APMStage::new(4096, 15), // bclass(8) * bc2(8) * bpos(8) * run_q(4) -> 4K
             c0: 1,
             c1: 0,
             c2: 0,
@@ -274,7 +277,7 @@ impl CMEngine {
         // JSON model (structure-aware).
         let p_json = self.json_model.predict(c0, bpos, c1);
 
-        // --- Mix ---
+        // --- Mix (13 models) ---
         let predictions = [
             p0, p1, p2, p3, p4, p5, p6, p7, p_match, p_word, p_sparse, p_run, p_json,
         ];
@@ -309,7 +312,18 @@ impl CMEngine {
             .wrapping_mul(5)
             .wrapping_add(match_q as usize)
             & 4095;
-        let final_p = self.apm3.predict(after_apm2, apm3_ctx);
+        let after_apm3 = self.apm3.predict(after_apm2, apm3_ctx);
+
+        // Stage 4 (Neural APM): byte-class pair transition + run context.
+        // Uses byte_class(c1) x byte_class(c2) x bpos x run_q as context.
+        // This captures character-class transitions and run patterns that
+        // other APM stages miss.
+        let bc2 = byte_class(c2);
+        let apm4_ctx = (bclass as usize * 8 + bc2 as usize)
+            .wrapping_mul(33)
+            .wrapping_add(bpos as usize * 4 + run_q as usize)
+            & 4095;
+        let final_p = self.apm4.predict(after_apm3, apm4_ctx);
 
         final_p.clamp(1, 4095)
     }
@@ -319,7 +333,8 @@ impl CMEngine {
     /// CRITICAL: encoder and decoder must call this with identical state and bit.
     #[inline(always)]
     pub fn update(&mut self, bit: u8) {
-        // Update APM (reverse order: stage 3 first, then 2, then 1).
+        // Update APM (reverse order: stage 4 first, then 3, 2, 1).
+        self.apm4.update(bit);
         self.apm3.update(bit);
         self.apm2.update(bit);
         self.apm1.update(bit);
