@@ -31,14 +31,21 @@ pub struct SparseModel {
 }
 
 impl SparseModel {
+    /// Create a sparse model with default 16MB total (8MB per gap context).
     pub fn new() -> Self {
+        Self::with_size(1 << 23) // 8MB per gap context = 16MB total
+    }
+
+    /// Create a sparse model with a custom ContextMap size per gap context (in bytes).
+    /// Total memory is 2x this value.
+    pub fn with_size(cmap_size: usize) -> Self {
         SparseModel {
-            cmap_gap2: ContextMap::new(1 << 23), // 8MB
+            cmap_gap2: ContextMap::new(cmap_size),
             smap_gap2: StateMap::new(),
             last_state_gap2: 0,
             last_hash_gap2: 0,
 
-            cmap_gap3: ContextMap::new(1 << 23), // 8MB
+            cmap_gap3: ContextMap::new(cmap_size),
             smap_gap3: StateMap::new(),
             last_state_gap3: 0,
             last_hash_gap3: 0,

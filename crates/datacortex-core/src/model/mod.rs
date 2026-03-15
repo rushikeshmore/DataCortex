@@ -13,7 +13,7 @@ pub mod sparse_model;
 pub mod word_model;
 
 pub use cm_model::{AssociativeContextModel, ChecksumContextModel, ContextModel};
-pub use engine::CMEngine;
+pub use engine::{CMConfig, CMEngine};
 pub use match_model::MatchModel;
 pub use order0::Order0Model;
 pub use run_model::RunModel;

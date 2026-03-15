@@ -29,9 +29,15 @@ pub struct RunModel {
 }
 
 impl RunModel {
+    /// Create a run model with default 4MB ContextMap.
     pub fn new() -> Self {
+        Self::with_size(1 << 22) // 4MB
+    }
+
+    /// Create a run model with a custom ContextMap size (in bytes).
+    pub fn with_size(cmap_size: usize) -> Self {
         RunModel {
-            cmap: ContextMap::new(1 << 22), // 4MB
+            cmap: ContextMap::new(cmap_size),
             smap: StateMap::new(),
             run_len: 0,
             last_byte: 0,

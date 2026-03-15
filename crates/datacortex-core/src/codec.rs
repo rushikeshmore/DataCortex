@@ -1,9 +1,8 @@
 //! Codec orchestrator — compress and decompress through the DataCortex pipeline.
 //!
-//! Phase 0: Identity compression (Max mode placeholder).
 //! Phase 1: Format preprocessing + zstd (Fast mode).
-//! Phase 2: Order-0 CM engine (Balanced mode).
-//! Phase 3: Full CM engine with higher-order models + mixer + APM (Balanced mode).
+//! Phase 3: Full CM engine with higher-order models + mixer + APM (Balanced mode, ~256MB).
+//! Phase 5: Full CM engine with 2x context maps (Max mode, ~512MB).
 
 use std::io::{self, Cursor, Read, Write};
 
@@ -11,7 +10,7 @@ use crate::dcx::{DcxHeader, FormatHint, Mode};
 use crate::entropy::arithmetic::{ArithmeticDecoder, ArithmeticEncoder};
 use crate::format::transform::TransformChain;
 use crate::format::{detect_format, preprocess, reverse_preprocess};
-use crate::model::CMEngine;
+use crate::model::{CMConfig, CMEngine};
 
 /// zstd compression level per mode (for Fast mode).
 fn zstd_level(mode: Mode) -> i32 {
@@ -22,10 +21,10 @@ fn zstd_level(mode: Mode) -> i32 {
     }
 }
 
-/// Compress data using the full CM engine (Phase 3 — Balanced mode).
+/// Compress data using the CM engine with the given configuration.
 /// Returns the compressed byte stream.
-fn cm_compress(data: &[u8]) -> Vec<u8> {
-    let mut engine = CMEngine::new();
+fn cm_compress(data: &[u8], config: CMConfig) -> Vec<u8> {
+    let mut engine = CMEngine::with_config(config);
     let mut encoder = ArithmeticEncoder::new();
 
     for &byte in data {
@@ -40,10 +39,10 @@ fn cm_compress(data: &[u8]) -> Vec<u8> {
     encoder.finish()
 }
 
-/// Decompress data using the full CM engine (Phase 3 — Balanced mode).
+/// Decompress data using the CM engine with the given configuration.
 /// `compressed` is the arithmetic-coded stream, `original_size` is the expected output length.
-fn cm_decompress(compressed: &[u8], original_size: usize) -> Vec<u8> {
-    let mut engine = CMEngine::new();
+fn cm_decompress(compressed: &[u8], original_size: usize, config: CMConfig) -> Vec<u8> {
+    let mut engine = CMEngine::with_config(config);
     let mut decoder = ArithmeticDecoder::new(compressed);
     let mut output = Vec::with_capacity(original_size);
 
@@ -59,6 +58,15 @@ fn cm_decompress(compressed: &[u8], original_size: usize) -> Vec<u8> {
     }
 
     output
+}
+
+/// Get the CMConfig for a given mode.
+fn cm_config_for_mode(mode: Mode) -> CMConfig {
+    match mode {
+        Mode::Max => CMConfig::max(),
+        Mode::Balanced => CMConfig::balanced(),
+        Mode::Fast => CMConfig::balanced(), // not used for Fast, but keeps API clean
+    }
 }
 
 /// Compress `data` into .dcx format, writing to `output`.
@@ -85,18 +93,17 @@ pub fn compress<W: Write>(
         Mode::Fast => {
             zstd::bulk::compress(&preprocessed, zstd_level(mode)).map_err(io::Error::other)?
         }
-        // Balanced mode: Order-0 CM engine.
+        // Balanced/Max mode: CM engine with mode-appropriate config.
         // Prepend the preprocessed size (8 bytes LE) so the decoder knows how many
         // bytes to reconstruct (transforms can change data size).
-        Mode::Balanced => {
-            let cm_data = cm_compress(&preprocessed);
+        Mode::Balanced | Mode::Max => {
+            let config = cm_config_for_mode(mode);
+            let cm_data = cm_compress(&preprocessed, config);
             let mut payload = Vec::with_capacity(8 + cm_data.len());
             payload.extend_from_slice(&(preprocessed.len() as u64).to_le_bytes());
             payload.extend_from_slice(&cm_data);
             payload
         }
-        // Max: identity for now (RWKV in Phase 6).
-        Mode::Max => preprocessed.clone(),
     };
 
     let header = DcxHeader {
@@ -127,31 +134,19 @@ pub fn decompress<R: Read>(input: &mut R) -> io::Result<Vec<u8>> {
             zstd::bulk::decompress(&compressed, header.original_size as usize * 2 + 65536)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
         }
-        Mode::Balanced => {
-            // For Balanced, we need the preprocessed size to know how many bytes to decode.
-            // If there's transform metadata, the preprocessed size differs from original.
-            // We store original_size in header. The preprocessed size is what the CM encoded.
-            // Since transform_metadata tells us the transforms applied, we need to figure
-            // out the preprocessed size. But we don't store it separately.
-            //
-            // Solution: store the preprocessed size as the first 8 bytes of the CM stream.
-            // Wait — that would break the format. Instead, we can compute:
-            // If no transforms, preprocessed_size = original_size.
-            // If transforms, we need to know. Let's store it in the compressed data.
-            //
-            // Actually, the cleanest approach: embed the preprocessed length at the start
-            // of the compressed payload for Balanced mode.
+        Mode::Balanced | Mode::Max => {
+            // CM modes embed the preprocessed length as the first 8 bytes of the payload.
             if compressed.len() < 8 {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    "balanced mode compressed data too short",
+                    "CM mode compressed data too short",
                 ));
             }
             let preprocessed_size =
                 u64::from_le_bytes(compressed[..8].try_into().unwrap()) as usize;
-            cm_decompress(&compressed[8..], preprocessed_size)
+            let config = cm_config_for_mode(header.mode);
+            cm_decompress(&compressed[8..], preprocessed_size, config)
         }
-        Mode::Max => compressed,
     };
 
     // Step 2: Reverse preprocessing.
@@ -349,16 +344,16 @@ mod tests {
     #[test]
     fn cm_compress_decompress_direct() {
         let data = b"Hello, World! This is a direct CM test.";
-        let compressed = cm_compress(data);
-        let decompressed = cm_decompress(&compressed, data.len());
+        let compressed = cm_compress(data, CMConfig::balanced());
+        let decompressed = cm_decompress(&compressed, data.len(), CMConfig::balanced());
         assert_eq!(decompressed, data.to_vec());
     }
 
     #[test]
     fn cm_empty() {
         let data: &[u8] = b"";
-        let compressed = cm_compress(data);
-        let decompressed = cm_decompress(&compressed, 0);
+        let compressed = cm_compress(data, CMConfig::balanced());
+        let decompressed = cm_decompress(&compressed, 0, CMConfig::balanced());
         assert!(decompressed.is_empty());
     }
 
@@ -366,8 +361,8 @@ mod tests {
     fn cm_single_byte() {
         for byte in 0..=255u8 {
             let data = [byte];
-            let compressed = cm_compress(&data);
-            let decompressed = cm_decompress(&compressed, 1);
+            let compressed = cm_compress(&data, CMConfig::balanced());
+            let decompressed = cm_decompress(&compressed, 1, CMConfig::balanced());
             assert_eq!(
                 decompressed, data,
                 "CM roundtrip failed for byte {byte:#04X}"
@@ -378,14 +373,30 @@ mod tests {
     #[test]
     fn cm_repetitive_compresses() {
         let data = vec![b'A'; 1000];
-        let compressed = cm_compress(&data);
+        let compressed = cm_compress(&data, CMConfig::balanced());
         // 1000 identical bytes should compress well with adaptive model.
         assert!(
             compressed.len() < 200,
             "CM should compress 1000 identical bytes well: {} bytes",
             compressed.len()
         );
-        let decompressed = cm_decompress(&compressed, data.len());
+        let decompressed = cm_decompress(&compressed, data.len(), CMConfig::balanced());
         assert_eq!(decompressed, data);
+    }
+
+    #[test]
+    fn max_mode_roundtrip() {
+        let original = b"Max mode test data with some content for compression.";
+        let compressed = compress_to_vec(original, Mode::Max, None).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed, original);
+    }
+
+    #[test]
+    fn max_mode_longer_text() {
+        let original = b"The quick brown fox jumps over the lazy dog. Max mode uses 2x context maps for better predictions with fewer hash collisions. This should compress slightly better than balanced mode.";
+        let compressed = compress_to_vec(original, Mode::Max, None).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed, original);
     }
 }

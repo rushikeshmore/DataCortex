@@ -59,9 +59,15 @@ pub struct JsonModel {
 }
 
 impl JsonModel {
+    /// Create a JSON model with default 8MB ContextMap.
     pub fn new() -> Self {
+        Self::with_size(1 << 23) // 8MB
+    }
+
+    /// Create a JSON model with a custom ContextMap size (in bytes).
+    pub fn with_size(cmap_size: usize) -> Self {
         JsonModel {
-            cmap: ContextMap::new(1 << 23), // 8MB
+            cmap: ContextMap::new(cmap_size),
             smap: StateMap::new(),
             state: JsonState::TopLevel,
             in_key: false,

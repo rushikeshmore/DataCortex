@@ -1,16 +1,18 @@
 //! CMEngine -- orchestrates all context models + mixer + APM.
 //!
-//! Phase 5: Scaled context mixing engine with:
-//! - Order-0: 256-entry direct model
-//! - Order-1: ContextMap(32MB) + StateMap (context = prev byte + partial)
-//! - Order-2: ContextMap(16MB) + StateMap (context = prev 2 bytes + partial)
-//! - Order-3: ContextMap(32MB) + StateMap (context = prev 3 bytes + partial)
-//! - Order-4: ContextMap(32MB) + StateMap (context = prev 4 bytes + partial)
-//! - Order-5: ContextMap(32MB) + StateMap (context = prev 5 bytes + partial)
-//! - Order-6: ContextMap(16MB) + StateMap (context = prev 6 bytes + partial)
-//! - Order-7: AssociativeContextMap(32MB) (context = prev 7 bytes + partial)
+//! Phase 5: Scaled context mixing engine with configurable sizes (CMConfig).
+//!
+//! Balanced preset (~256MB):
+//! - Order-0 through Order-7 context models (16-32MB each)
 //! - Match model: ring buffer (16MB) + hash table (8M entries)
-//! - Word model: ContextMap(16MB) word boundary context
+//! - Word, Sparse, Run, JSON models
+//!
+//! Max preset (~512MB):
+//! - 2x all ContextMap sizes vs Balanced
+//! - Match model: ring buffer (32MB) + hash table (16M entries)
+//! - Fewer hash collisions = better predictions
+//!
+//! Both presets use:
 //! - Triple logistic mixer (fine 64K + med 16K + coarse 4K)
 //! - 3-stage APM cascade
 //!
@@ -26,6 +28,83 @@ use crate::model::order0::Order0Model;
 use crate::model::run_model::RunModel;
 use crate::model::sparse_model::SparseModel;
 use crate::model::word_model::WordModel;
+
+/// Configuration for the CM engine -- controls memory/quality trade-off.
+///
+/// Each field specifies the ContextMap size in bytes for the corresponding model.
+/// Larger sizes reduce hash collisions and improve prediction accuracy at the
+/// cost of more memory and slightly slower cache performance.
+#[derive(Debug, Clone)]
+pub struct CMConfig {
+    /// Order-1 ContextMap size (default: 32MB).
+    pub order1_size: usize,
+    /// Order-2 ContextMap size (default: 16MB).
+    pub order2_size: usize,
+    /// Order-3 ChecksumContextMap size (default: 32MB).
+    pub order3_size: usize,
+    /// Order-4 ChecksumContextMap size (default: 32MB).
+    pub order4_size: usize,
+    /// Order-5 AssociativeContextMap size (default: 32MB).
+    pub order5_size: usize,
+    /// Order-6 AssociativeContextMap size (default: 16MB).
+    pub order6_size: usize,
+    /// Order-7 AssociativeContextMap size (default: 32MB).
+    pub order7_size: usize,
+    /// Match model ring buffer size in bytes (default: 16MB). Must be power of 2.
+    pub match_ring_size: usize,
+    /// Match model hash table entry count (default: 8M). Must be power of 2.
+    pub match_hash_size: usize,
+    /// Word model ContextMap size (default: 16MB).
+    pub word_size: usize,
+    /// Sparse model ContextMap size per gap context (default: 8MB, 16MB total).
+    pub sparse_size: usize,
+    /// Run model ContextMap size (default: 4MB).
+    pub run_size: usize,
+    /// JSON model ContextMap size (default: 8MB).
+    pub json_size: usize,
+}
+
+impl CMConfig {
+    /// Balanced preset: current production sizes (~256MB total).
+    pub fn balanced() -> Self {
+        CMConfig {
+            order1_size: 1 << 25,      // 32MB
+            order2_size: 1 << 24,      // 16MB
+            order3_size: 1 << 25,      // 32MB
+            order4_size: 1 << 25,      // 32MB
+            order5_size: 1 << 25,      // 32MB
+            order6_size: 1 << 24,      // 16MB
+            order7_size: 1 << 25,      // 32MB
+            match_ring_size: 16 << 20, // 16MB
+            match_hash_size: 8 << 20,  // 8M entries
+            word_size: 1 << 24,        // 16MB
+            sparse_size: 1 << 23,      // 8MB per gap (16MB total)
+            run_size: 1 << 22,         // 4MB
+            json_size: 1 << 23,        // 8MB
+        }
+    }
+
+    /// Max preset: 2x everything for better compression (~512MB total).
+    /// Doubles all ContextMap sizes, match ring, and hash table.
+    /// More context slots = fewer collisions = better predictions.
+    pub fn max() -> Self {
+        CMConfig {
+            order1_size: 1 << 26,      // 64MB
+            order2_size: 1 << 25,      // 32MB
+            order3_size: 1 << 26,      // 64MB
+            order4_size: 1 << 26,      // 64MB
+            order5_size: 1 << 26,      // 64MB
+            order6_size: 1 << 25,      // 32MB
+            order7_size: 1 << 26,      // 64MB
+            match_ring_size: 32 << 20, // 32MB
+            match_hash_size: 16 << 20, // 16M entries
+            word_size: 1 << 25,        // 32MB
+            sparse_size: 1 << 24,      // 16MB per gap (32MB total)
+            run_size: 1 << 23,         // 8MB
+            json_size: 1 << 24,        // 16MB
+        }
+    }
+}
 
 /// Context mixing engine -- orchestrates all models, mixer, and APM.
 pub struct CMEngine {
@@ -93,22 +172,27 @@ pub struct CMEngine {
 }
 
 impl CMEngine {
-    /// Create a new CM engine with all models, mixer, and APM initialized.
+    /// Create a new CM engine with balanced (default) configuration.
     pub fn new() -> Self {
+        Self::with_config(CMConfig::balanced())
+    }
+
+    /// Create a CM engine with a specific configuration.
+    pub fn with_config(config: CMConfig) -> Self {
         CMEngine {
             order0: Order0Model::new(),
-            order1: ContextModel::new(1 << 25),            // 32MB
-            order2: ContextModel::new(1 << 24),            // 16MB
-            order3: ChecksumContextModel::new(1 << 25),    // 32MB (16M entries with checksum)
-            order4: ChecksumContextModel::new(1 << 25),    // 32MB
-            order5: AssociativeContextModel::new(1 << 25), // 32MB (8M sets of 2)
-            order6: AssociativeContextModel::new(1 << 24), // 16MB
-            order7: AssociativeContextModel::new(1 << 25), // 32MB (8M sets of 2)
-            match_model: MatchModel::new(),
-            word_model: WordModel::new(),
-            sparse_model: SparseModel::new(),
-            run_model: RunModel::new(),
-            json_model: JsonModel::new(),
+            order1: ContextModel::new(config.order1_size),
+            order2: ContextModel::new(config.order2_size),
+            order3: ChecksumContextModel::new(config.order3_size),
+            order4: ChecksumContextModel::new(config.order4_size),
+            order5: AssociativeContextModel::new(config.order5_size),
+            order6: AssociativeContextModel::new(config.order6_size),
+            order7: AssociativeContextModel::new(config.order7_size),
+            match_model: MatchModel::with_sizes(config.match_ring_size, config.match_hash_size),
+            word_model: WordModel::with_size(config.word_size),
+            sparse_model: SparseModel::with_size(config.sparse_size),
+            run_model: RunModel::with_size(config.run_size),
+            json_model: JsonModel::with_size(config.json_size),
             mixer: DualMixer::new(),
             apm1: APMStage::new(2048, 55),  // c0(256) * bpos(8) = 2048
             apm2: APMStage::new(16384, 30), // c1*bpos*byte_class = 256*8*8 = 16K

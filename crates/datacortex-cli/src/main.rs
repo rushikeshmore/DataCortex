@@ -22,8 +22,8 @@ use datacortex_core::{
         format-aware preprocessing before bit-level context mixing with 13 models.\n\n\
         Modes:\n  \
           fast       — zstd backend with preprocessing (~3 bpb, fast)\n  \
-          balanced   — full CM engine, 13 models (~2.2 bpb, slow)\n  \
-          max        — reserved for neural models (not yet available)",
+          balanced   — CM engine, 13 models, ~256MB (~2.2 bpb, slow)\n  \
+          max        — CM engine, 13 models, ~512MB (best compression, slower)",
     version,
     after_help = "Examples:\n  \
         datacortex compress data.json -m balanced\n  \

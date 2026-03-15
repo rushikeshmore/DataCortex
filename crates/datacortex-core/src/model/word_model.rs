@@ -38,10 +38,15 @@ pub struct WordModel {
 }
 
 impl WordModel {
-    /// Create a new word model with 16MB ContextMap.
+    /// Create a new word model with default 16MB ContextMap.
     pub fn new() -> Self {
+        Self::with_size(1 << 24) // 16MB
+    }
+
+    /// Create a word model with a custom ContextMap size (in bytes).
+    pub fn with_size(cmap_size: usize) -> Self {
         WordModel {
-            cmap: ContextMap::new(1 << 24), // 16MB
+            cmap: ContextMap::new(cmap_size),
             smap: StateMap::new(),
             word_hash: 0,
             prev_word_hash: 0,
