@@ -1,18 +1,18 @@
-//! MatchModel — ring buffer + hash table for longest match prediction.
+//! MatchModel -- ring buffer + hash table for longest match prediction.
 //!
-//! Phase 3: Finds the longest match in history and predicts from match continuation.
-//! Uses linear confidence ramp based on match length.
+//! Phase 4: Finds the longest match in history and predicts from match continuation.
+//! Uses improved confidence ramp: slow start, steep middle, saturating high.
 //!
 //! CRITICAL V2 LESSONS:
 //! - Rolling hash must NOT be cumulative
-//! - Confidence ramp must be linear
+//! - Confidence ramp must be linear (not step function)
 //! - Length tracking must reset on mismatch
 
 /// Size of the ring buffer (8MB).
 const BUF_SIZE: usize = 8 * 1024 * 1024;
 
-/// Size of the hash table for match finding (2M entries).
-const HASH_SIZE: usize = 2 * 1024 * 1024;
+/// Size of the hash table for match finding (4M entries).
+const HASH_SIZE: usize = 4 * 1024 * 1024;
 
 /// Minimum match length before we start predicting.
 const MIN_MATCH: usize = 2;
@@ -28,7 +28,7 @@ pub struct MatchModel {
     buf_pos: usize,
     /// Total bytes written (for position validity).
     total_written: usize,
-    /// Hash table: hash → position in ring buffer.
+    /// Hash table: hash -> position in ring buffer.
     hash_table: Vec<u32>,
     /// Current match position in ring buffer (-1 = no match).
     match_pos: i64,
@@ -74,7 +74,7 @@ impl MatchModel {
 
         if self.match_pos < 0 || self.match_len < MIN_MATCH {
             self.last_p = 2048;
-            return 2048; // No match → neutral prediction
+            return 2048; // No match -> neutral prediction
         }
 
         // Predict from match continuation.
@@ -82,9 +82,24 @@ impl MatchModel {
         let match_byte = self.buf[mpos];
         let match_bit = (match_byte >> (7 - bpos)) & 1;
 
-        // Linear confidence ramp: higher match length → more confident.
-        // Steeper ramp: 150 per match byte, caps at 3500 (strong confidence).
-        let conf = ((self.match_len.min(MAX_MATCH_FOR_CONF) as u32) * 150).min(3500);
+        // Improved confidence ramp: slow start, steep middle, saturating.
+        // Uses a piecewise function:
+        //   len 2-3: 80 per byte (tentative)
+        //   len 4-8: 200 per byte (building confidence)
+        //   len 9-32: 120 per byte (strong)
+        //   len 33+: 60 per byte (saturating)
+        let len = self.match_len.min(MAX_MATCH_FOR_CONF);
+        let conf = if len <= 3 {
+            (len as u32) * 80
+        } else if len <= 8 {
+            240 + ((len as u32 - 3) * 200)
+        } else if len <= 32 {
+            1240 + ((len as u32 - 8) * 120)
+        } else {
+            4120u32.min(1240 + 2880 + ((len as u32 - 32) * 60))
+        };
+        let conf = conf.min(3800);
+
         let p = if match_bit == 1 {
             2048 + conf
         } else {
@@ -127,46 +142,84 @@ impl MatchModel {
             let byte = (c0 & 0xFF) as u8;
             self.buf[self.buf_pos] = byte;
 
-            // Non-cumulative rolling hash: hash of last 3 bytes.
+            // Non-cumulative rolling hash: hash of last 4 bytes for better match finding.
             // CRITICAL: must NOT be cumulative (V2 bug lesson).
-            self.hash = hash3(byte, c1, c2);
+            self.hash = hash4(byte, c1, c2, self.prev_byte(3));
 
             // Store position in hash table.
             let idx = self.hash as usize & (HASH_SIZE - 1);
             self.hash_table[idx] = self.buf_pos as u32;
+
+            // Also store a second hash with different context for more match opportunities.
+            let h2 = hash3(byte, c1, c2);
+            let idx2 = h2 as usize & (HASH_SIZE - 1);
+            // Only store if slot is empty (don't overwrite better 4-byte matches)
+            if self.hash_table[idx2] == 0 || self.total_written < 4 {
+                self.hash_table[idx2] = self.buf_pos as u32;
+            }
 
             self.buf_pos = (self.buf_pos + 1) & (BUF_SIZE - 1);
             self.total_written += 1;
         }
     }
 
+    /// Get byte from N positions before current write position.
+    #[inline]
+    fn prev_byte(&self, n: usize) -> u8 {
+        if self.total_written >= n {
+            self.buf[(self.buf_pos.wrapping_sub(n)) & (BUF_SIZE - 1)]
+        } else {
+            0
+        }
+    }
+
     /// Find a match using the hash of recent bytes.
     fn find_match(&mut self, c1: u8, c2: u8, c3: u8) {
-        let h = hash3(c1, c2, c3);
-        let idx = h as usize & (HASH_SIZE - 1);
-        let candidate_pos = self.hash_table[idx] as usize;
-
-        // Validate the candidate.
         if self.total_written < 3 {
             self.match_pos = -1;
             self.match_len = 0;
             return;
         }
 
-        // Check if the candidate position has matching context.
-        // We need the 3 bytes before candidate_pos to match c3, c2, c1.
+        // Try 4-byte hash first (better matches)
+        let c4 = self.prev_byte(3); // 4th-to-last byte
+        let h4 = hash4(c1, c2, c3, c4);
+        let idx4 = h4 as usize & (HASH_SIZE - 1);
+        let candidate4 = self.hash_table[idx4] as usize;
+
+        if self.try_match(candidate4, c1, c2, c3) {
+            return;
+        }
+
+        // Fallback: try 3-byte hash
+        let h3 = hash3(c1, c2, c3);
+        let idx3 = h3 as usize & (HASH_SIZE - 1);
+        let candidate3 = self.hash_table[idx3] as usize;
+
+        if self.try_match(candidate3, c1, c2, c3) {
+            return;
+        }
+
+        self.match_pos = -1;
+        self.match_len = 0;
+    }
+
+    /// Try to establish a match at the candidate position.
+    /// Returns true if match was found.
+    #[inline]
+    fn try_match(&mut self, candidate_pos: usize, c1: u8, c2: u8, c3: u8) -> bool {
         let bp = candidate_pos;
-        let p1 = (bp.wrapping_sub(1)) & (BUF_SIZE - 1);
-        let p2 = (bp.wrapping_sub(2)) & (BUF_SIZE - 1);
+        let p1 = bp.wrapping_sub(1) & (BUF_SIZE - 1);
+        let p2 = bp.wrapping_sub(2) & (BUF_SIZE - 1);
 
         if self.buf[bp] == c1 && self.buf[p1] == c2 && self.buf[p2] == c3 {
             // Match found. Set match_pos to the byte AFTER the match context.
             self.match_pos = ((bp + 1) & (BUF_SIZE - 1)) as i64;
             self.match_len = 3;
             self.match_bpos = 0;
+            true
         } else {
-            self.match_pos = -1;
-            self.match_len = 0;
+            false
         }
     }
 
@@ -202,6 +255,16 @@ impl Default for MatchModel {
 #[inline]
 fn hash3(b1: u8, b2: u8, b3: u8) -> u32 {
     let mut h: u32 = b3 as u32;
+    h = h.wrapping_mul(0x01000193) ^ b2 as u32;
+    h = h.wrapping_mul(0x01000193) ^ b1 as u32;
+    h
+}
+
+/// Non-cumulative hash of 4 bytes for better match precision.
+#[inline]
+fn hash4(b1: u8, b2: u8, b3: u8, b4: u8) -> u32 {
+    let mut h: u32 = b4 as u32;
+    h = h.wrapping_mul(0x01000193) ^ b3 as u32;
     h = h.wrapping_mul(0x01000193) ^ b2 as u32;
     h = h.wrapping_mul(0x01000193) ^ b1 as u32;
     h
@@ -246,6 +309,16 @@ mod tests {
 
         // Different inputs should differ.
         let h3 = hash3(11, 20, 30);
+        assert_ne!(h1, h3);
+    }
+
+    #[test]
+    fn hash4_not_cumulative() {
+        let h1 = hash4(10, 20, 30, 40);
+        let h2 = hash4(10, 20, 30, 40);
+        assert_eq!(h1, h2);
+
+        let h3 = hash4(11, 20, 30, 40);
         assert_ne!(h1, h3);
     }
 

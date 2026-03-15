@@ -7,6 +7,6 @@ pub mod context_map;
 pub mod state_map;
 pub mod state_table;
 
-pub use context_map::ContextMap;
+pub use context_map::{AssociativeContextMap, ChecksumContextMap, ContextMap};
 pub use state_map::StateMap;
 pub use state_table::StateTable;

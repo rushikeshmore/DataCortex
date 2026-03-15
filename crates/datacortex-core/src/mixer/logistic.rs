@@ -12,8 +12,10 @@
 //! These are analytical inverses of each other.
 //! K=64 gives a steep sigmoid covering nearly all of [1, 4095].
 
-/// Steepness parameter. K=64 gives a steep sigmoid covering nearly all of [1, 4095].
-const K: i32 = 64;
+/// Steepness parameter. K=128 gives a moderately steep sigmoid.
+/// Higher K = wider range = better resolution near 0.5 (where most predictions fall).
+/// K=128 is a good balance: covers [~50, ~4046] while giving fine resolution to the mixer.
+const K: i32 = 128;
 
 /// Squash table. 16384 entries covering d in [-8192, 8191].
 /// Formula: p = 2048 + d * 2047 / (K + |d|)
@@ -197,8 +199,8 @@ mod tests {
 
     #[test]
     fn squash_extremes() {
-        assert!(squash(-10000) <= 20, "squash(-10000) = {}", squash(-10000));
-        assert!(squash(10000) >= 4076, "squash(10000) = {}", squash(10000));
+        assert!(squash(-10000) <= 100, "squash(-10000) = {}", squash(-10000));
+        assert!(squash(10000) >= 3996, "squash(10000) = {}", squash(10000));
     }
 
     #[test]

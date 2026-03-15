@@ -1,13 +1,20 @@
-//! StateMap — adaptive state-to-probability mapper.
+//! StateMap -- adaptive state-to-probability mapper.
 //!
 //! Maps each of 256 states to a 12-bit probability (1-4095) that adapts
-//! based on observed bits. Uses 1/n learning rate that slows over time.
+//! based on observed bits. Uses variable learning rate:
+//! - Fast learning for low-count states (early observations matter more)
+//! - Slow learning for high-count states (well-established statistics)
+//!
+//! Initialization uses the StateTable's static probability as the prior.
 
 use super::state_table::StateTable;
 
-/// Maximum learning count (limits adaptation speed).
-/// Lower = adapts faster to changing statistics. 64 for fast adaptation.
-const MAX_COUNT: u16 = 64;
+/// Maximum learning count. Higher = better convergence on stable statistics.
+/// 192 is a good balance: fast enough to adapt, slow enough to converge well.
+const MAX_COUNT: u16 = 192;
+
+/// Minimum learning denominator. Prevents divide-by-zero and initial overshoot.
+const MIN_DENOM: i32 = 4;
 
 /// A single entry in the state map.
 #[derive(Clone, Copy)]
@@ -32,8 +39,14 @@ impl StateMap {
         }; 256];
 
         for (i, entry) in entries.iter_mut().enumerate() {
-            entry.prob = StateTable::prob(i as u8);
-            entry.count = 0;
+            let base_prob = StateTable::prob(i as u8);
+            entry.prob = base_prob;
+            // Give initial confidence proportional to how extreme the state is.
+            // States near 50/50 get low initial count (easy to update).
+            // Extreme states get higher initial count (harder to shift).
+            let dist_from_center = base_prob.abs_diff(2048);
+            // Scale: 0 at center, up to ~4 at extremes
+            entry.count = ((dist_from_center as u32) / 600).min(4) as u16;
         }
 
         StateMap { entries }
@@ -47,13 +60,14 @@ impl StateMap {
     }
 
     /// Update the probability for the given state after observing `bit`.
-    /// Uses adaptive 1/n learning: p += (target - p) / (count + 2).
+    /// Uses adaptive learning: p += (target - p) / (count + MIN_DENOM).
+    /// Learning rate decreases as count increases (1/n convergence).
     #[inline]
     pub fn update(&mut self, state: u8, bit: u8) {
         let e = &mut self.entries[state as usize];
         let target = if bit != 0 { 4095i32 } else { 0i32 };
         let p = e.prob as i32;
-        let count = e.count as i32 + 2; // +2 to avoid divide-by-zero and overshoot
+        let count = e.count as i32 + MIN_DENOM;
         let delta = (target - p) / count;
         let new_p = (p + delta).clamp(1, 4095);
         e.prob = new_p as u16;
@@ -115,7 +129,7 @@ mod tests {
     #[test]
     fn many_ones_converge_high() {
         let mut sm = StateMap::new();
-        for _ in 0..100 {
+        for _ in 0..200 {
             sm.update(0, 1);
         }
         let p = sm.predict(0);
@@ -125,7 +139,7 @@ mod tests {
     #[test]
     fn many_zeros_converge_low() {
         let mut sm = StateMap::new();
-        for _ in 0..100 {
+        for _ in 0..200 {
             sm.update(0, 0);
         }
         let p = sm.predict(0);
@@ -135,7 +149,6 @@ mod tests {
     #[test]
     fn probability_stays_in_bounds() {
         let mut sm = StateMap::new();
-        // Push hard in one direction then the other.
         for _ in 0..1000 {
             sm.update(128, 1);
         }

@@ -1,45 +1,61 @@
-//! CMEngine — orchestrates all context models + mixer + APM.
+//! CMEngine -- orchestrates all context models + mixer + APM.
 //!
-//! Phase 3: Full context mixing engine with:
+//! Phase 4: Full context mixing engine with:
 //! - Order-0: 256-entry direct model
-//! - Order-1: ContextMap(4MB) + StateMap (context = prev byte + partial)
-//! - Order-2: ContextMap(512K) + StateMap (context = prev 2 bytes + partial)
-//! - Order-3: ContextMap(2MB) + StateMap (context = prev 3 bytes + partial)
-//! - Match model: ring buffer + hash table
-//! - Word model: word boundary context
-//! - Dual logistic mixer (fine 64K + coarse 4K)
-//! - Two-stage APM cascade
+//! - Order-1: ContextMap(16MB) + StateMap (context = prev byte + partial)
+//! - Order-2: ContextMap(8MB) + StateMap (context = prev 2 bytes + partial)
+//! - Order-3: ContextMap(16MB) + StateMap (context = prev 3 bytes + partial)
+//! - Order-4: ContextMap(16MB) + StateMap (context = prev 4 bytes + partial)
+//! - Order-5: ContextMap(16MB) + StateMap (context = prev 5 bytes + partial)
+//! - Order-6: ContextMap(8MB) + StateMap (context = prev 6 bytes + partial)
+//! - Match model: ring buffer + hash table (4M entries)
+//! - Word model: ContextMap(8MB) word boundary context
+//! - Triple logistic mixer (fine 64K + med 16K + coarse 4K)
+//! - 3-stage APM cascade
 //!
-//! Probability always in [1, 4095] — clamped after every operation.
+//! Probability always in [1, 4095] -- clamped after every operation.
 //! CRITICAL: Encoder/decoder must use IDENTICAL prediction sequence.
 
 use crate::mixer::apm::APMStage;
 use crate::mixer::dual_mixer::{DualMixer, byte_class};
-use crate::model::cm_model::ContextModel;
+use crate::model::cm_model::{AssociativeContextModel, ChecksumContextModel, ContextModel};
+use crate::model::json_model::JsonModel;
 use crate::model::match_model::MatchModel;
 use crate::model::order0::Order0Model;
+use crate::model::run_model::RunModel;
+use crate::model::sparse_model::SparseModel;
 use crate::model::word_model::WordModel;
 
-/// Context mixing engine — orchestrates all models, mixer, and APM.
+/// Context mixing engine -- orchestrates all models, mixer, and APM.
 pub struct CMEngine {
     // --- Models ---
     /// Order-0: 256-context partial byte predictor.
     order0: Order0Model,
-    /// Order-1: previous byte + partial byte context. ContextMap 4MB (2^22).
+    /// Order-1: previous byte + partial byte context. ContextMap 16MB.
     order1: ContextModel,
-    /// Order-2: previous 2 bytes + partial byte context. ContextMap 512KB (2^19).
+    /// Order-2: previous 2 bytes + partial byte context. ContextMap 8MB.
     order2: ContextModel,
-    /// Order-3: previous 3 bytes + partial byte context. ContextMap 2MB (2^21).
-    order3: ContextModel,
-    /// Order-4: previous 4 bytes + partial byte context. ContextMap 4MB (2^22).
-    order4: ContextModel,
+    /// Order-3: previous 3 bytes + partial byte context. ChecksumContextMap 16MB.
+    order3: ChecksumContextModel,
+    /// Order-4: previous 4 bytes + partial byte context. ChecksumContextMap 16MB.
+    order4: ChecksumContextModel,
+    /// Order-5: previous 5 bytes + partial byte context. AssociativeContextMap 16MB.
+    order5: AssociativeContextModel,
+    /// Order-6: previous 6 bytes + partial byte context. AssociativeContextMap 8MB.
+    order6: AssociativeContextModel,
     /// Match model: ring buffer + hash table.
     match_model: MatchModel,
-    /// Word model: word boundary context. ContextMap 2MB (2^21).
+    /// Word model: word boundary context. ContextMap 8MB.
     word_model: WordModel,
+    /// Sparse model: skip-byte context for periodic patterns. 8MB total.
+    sparse_model: SparseModel,
+    /// Run model: run-length context. 2MB.
+    run_model: RunModel,
+    /// JSON model: structure-aware context. 4MB.
+    json_model: JsonModel,
 
     // --- Mixer + APM ---
-    /// Dual logistic mixer (fine 64K + coarse 4K).
+    /// Triple logistic mixer (fine 64K + medium 16K + coarse 4K).
     mixer: DualMixer,
     /// APM Stage 1: 2K contexts (c0 * bpos), 50% blend.
     apm1: APMStage,
@@ -59,6 +75,10 @@ pub struct CMEngine {
     c3: u8,
     /// Fourth-to-last completed byte.
     c4: u8,
+    /// Fifth-to-last completed byte.
+    c5: u8,
+    /// Sixth-to-last completed byte.
+    c6: u8,
     /// Bit position within current byte (0-7).
     bpos: u8,
 }
@@ -68,12 +88,17 @@ impl CMEngine {
     pub fn new() -> Self {
         CMEngine {
             order0: Order0Model::new(),
-            order1: ContextModel::new(1 << 23), // 8MB
-            order2: ContextModel::new(1 << 21), // 2MB
-            order3: ContextModel::new(1 << 22), // 4MB
-            order4: ContextModel::new(1 << 22), // 4MB
+            order1: ContextModel::new(1 << 24),            // 16MB
+            order2: ContextModel::new(1 << 23),            // 8MB
+            order3: ChecksumContextModel::new(1 << 24),    // 16MB (8M entries with checksum)
+            order4: ChecksumContextModel::new(1 << 24),    // 16MB
+            order5: AssociativeContextModel::new(1 << 24), // 16MB (4M sets of 2)
+            order6: AssociativeContextModel::new(1 << 23), // 8MB
             match_model: MatchModel::new(),
             word_model: WordModel::new(),
+            sparse_model: SparseModel::new(),
+            run_model: RunModel::new(),
+            json_model: JsonModel::new(),
             mixer: DualMixer::new(),
             apm1: APMStage::new(2048, 55),  // c0(256) * bpos(8) = 2048
             apm2: APMStage::new(16384, 30), // c1*bpos*byte_class = 256*8*8 = 16K
@@ -83,6 +108,8 @@ impl CMEngine {
             c2: 0,
             c3: 0,
             c4: 0,
+            c5: 0,
+            c6: 0,
             bpos: 0,
         }
     }
@@ -99,6 +126,8 @@ impl CMEngine {
         let c2 = self.c2;
         let c3 = self.c3;
         let c4 = self.c4;
+        let c5 = self.c5;
+        let c6 = self.c6;
         let bpos = self.bpos;
 
         // Order-0: context is the partial byte.
@@ -120,14 +149,33 @@ impl CMEngine {
         let h4 = order4_hash(c4, c3, c2, c1, c0);
         let p4 = self.order4.predict(h4);
 
+        // Order-5: context hash = c5, c4, c3, c2, c1, partial byte.
+        let h5 = order5_hash(c5, c4, c3, c2, c1, c0);
+        let p5 = self.order5.predict(h5);
+
+        // Order-6: context hash = c6, c5, c4, c3, c2, c1, partial byte.
+        let h6 = order6_hash(c6, c5, c4, c3, c2, c1, c0);
+        let p6 = self.order6.predict(h6);
+
         // Match model.
         let p_match = self.match_model.predict(c0, bpos, c1, c2, c3);
 
         // Word model.
         let p_word = self.word_model.predict(c0, bpos, c1);
 
+        // Sparse model (skip-byte patterns).
+        let p_sparse = self.sparse_model.predict(c0, c1, c2, c3);
+
+        // Run model (run-length patterns).
+        let p_run = self.run_model.predict(c0, bpos, c1);
+
+        // JSON model (structure-aware).
+        let p_json = self.json_model.predict(c0, bpos, c1);
+
         // --- Mix ---
-        let predictions = [p0, p1, p2, p3, p4, p_match, p_word];
+        let predictions = [
+            p0, p1, p2, p3, p4, p5, p6, p_match, p_word, p_sparse, p_run, p_json,
+        ];
         let bclass = byte_class(c1);
         let match_q = self.match_model.match_length_quantized();
 
@@ -136,7 +184,7 @@ impl CMEngine {
             .predict(&predictions, c0, c1, bpos, bclass, match_q);
 
         // --- APM cascade ---
-        // Stage 1: context = c0_partial(8b) + bpos(3b) = 11 bits → 2048 contexts.
+        // Stage 1: context = c0_partial(8b) + bpos(3b) = 11 bits -> 2048 contexts.
         let apm1_ctx = ((c0 as usize & 0xFF) << 3) | bpos as usize;
         let after_apm1 = self.apm1.predict(mixed, apm1_ctx);
 
@@ -170,9 +218,14 @@ impl CMEngine {
         self.order2.update(bit);
         self.order3.update(bit);
         self.order4.update(bit);
+        self.order5.update(bit);
+        self.order6.update(bit);
         self.match_model
             .update(bit, self.bpos, self.c0, self.c1, self.c2);
         self.word_model.update(bit);
+        self.sparse_model.update(bit);
+        self.run_model.update(bit);
+        self.json_model.update(bit);
 
         // Advance context state.
         self.c0 = (self.c0 << 1) | bit as u32;
@@ -181,6 +234,8 @@ impl CMEngine {
         if self.bpos >= 8 {
             // Byte complete. Extract byte value and reset.
             let byte = (self.c0 & 0xFF) as u8;
+            self.c6 = self.c5;
+            self.c5 = self.c4;
             self.c4 = self.c3;
             self.c3 = self.c2;
             self.c2 = self.c1;
@@ -250,6 +305,46 @@ fn order3_hash(c3: u8, c2: u8, c1: u8, c0: u32) -> u32 {
 #[inline]
 fn order4_hash(c4: u8, c3: u8, c2: u8, c1: u8, c0: u32) -> u32 {
     let mut h = FNV_OFFSET;
+    h ^= c4 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c3 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c2 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c1 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c0 & 0xFF;
+    h = h.wrapping_mul(FNV_PRIME);
+    h
+}
+
+/// Order-5 context hash: combines last 5 bytes with partial byte.
+#[inline]
+fn order5_hash(c5: u8, c4: u8, c3: u8, c2: u8, c1: u8, c0: u32) -> u32 {
+    let mut h = FNV_OFFSET;
+    h ^= c5 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c4 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c3 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c2 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c1 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c0 & 0xFF;
+    h = h.wrapping_mul(FNV_PRIME);
+    h
+}
+
+/// Order-6 context hash: combines last 6 bytes with partial byte.
+#[inline]
+fn order6_hash(c6: u8, c5: u8, c4: u8, c3: u8, c2: u8, c1: u8, c0: u32) -> u32 {
+    let mut h = FNV_OFFSET;
+    h ^= c6 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c5 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
     h ^= c4 as u32;
     h = h.wrapping_mul(FNV_PRIME);
     h ^= c3 as u32;

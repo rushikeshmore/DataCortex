@@ -1,10 +1,15 @@
-//! WordModel — word boundary context model.
+//! WordModel -- word boundary context model.
 //!
-//! Phase 3: Predicts based on word context. A "word" is a sequence of
+//! Phase 4: Predicts based on word context. A "word" is a sequence of
 //! alphanumeric/underscore characters. At word boundaries, a new word hash starts.
 //!
-//! Context: hash of current word characters + partial byte.
-//! ContextMap size: 2MB (2^21).
+//! Improvements in Phase 4:
+//! - Larger ContextMap (8MB instead of 2MB)
+//! - Separate bigram word context for better cross-word prediction
+//! - Byte class context mixing for non-word characters
+//!
+//! Context: hash of current word characters + previous word + partial byte.
+//! ContextMap size: 8MB (2^23).
 
 use crate::state::context_map::ContextMap;
 use crate::state::state_map::StateMap;
@@ -14,14 +19,18 @@ use crate::state::state_table::StateTable;
 pub struct WordModel {
     /// Hash table for word contexts.
     cmap: ContextMap,
-    /// Adaptive state → probability mapper.
+    /// Adaptive state -> probability mapper.
     smap: StateMap,
     /// Running hash of current word.
     word_hash: u32,
     /// Previous word hash (for bigram context).
     prev_word_hash: u32,
+    /// Second-previous word hash (for trigram).
+    prev2_word_hash: u32,
     /// Whether we are inside a word.
     in_word: bool,
+    /// Current word length.
+    word_len: u32,
     /// Last looked-up state.
     last_state: u8,
     /// Last looked-up hash.
@@ -29,14 +38,16 @@ pub struct WordModel {
 }
 
 impl WordModel {
-    /// Create a new word model with 2MB ContextMap.
+    /// Create a new word model with 8MB ContextMap.
     pub fn new() -> Self {
         WordModel {
-            cmap: ContextMap::new(1 << 21), // 2MB
+            cmap: ContextMap::new(1 << 23), // 8MB
             smap: StateMap::new(),
             word_hash: 0,
             prev_word_hash: 0,
+            prev2_word_hash: 0,
             in_word: false,
+            word_len: 0,
             last_state: 0,
             last_hash: 0,
         }
@@ -55,10 +66,14 @@ impl WordModel {
             self.update_word_state(c1);
         }
 
-        // Context: combine word hash with partial byte.
-        let h = self.word_hash.wrapping_mul(0x01000193) ^ (c0 & 0xFF);
+        // Context: combine word hash with partial byte and previous word (bigram).
+        let mut h = self.word_hash;
+        h = h.wrapping_mul(0x01000193) ^ (c0 & 0xFF);
         // Mix in previous word for bigram context.
-        let h = h.wrapping_mul(0x01000193) ^ self.prev_word_hash;
+        h = h.wrapping_mul(0x01000193) ^ self.prev_word_hash;
+        // Also mix in word length (quantized) for position-aware prediction.
+        let len_q = self.word_len.min(7);
+        h = h.wrapping_mul(0x01000193) ^ len_q;
 
         let state = self.cmap.get(h);
         self.last_state = state;
@@ -81,8 +96,10 @@ impl WordModel {
         if is_word_char {
             if !self.in_word {
                 // Starting a new word.
+                self.prev2_word_hash = self.prev_word_hash;
                 self.prev_word_hash = self.word_hash;
                 self.word_hash = 0;
+                self.word_len = 0;
                 self.in_word = true;
             }
             // Extend word hash with this character (lowercased for case insensitivity).
@@ -92,6 +109,7 @@ impl WordModel {
                 c1
             };
             self.word_hash = self.word_hash.wrapping_mul(0x01000193) ^ ch as u32;
+            self.word_len += 1;
         } else {
             if self.in_word {
                 // Word just ended.
@@ -99,6 +117,7 @@ impl WordModel {
             }
             // Non-word characters: use character class as context.
             self.word_hash = c1 as u32;
+            self.word_len = 0;
         }
     }
 }
@@ -143,7 +162,7 @@ mod tests {
         }
         let p1 = wm.predict(1, 0, b'o');
 
-        // Feed 'world' then predict — should differ.
+        // Feed 'world' then predict -- should differ.
         let mut wm2 = WordModel::new();
         for &ch in b"world" {
             for bpos in 0..8u8 {
@@ -154,7 +173,7 @@ mod tests {
         }
         let p2 = wm2.predict(1, 0, b'd');
         // Different word contexts should give different predictions.
-        // (Or same if they haven't learned anything yet — just check range.)
+        // (Or same if they haven't learned anything yet -- just check range.)
         assert!((1..=4095).contains(&p1));
         assert!((1..=4095).contains(&p2));
     }

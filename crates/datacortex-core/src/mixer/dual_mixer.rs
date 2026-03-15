@@ -11,7 +11,7 @@
 use crate::mixer::logistic::{squash, stretch};
 
 /// Number of models feeding the mixer.
-pub const NUM_MODELS: usize = 7; // order0, order1, order2, order3, order4, match, word
+pub const NUM_MODELS: usize = 12; // order0..6, match, word, sparse, run, json
 
 /// Fine mixer: 64K weight sets.
 const FINE_SETS: usize = 65536;
@@ -26,10 +26,11 @@ const COARSE_SETS: usize = 4096;
 const W_SCALE: i32 = 4096;
 
 /// Initial weights per model (non-uniform).
-/// Higher-order and match models get more weight because they're typically more informative.
-/// order0=300, order1=500, order2=600, order3=700, order4=700, match=500, word=400
-/// Sum = 3700, close to W_SCALE (4096).
-const INITIAL_WEIGHTS: [i32; NUM_MODELS] = [300, 500, 600, 700, 700, 500, 400];
+/// order0=200, order1=300, order2=350, order3=450, order4=450, order5=450, order6=300,
+/// match=300, word=250, sparse=250, run=200, json=250
+/// Sum = 3750
+const INITIAL_WEIGHTS: [i32; NUM_MODELS] =
+    [200, 300, 350, 450, 450, 450, 300, 300, 250, 250, 200, 250];
 
 /// Fine mixer learning rate.
 const FINE_LR: i32 = 2;
@@ -179,21 +180,29 @@ pub fn byte_class(b: u8) -> u8 {
 }
 
 /// Compute fine mixer context index (0..65535).
+/// Uses c0 partial byte, c1 top bits, bpos, byte class, and match info.
 #[inline]
 fn fine_context(c0: u32, c1: u8, bpos: u8, bclass: u8, match_q: u8) -> usize {
-    let h = (c0 as usize & 0xFF)
-        | ((c1 as usize >> 6) << 8)
-        | ((bpos as usize) << 10)
-        | ((bclass as usize & 0x7) << 13)
-        | ((match_q as usize & 0x3) << 16);
-    (h ^ (h >> 16)) & (FINE_SETS - 1)
+    // Hash together: c0(8b) + c1_top2(2b) + bpos(3b) + bclass(3b) + match_q(2b)
+    // = 18 bits, fold to 16 bits for 64K sets
+    let mut h: usize = c0 as usize & 0xFF;
+    h = h.wrapping_mul(97) + (c1 as usize >> 6);
+    h = h.wrapping_mul(97) + bpos as usize;
+    h = h.wrapping_mul(97) + (bclass as usize & 0x7);
+    h = h.wrapping_mul(97) + (match_q as usize & 0x3);
+    h & (FINE_SETS - 1)
 }
 
 /// Compute medium mixer context index (0..16383).
+/// Uses c0, c1 top nibble, bpos, and byte class.
 #[inline]
 fn medium_context(c0: u32, c1: u8, bpos: u8) -> usize {
-    // c0 (8 bits) + c1_top4 (4 bits) + bpos (3 bits) = 15 bits → hash to 14 bits
-    let h = (c0 as usize & 0xFF) | ((c1 as usize >> 4) << 8) | ((bpos as usize) << 12);
+    // c0 (8 bits) + c1_top4 (4 bits) + bpos (3 bits) + bclass (3 bits) = 18 bits -> hash to 14 bits
+    let bclass = byte_class(c1);
+    let mut h: usize = c0 as usize & 0xFF;
+    h = h.wrapping_mul(67) + (c1 as usize >> 4);
+    h = h.wrapping_mul(67) + bpos as usize;
+    h = h.wrapping_mul(67) + bclass as usize;
     h & (MEDIUM_SETS - 1)
 }
 
@@ -221,7 +230,9 @@ mod tests {
     #[test]
     fn prediction_in_range() {
         let mut mixer = DualMixer::new();
-        let preds = [100, 4000, 2048, 3000, 500, 2048, 1500];
+        let preds = [
+            100, 4000, 2048, 3000, 500, 2048, 1500, 2048, 2048, 2048, 2048, 2048,
+        ];
         let p = mixer.predict(&preds, 128, b'a', 3, 4, 1);
         assert!((1..=4095).contains(&p), "prediction out of range: {p}");
     }
@@ -241,12 +252,16 @@ mod tests {
     fn mixer_adapts_to_biased_input() {
         let mut mixer = DualMixer::new();
         for _ in 0..100 {
-            let preds = [3500, 2048, 2048, 2048, 2048, 2048, 2048];
+            let preds = [
+                3500, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
+            ];
             let p = mixer.predict(&preds, 1, 0, 0, 0, 0);
             let _ = p;
             mixer.update(1);
         }
-        let preds = [3500, 2048, 2048, 2048, 2048, 2048, 2048];
+        let preds = [
+            3500, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
+        ];
         let p = mixer.predict(&preds, 1, 0, 0, 0, 0);
         assert!(p > 2500, "mixer should have learned to trust model 0: {p}");
     }

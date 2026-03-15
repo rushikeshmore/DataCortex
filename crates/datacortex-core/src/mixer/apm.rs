@@ -9,8 +9,7 @@
 //! Stage 2: 16K contexts (c1 * c0_top4), 25% blend with input.
 
 /// Number of probability bins in the interpolation table.
-/// We quantize the input probability to this many bins.
-/// 65 bins gives finer resolution for the interpolation.
+/// 65 bins provides good resolution while keeping memory footprint small.
 const NUM_BINS: usize = 65;
 
 /// An adaptive probability map stage.
