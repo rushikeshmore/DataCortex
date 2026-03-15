@@ -1,0 +1,65 @@
+{
+  "files": [
+    {
+      "bpb": 8.002,
+      "compressed_bytes": 152121,
+      "file": "alice29.txt",
+      "format": "generic",
+      "original_bytes": 152089,
+      "time_ms": 0.72
+    },
+    {
+      "bpb": 8.046,
+      "compressed_bytes": 5639,
+      "file": "test-api.json",
+      "format": "json",
+      "original_bytes": 5607,
+      "time_ms": 0.11
+    },
+    {
+      "bpb": 8.016,
+      "compressed_bytes": 15790,
+      "file": "test-code.rs",
+      "format": "code",
+      "original_bytes": 15758,
+      "time_ms": 0.46
+    },
+    {
+      "bpb": 8.122,
+      "compressed_bytes": 2129,
+      "file": "test-config.json",
+      "format": "json",
+      "original_bytes": 2097,
+      "time_ms": 0.05
+    },
+    {
+      "bpb": 8.02,
+      "compressed_bytes": 12743,
+      "file": "test-doc.md",
+      "format": "markdown",
+      "original_bytes": 12711,
+      "time_ms": 0.03
+    },
+    {
+      "bpb": 8.03,
+      "compressed_bytes": 8562,
+      "file": "test-log.log",
+      "format": "log",
+      "original_bytes": 8530,
+      "time_ms": 0.18
+    },
+    {
+      "bpb": 8.031,
+      "compressed_bytes": 8364,
+      "file": "test-ndjson.ndjson",
+      "format": "ndjson",
+      "original_bytes": 8332,
+      "time_ms": 0.07
+    }
+  ],
+  "mode": "balanced",
+  "phase": "0-identity",
+  "total_bpb": 8.009,
+  "total_compressed_bytes": 205348,
+  "total_original_bytes": 205124
+}

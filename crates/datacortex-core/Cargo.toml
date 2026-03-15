@@ -1,0 +1,13 @@
+[package]
+name = "datacortex-core"
+description = "Lossless text compression engine — format-aware context mixing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+crc32fast = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]

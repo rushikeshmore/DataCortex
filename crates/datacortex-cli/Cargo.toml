@@ -1,0 +1,15 @@
+[package]
+name = "datacortex-cli"
+description = "DataCortex CLI — compress, decompress, bench, info"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "datacortex"
+path = "src/main.rs"
+
+[dependencies]
+datacortex-core = { workspace = true }
+clap = { workspace = true }
+serde_json = { workspace = true }
