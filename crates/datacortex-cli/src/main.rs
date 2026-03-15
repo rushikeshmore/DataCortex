@@ -14,11 +14,34 @@ use datacortex_core::{
 };
 
 #[derive(Parser)]
-#[command(name = "datacortex", about = "Lossless text compression engine")]
-#[command(version)]
+#[command(
+    name = "datacortex",
+    about = "Lossless text compression engine with format-aware preprocessing and context mixing.",
+    long_about = "DataCortex — lossless text compression engine.\n\n\
+        Understands file structure (JSON, Markdown, NDJSON, logs, code) and applies\n\
+        format-aware preprocessing before bit-level context mixing with 13 models.\n\n\
+        Modes:\n  \
+          fast       — zstd backend with preprocessing (~3 bpb, fast)\n  \
+          balanced   — full CM engine, 13 models (~2.2 bpb, slow)\n  \
+          max        — reserved for neural models (not yet available)",
+    version,
+    after_help = "Examples:\n  \
+        datacortex compress data.json -m balanced\n  \
+        datacortex decompress data.dcx output.json\n  \
+        datacortex bench corpus/ -m balanced --compare\n  \
+        datacortex info data.dcx"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
+
+    /// Suppress all output except errors
+    #[arg(short, long, global = true)]
+    quiet: bool,
+
+    /// Show detailed output (per-model predictions in bench)
+    #[arg(short, long, global = true)]
+    verbose: bool,
 }
 
 #[derive(Subcommand)]
@@ -51,6 +74,9 @@ enum Command {
         /// Compression mode
         #[arg(short, long, default_value = "balanced")]
         mode: String,
+        /// Show zstd comparison column
+        #[arg(long)]
+        compare: bool,
         /// Save results to benchmarks/baseline.json
         #[arg(long)]
         save: bool,
@@ -69,7 +95,7 @@ fn parse_mode(s: &str) -> io::Result<Mode> {
         "fast" => Ok(Mode::Fast),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("unknown mode: {s} (expected: max, balanced, fast)"),
+            format!("unknown mode: '{s}' (expected: max, balanced, fast)"),
         )),
     }
 }
@@ -85,7 +111,9 @@ fn parse_format(s: &str) -> io::Result<FormatHint> {
         "log" => Ok(FormatHint::Log),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("unknown format: {s}"),
+            format!(
+                "unknown format: '{s}' (expected: generic, json, markdown, ndjson, csv, code, log)"
+            ),
         )),
     }
 }
@@ -95,8 +123,30 @@ fn cmd_compress(
     output: Option<&Path>,
     mode: Mode,
     format_override: Option<FormatHint>,
+    quiet: bool,
+    verbose: bool,
 ) -> io::Result<()> {
+    if !input.exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("file not found: {}", input.display()),
+        ));
+    }
+    if !input.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("not a file: {}", input.display()),
+        ));
+    }
+
     let data = fs::read(input)?;
+    if data.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "input file is empty",
+        ));
+    }
+
     let output_path = output
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| input.with_extension("dcx"));
@@ -111,52 +161,93 @@ fn cmd_compress(
         }
     });
 
+    if verbose && !quiet {
+        eprintln!("  input:  {} ({} bytes)", input.display(), data.len());
+        eprintln!("  mode:   {mode}");
+        eprintln!("  format: {format}");
+    }
+
+    let start = Instant::now();
     let mut out = BufWriter::new(fs::File::create(&output_path)?);
     compress(&data, mode, Some(format), &mut out)?;
+    let elapsed = start.elapsed();
 
     let output_size = fs::metadata(&output_path)?.len();
-    let bpb = if data.is_empty() {
-        0.0
-    } else {
-        (output_size as f64 * 8.0) / data.len() as f64
-    };
+    let bpb = (output_size as f64 * 8.0) / data.len() as f64;
+    let ratio = output_size as f64 / data.len() as f64;
 
-    println!(
-        "Compressed {} → {} ({} → {} bytes, {:.2} bpb, mode={}, format={})",
-        input.display(),
-        output_path.display(),
-        data.len(),
-        output_size,
-        bpb,
-        mode,
-        format,
-    );
+    if !quiet {
+        println!(
+            "{} -> {} ({} -> {} bytes, {:.2} bpb, {:.1}% ratio, mode={}, format={}, {:.1}ms)",
+            input.display(),
+            output_path.display(),
+            data.len(),
+            output_size,
+            bpb,
+            ratio * 100.0,
+            mode,
+            format,
+            elapsed.as_secs_f64() * 1000.0,
+        );
+    }
 
     Ok(())
 }
 
-fn cmd_decompress(input: &Path, output: &Path) -> io::Result<()> {
+fn cmd_decompress(input: &Path, output: &Path, quiet: bool) -> io::Result<()> {
+    if !input.exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("file not found: {}", input.display()),
+        ));
+    }
+    if !input.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("not a file: {}", input.display()),
+        ));
+    }
+
     let file = fs::File::open(input)?;
     let mut reader = BufReader::new(file);
+
+    let start = Instant::now();
     let data = decompress(&mut reader)?;
+    let elapsed = start.elapsed();
 
     fs::write(output, &data)?;
 
-    println!(
-        "Decompressed {} → {} ({} bytes)",
-        input.display(),
-        output.display(),
-        data.len(),
-    );
+    if !quiet {
+        println!(
+            "{} -> {} ({} bytes, {:.1}ms)",
+            input.display(),
+            output.display(),
+            data.len(),
+            elapsed.as_secs_f64() * 1000.0,
+        );
+    }
 
     Ok(())
 }
 
-fn cmd_bench(dir: &Path, mode: Mode, save: bool) -> io::Result<()> {
+fn cmd_bench(
+    dir: &Path,
+    mode: Mode,
+    compare: bool,
+    save: bool,
+    quiet: bool,
+    verbose: bool,
+) -> io::Result<()> {
+    if !dir.exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("directory not found: {}", dir.display()),
+        ));
+    }
     if !dir.is_dir() {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
-            format!("corpus directory not found: {}", dir.display()),
+            format!("not a directory: {}", dir.display()),
         ));
     }
 
@@ -167,30 +258,44 @@ fn cmd_bench(dir: &Path, mode: Mode, save: bool) -> io::Result<()> {
     entries.sort_by_key(|e| e.path());
 
     if entries.is_empty() {
-        println!("No files found in {}", dir.display());
+        if !quiet {
+            println!("No files found in {}", dir.display());
+        }
         return Ok(());
     }
 
-    let compare_zstd = mode == Mode::Fast;
+    // Always compare with zstd in Fast mode; optionally in Balanced/Max mode.
+    let show_zstd = compare || mode == Mode::Fast;
 
-    println!("DataCortex Benchmark — mode: {mode}");
-    println!("{}", "─".repeat(110));
-    if compare_zstd {
+    if !quiet {
+        println!();
+        println!("  DataCortex Benchmark");
         println!(
-            "{:<25} {:>7} {:>7} {:>6} {:>7} {:>6} {:>7} {:>8}",
-            "File", "Orig", "DCX", "bpb", "zstd", "bpb", "Δ%", "Format"
+            "  Mode: {mode} | Files: {} | Dir: {}",
+            entries.len(),
+            dir.display()
         );
-    } else {
-        println!(
-            "{:<25} {:>7} {:>7} {:>7} {:>7} {:>8}",
-            "File", "Orig", "Comp", "bpb", "Time", "Format"
-        );
+        println!();
+
+        if show_zstd {
+            println!(
+                "  {:<24} {:>8} {:>8} {:>7} {:>8} {:>7} {:>8} {:>8}",
+                "File", "Original", "DCX", "bpb", "zstd", "bpb", "vs zstd", "Format"
+            );
+            println!("  {}", "-".repeat(91));
+        } else {
+            println!(
+                "  {:<24} {:>8} {:>8} {:>7} {:>9} {:>8}",
+                "File", "Original", "DCX", "bpb", "Time", "Format"
+            );
+            println!("  {}", "-".repeat(68));
+        }
     }
-    println!("{}", "─".repeat(110));
 
     let mut total_original: u64 = 0;
     let mut total_compressed: u64 = 0;
     let mut total_raw_zstd: u64 = 0;
+    let mut total_time_ms: f64 = 0.0;
     let mut results = Vec::new();
 
     for entry in &entries {
@@ -201,6 +306,7 @@ fn cmd_bench(dir: &Path, mode: Mode, save: bool) -> io::Result<()> {
         let start = Instant::now();
         let compressed = compress_to_vec(&data, mode, None)?;
         let elapsed = start.elapsed();
+        let time_ms = elapsed.as_secs_f64() * 1000.0;
 
         let orig_size = data.len() as u64;
         let comp_size = compressed.len() as u64;
@@ -214,9 +320,9 @@ fn cmd_bench(dir: &Path, mode: Mode, save: bool) -> io::Result<()> {
 
         total_original += orig_size;
         total_compressed += comp_size;
+        total_time_ms += time_ms;
 
-        if compare_zstd {
-            // Raw zstd at same level DCX uses for fair comparison.
+        if show_zstd {
             let zstd_level = match mode {
                 Mode::Fast => 3,
                 Mode::Balanced => 19,
@@ -237,17 +343,23 @@ fn cmd_bench(dir: &Path, mode: Mode, save: bool) -> io::Result<()> {
 
             total_raw_zstd += raw_size;
 
-            println!(
-                "{:<25} {:>7} {:>7} {:>6.2} {:>7} {:>6.2} {:>+6.1}% {:>8}",
-                name,
-                format_size(orig_size),
-                format_size(comp_size),
-                bpb,
-                format_size(raw_size),
-                raw_bpb,
-                delta_pct,
-                detected,
-            );
+            if !quiet {
+                println!(
+                    "  {:<24} {:>8} {:>8} {:>6.2}  {:>8} {:>6.2}  {:>+6.1}% {:>8}",
+                    name,
+                    format_size(orig_size),
+                    format_size(comp_size),
+                    bpb,
+                    format_size(raw_size),
+                    raw_bpb,
+                    delta_pct,
+                    detected,
+                );
+            }
+
+            if verbose && !quiet {
+                eprintln!("    time: {time_ms:.1}ms");
+            }
 
             results.push(serde_json::json!({
                 "file": name,
@@ -257,26 +369,45 @@ fn cmd_bench(dir: &Path, mode: Mode, save: bool) -> io::Result<()> {
                 "raw_zstd_bytes": raw_size,
                 "raw_zstd_bpb": (raw_bpb * 1000.0).round() / 1000.0,
                 "improvement_pct": (delta_pct * 10.0).round() / 10.0,
-                "time_ms": (elapsed.as_secs_f64() * 1000.0 * 100.0).round() / 100.0,
+                "time_ms": (time_ms * 100.0).round() / 100.0,
                 "format": detected.to_string(),
             }));
         } else {
-            println!(
-                "{:<25} {:>7} {:>7} {:>7.3} {:>6.1}ms {:>8}",
-                name,
-                format_size(orig_size),
-                format_size(comp_size),
-                bpb,
-                elapsed.as_secs_f64() * 1000.0,
-                detected,
-            );
+            if !quiet {
+                println!(
+                    "  {:<24} {:>8} {:>8} {:>6.3}  {:>7.1}ms {:>8}",
+                    name,
+                    format_size(orig_size),
+                    format_size(comp_size),
+                    bpb,
+                    time_ms,
+                    detected,
+                );
+            }
+
+            if verbose && !quiet {
+                let ratio = if orig_size == 0 {
+                    0.0
+                } else {
+                    comp_size as f64 / orig_size as f64
+                };
+                eprintln!(
+                    "    ratio: {:.1}% | speed: {:.1} KB/s",
+                    ratio * 100.0,
+                    if time_ms > 0.0 {
+                        orig_size as f64 / 1024.0 / (time_ms / 1000.0)
+                    } else {
+                        0.0
+                    },
+                );
+            }
 
             results.push(serde_json::json!({
                 "file": name,
                 "original_bytes": orig_size,
                 "compressed_bytes": comp_size,
                 "bpb": (bpb * 1000.0).round() / 1000.0,
-                "time_ms": (elapsed.as_secs_f64() * 1000.0 * 100.0).round() / 100.0,
+                "time_ms": (time_ms * 100.0).round() / 100.0,
                 "format": detected.to_string(),
             }));
         }
@@ -288,42 +419,59 @@ fn cmd_bench(dir: &Path, mode: Mode, save: bool) -> io::Result<()> {
         (total_compressed as f64 * 8.0) / total_original as f64
     };
 
-    println!("{}", "─".repeat(110));
-    if compare_zstd {
-        let total_raw_bpb = if total_original == 0 {
+    if !quiet {
+        if show_zstd {
+            println!("  {}", "-".repeat(91));
+            let total_raw_bpb = if total_original == 0 {
+                0.0
+            } else {
+                (total_raw_zstd as f64 * 8.0) / total_original as f64
+            };
+            let total_delta = if total_raw_zstd == 0 {
+                0.0
+            } else {
+                (1.0 - total_compressed as f64 / total_raw_zstd as f64) * 100.0
+            };
+            println!(
+                "  {:<24} {:>8} {:>8} {:>6.2}  {:>8} {:>6.2}  {:>+6.1}%",
+                "TOTAL",
+                format_size(total_original),
+                format_size(total_compressed),
+                total_bpb,
+                format_size(total_raw_zstd),
+                total_raw_bpb,
+                total_delta,
+            );
+        } else {
+            println!("  {}", "-".repeat(68));
+            println!(
+                "  {:<24} {:>8} {:>8} {:>6.3}  {:>7.1}ms",
+                "TOTAL",
+                format_size(total_original),
+                format_size(total_compressed),
+                total_bpb,
+                total_time_ms,
+            );
+        }
+
+        let overall_ratio = if total_original == 0 {
             0.0
         } else {
-            (total_raw_zstd as f64 * 8.0) / total_original as f64
+            total_compressed as f64 / total_original as f64
         };
-        let total_delta = if total_raw_zstd == 0 {
-            0.0
-        } else {
-            (1.0 - total_compressed as f64 / total_raw_zstd as f64) * 100.0
-        };
+        println!();
         println!(
-            "{:<25} {:>7} {:>7} {:>6.2} {:>7} {:>6.2} {:>+6.1}%",
-            "TOTAL",
-            format_size(total_original),
-            format_size(total_compressed),
-            total_bpb,
-            format_size(total_raw_zstd),
-            total_raw_bpb,
-            total_delta,
+            "  Overall: {:.1}% compression ratio | {:.1}ms total",
+            overall_ratio * 100.0,
+            total_time_ms,
         );
-    } else {
-        println!(
-            "{:<25} {:>7} {:>7} {:>7.3}",
-            "TOTAL",
-            format_size(total_original),
-            format_size(total_compressed),
-            total_bpb,
-        );
+        println!();
     }
 
     if save {
         let baseline = serde_json::json!({
             "mode": mode.to_string(),
-            "phase": "1-fast-preprocess",
+            "version": env!("CARGO_PKG_VERSION"),
             "files": results,
             "total_original_bytes": total_original,
             "total_compressed_bytes": total_compressed,
@@ -335,13 +483,28 @@ fn cmd_bench(dir: &Path, mode: Mode, save: bool) -> io::Result<()> {
             fs::create_dir_all(parent)?;
         }
         fs::write(baseline_path, serde_json::to_string_pretty(&baseline)?)?;
-        println!("\nBaseline saved to {}", baseline_path.display());
+        if !quiet {
+            println!("  Saved to {}", baseline_path.display());
+        }
     }
 
     Ok(())
 }
 
-fn cmd_info(file: &Path) -> io::Result<()> {
+fn cmd_info(file: &Path, quiet: bool) -> io::Result<()> {
+    if !file.exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("file not found: {}", file.display()),
+        ));
+    }
+    if !file.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("not a file: {}", file.display()),
+        ));
+    }
+
     let f = fs::File::open(file)?;
     let mut reader = BufReader::new(f);
     let header = read_header(&mut reader)?;
@@ -352,36 +515,62 @@ fn cmd_info(file: &Path) -> io::Result<()> {
     } else {
         ((header.compressed_size as f64 + overhead) * 8.0) / header.original_size as f64
     };
+    let ratio = if header.original_size == 0 {
+        0.0
+    } else {
+        (header.compressed_size as f64 + overhead) / header.original_size as f64
+    };
 
-    println!("DataCortex .dcx File Info");
-    println!("{}", "─".repeat(40));
-    println!("  Mode:            {}", header.mode);
-    println!("  Format:          {}", header.format_hint);
-    println!("  Original size:   {} bytes", header.original_size);
-    println!("  Compressed size: {} bytes", header.compressed_size);
-    println!("  Header size:     {} bytes", header.total_size());
-    println!("  CRC-32:          {:#010X}", header.crc32);
-    println!(
-        "  Transform meta:  {} bytes",
-        header.transform_metadata.len()
-    );
-    println!("  bpb:             {:.3}", data_bpb);
+    if !quiet {
+        println!();
+        println!("  DataCortex .dcx File Info");
+        println!("  {}", "-".repeat(40));
+        println!("  File:            {}", file.display());
+        println!("  Mode:            {}", header.mode);
+        println!("  Format:          {}", header.format_hint);
+        println!(
+            "  Original size:   {} ({})",
+            format_size(header.original_size),
+            header.original_size
+        );
+        println!(
+            "  Compressed size: {} ({})",
+            format_size(header.compressed_size),
+            header.compressed_size
+        );
+        println!("  Header size:     {} bytes", header.total_size());
+        println!("  CRC-32:          {:#010X}", header.crc32);
+        if !header.transform_metadata.is_empty() {
+            println!(
+                "  Transform meta:  {} bytes",
+                header.transform_metadata.len()
+            );
+        }
+        println!("  bpb:             {:.3}", data_bpb);
+        println!("  Ratio:           {:.1}%", ratio * 100.0);
+        println!();
+    }
 
     Ok(())
 }
 
 fn format_size(bytes: u64) -> String {
     if bytes >= 1_048_576 {
-        format!("{:.1}MB", bytes as f64 / 1_048_576.0)
+        format!("{:.1} MB", bytes as f64 / 1_048_576.0)
     } else if bytes >= 1024 {
-        format!("{:.1}KB", bytes as f64 / 1024.0)
+        format!("{:.1} KB", bytes as f64 / 1024.0)
     } else {
-        format!("{}B", bytes)
+        format!("{} B", bytes)
     }
 }
 
 fn main() {
     let cli = Cli::parse();
+
+    if cli.quiet && cli.verbose {
+        eprintln!("Error: --quiet and --verbose cannot be used together");
+        std::process::exit(1);
+    }
 
     let result = match &cli.command {
         Command::Compress {
@@ -400,17 +589,29 @@ fn main() {
                     std::process::exit(1);
                 })
             });
-            cmd_compress(input, output.as_deref(), mode, format)
+            cmd_compress(
+                input,
+                output.as_deref(),
+                mode,
+                format,
+                cli.quiet,
+                cli.verbose,
+            )
         }
-        Command::Decompress { input, output } => cmd_decompress(input, output),
-        Command::Bench { dir, mode, save } => {
+        Command::Decompress { input, output } => cmd_decompress(input, output, cli.quiet),
+        Command::Bench {
+            dir,
+            mode,
+            compare,
+            save,
+        } => {
             let mode = parse_mode(mode).unwrap_or_else(|e| {
                 eprintln!("Error: {e}");
                 std::process::exit(1);
             });
-            cmd_bench(dir, mode, *save)
+            cmd_bench(dir, mode, *compare, *save, cli.quiet, cli.verbose)
         }
-        Command::Info { file } => cmd_info(file),
+        Command::Info { file } => cmd_info(file, cli.quiet),
     };
 
     if let Err(e) = result {

@@ -1,8 +1,13 @@
 [package]
 name = "datacortex-neural"
-description = "DataCortex neural models — RWKV for Max mode (feature-gated)"
+description = "DataCortex neural models — RWKV for Max mode (feature-gated, not yet implemented)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+publish = false
 
 [dependencies]

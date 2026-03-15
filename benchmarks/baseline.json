@@ -1,65 +1,86 @@
 {
   "files": [
     {
-      "bpb": 5.279,
-      "compressed_bytes": 100366,
+      "bpb": 2.174,
+      "compressed_bytes": 41335,
       "file": "alice29.txt",
       "format": "generic",
+      "improvement_pct": 16.0,
       "original_bytes": 152089,
-      "time_ms": 63.47
+      "raw_zstd_bpb": 2.589,
+      "raw_zstd_bytes": 49211,
+      "time_ms": 245.43
     },
     {
-      "bpb": 4.643,
-      "compressed_bytes": 3254,
+      "bpb": 2.073,
+      "compressed_bytes": 1453,
       "file": "test-api.json",
       "format": "json",
+      "improvement_pct": -15.5,
       "original_bytes": 5607,
-      "time_ms": 1.55
+      "raw_zstd_bpb": 1.795,
+      "raw_zstd_bytes": 1258,
+      "time_ms": 13.17
     },
     {
-      "bpb": 5.374,
-      "compressed_bytes": 10585,
+      "bpb": 2.113,
+      "compressed_bytes": 4162,
       "file": "test-code.rs",
       "format": "code",
+      "improvement_pct": 10.2,
       "original_bytes": 15758,
-      "time_ms": 4.55
+      "raw_zstd_bpb": 2.352,
+      "raw_zstd_bytes": 4633,
+      "time_ms": 24.56
     },
     {
-      "bpb": 5.616,
-      "compressed_bytes": 1472,
+      "bpb": 3.365,
+      "compressed_bytes": 882,
       "file": "test-config.json",
       "format": "json",
+      "improvement_pct": -4.1,
       "original_bytes": 2097,
-      "time_ms": 0.64
+      "raw_zstd_bpb": 3.231,
+      "raw_zstd_bytes": 847,
+      "time_ms": 6.47
     },
     {
-      "bpb": 5.722,
-      "compressed_bytes": 9091,
+      "bpb": 3.074,
+      "compressed_bytes": 4884,
       "file": "test-doc.md",
       "format": "markdown",
+      "improvement_pct": 11.4,
       "original_bytes": 12711,
-      "time_ms": 3.52
+      "raw_zstd_bpb": 3.47,
+      "raw_zstd_bytes": 5514,
+      "time_ms": 21.85
     },
     {
-      "bpb": 6.12,
-      "compressed_bytes": 6525,
+      "bpb": 1.969,
+      "compressed_bytes": 2099,
       "file": "test-log.log",
       "format": "log",
+      "improvement_pct": 8.3,
       "original_bytes": 8530,
-      "time_ms": 2.37
+      "raw_zstd_bpb": 2.146,
+      "raw_zstd_bytes": 2288,
+      "time_ms": 13.56
     },
     {
-      "bpb": 4.49,
-      "compressed_bytes": 4676,
+      "bpb": 1.505,
+      "compressed_bytes": 1567,
       "file": "test-ndjson.ndjson",
       "format": "ndjson",
+      "improvement_pct": -10.1,
       "original_bytes": 8332,
-      "time_ms": 1.8
+      "raw_zstd_bpb": 1.366,
+      "raw_zstd_bytes": 1423,
+      "time_ms": 9.17
     }
   ],
   "mode": "balanced",
-  "phase": "1-fast-preprocess",
-  "total_bpb": 5.303,
-  "total_compressed_bytes": 135969,
-  "total_original_bytes": 205124
+  "total_bpb": 2.199,
+  "total_compressed_bytes": 56382,
+  "total_original_bytes": 205124,
+  "version": "0.1.0"
 }

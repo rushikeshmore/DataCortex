@@ -11,6 +11,9 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/RushikeshMore/datacortex"
+homepage = "https://github.com/RushikeshMore/datacortex"
+authors = ["Rushikesh More"]
+rust-version = "1.85"
 
 [workspace.dependencies]
 datacortex-core = { path = "crates/datacortex-core" }

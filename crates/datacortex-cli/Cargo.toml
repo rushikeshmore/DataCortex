@@ -1,9 +1,15 @@
 [package]
 name = "datacortex-cli"
-description = "DataCortex CLI — compress, decompress, bench, info"
+description = "DataCortex CLI — lossless text compression with format-aware context mixing"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+keywords = ["compression", "lossless", "cli", "json", "text"]
+categories = ["command-line-utilities", "compression"]
 
 [[bin]]
 name = "datacortex"

@@ -1,9 +1,15 @@
 [package]
 name = "datacortex-core"
-description = "Lossless text compression engine — format-aware context mixing"
+description = "Lossless text compression engine — format-aware preprocessing + bit-level context mixing"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+keywords = ["compression", "lossless", "context-mixing", "json", "text"]
+categories = ["compression", "encoding"]
 
 [dependencies]
 crc32fast = { workspace = true }
