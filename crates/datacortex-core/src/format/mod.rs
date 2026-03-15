@@ -4,10 +4,11 @@
 //! Phase 1: format-aware preprocessing (JSON key interning) + detection.
 
 pub mod json;
+pub mod ndjson;
 pub mod transform;
 
 use crate::dcx::{FormatHint, Mode};
-use transform::{TRANSFORM_JSON_KEY_INTERN, TransformChain};
+use transform::{TRANSFORM_JSON_KEY_INTERN, TRANSFORM_NDJSON_COLUMNAR, TransformChain};
 
 /// Detect file format from content bytes.
 pub fn detect_format(data: &[u8]) -> FormatHint {
@@ -62,11 +63,23 @@ pub fn detect_from_extension(path: &str) -> Option<FormatHint> {
 /// Apply format-aware preprocessing transforms.
 /// Returns (preprocessed_data, transform_chain).
 ///
-/// Key interning helps Balanced/Max (reduces stored bytes) but hurts Fast mode
-/// (zstd already handles key repetition; metadata overhead is net negative).
+/// NDJSON columnar: ALL modes (grouping similar values helps both zstd and CM).
+/// Key interning: Balanced/Max only (hurts Fast mode due to zstd redundancy).
+/// For NDJSON, columnar is applied FIRST — if it succeeds, key interning is skipped
+/// (keys are already removed from the data stream by the columnar transform).
 pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, TransformChain) {
     let mut chain = TransformChain::new();
     let mut current = data.to_vec();
+
+    // NDJSON columnar reorg: ALL modes (dramatic improvement for uniform NDJSON).
+    if format == FormatHint::Ndjson {
+        if let Some(result) = ndjson::preprocess(&current) {
+            chain.push(TRANSFORM_NDJSON_COLUMNAR, result.metadata);
+            current = result.data;
+            // Keys are gone from the data stream — skip key interning.
+            return (current, chain);
+        }
+    }
 
     // JSON key interning: Balanced/Max only (hurts Fast mode due to zstd redundancy).
     if matches!(mode, Mode::Balanced | Mode::Max)
@@ -86,8 +99,14 @@ pub fn reverse_preprocess(data: &[u8], chain: &TransformChain) -> Vec<u8> {
 
     // Apply in reverse order.
     for record in chain.records.iter().rev() {
-        if record.id == TRANSFORM_JSON_KEY_INTERN {
-            current = json::reverse(&current, &record.metadata);
+        match record.id {
+            TRANSFORM_JSON_KEY_INTERN => {
+                current = json::reverse(&current, &record.metadata);
+            }
+            TRANSFORM_NDJSON_COLUMNAR => {
+                current = ndjson::reverse(&current, &record.metadata);
+            }
+            _ => {} // Unknown transform — skip.
         }
     }
 
@@ -319,16 +338,41 @@ mod tests {
     }
 
     #[test]
-    fn preprocess_ndjson_key_interning() {
+    fn preprocess_ndjson_columnar() {
         let data = br#"{"ts":"a","val":1}
 {"ts":"b","val":2}
 {"ts":"c","val":3}
 "#;
         let (preprocessed, chain) = preprocess(data, FormatHint::Ndjson, Mode::Balanced);
         assert!(!chain.is_empty());
+        // Should use columnar transform (ID 2), not key interning.
+        assert_eq!(
+            chain.records[0].id,
+            transform::TRANSFORM_NDJSON_COLUMNAR,
+            "NDJSON should use columnar transform"
+        );
 
         let restored = reverse_preprocess(&preprocessed, &chain);
         assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn preprocess_ndjson_columnar_fast_mode() {
+        // Columnar should apply for ALL modes, including Fast.
+        let data = br#"{"ts":"a","val":1}
+{"ts":"b","val":2}
+{"ts":"c","val":3}
+"#;
+        let (preprocessed, chain) = preprocess(data, FormatHint::Ndjson, Mode::Fast);
+        assert!(!chain.is_empty());
+        assert_eq!(chain.records[0].id, transform::TRANSFORM_NDJSON_COLUMNAR);
+
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(restored, data.to_vec());
+
+        // Verify columnar data groups values.
+        let cols: Vec<&[u8]> = preprocessed.split(|&b| b == 0x00).collect();
+        assert_eq!(cols.len(), 2, "should have 2 columns");
     }
 
     #[test]
