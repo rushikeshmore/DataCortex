@@ -97,8 +97,8 @@ impl DualMixer {
 
         // Fine mixer context: full hash.
         self.last_fine_ctx = fine_context(c0, c1, bpos, byte_class, match_len_q, run_q);
-        // Medium mixer context: (c0, c1_top4, bpos, bclass).
-        self.last_medium_ctx = medium_context(c0, c1, bpos, run_q);
+        // Medium mixer context: (c0, c1_top4, bpos, bclass, run_q, match_q).
+        self.last_medium_ctx = medium_context(c0, c1, bpos, run_q, match_len_q);
         // Coarse mixer context: (c0, bpos).
         self.last_coarse_ctx = coarse_context(c0, bpos);
 
@@ -183,13 +183,13 @@ pub fn byte_class(b: u8) -> u8 {
 }
 
 /// Compute fine mixer context index (0..65535).
-/// Uses c0 partial byte, c1 top bits, bpos, byte class, match info, and run length.
+/// Uses c0 partial byte, c1 top 4 bits, bpos, byte class, match info, and run length.
 #[inline]
 fn fine_context(c0: u32, c1: u8, bpos: u8, bclass: u8, match_q: u8, run_q: u8) -> usize {
-    // Hash together: c0(8b) + c1_top2(2b) + bpos(3b) + bclass(3b) + match_q(2b) + run_q(2b)
-    // = 20 bits, fold to 16 bits for 64K sets
+    // Hash together: c0(8b) + c1_top4(4b) + bpos(3b) + bclass(3b) + match_q(2b) + run_q(2b)
+    // = 22 bits, fold to 16 bits for 64K sets
     let mut h: usize = c0 as usize & 0xFF;
-    h = h.wrapping_mul(97) + (c1 as usize >> 6);
+    h = h.wrapping_mul(97) + (c1 as usize >> 4); // top 4 bits of c1 (was top 2)
     h = h.wrapping_mul(97) + bpos as usize;
     h = h.wrapping_mul(97) + (bclass as usize & 0x7);
     h = h.wrapping_mul(97) + (match_q as usize & 0x3);
@@ -198,16 +198,17 @@ fn fine_context(c0: u32, c1: u8, bpos: u8, bclass: u8, match_q: u8, run_q: u8) -
 }
 
 /// Compute medium mixer context index (0..16383).
-/// Uses c0, c1 top nibble, bpos, byte class, and run quantized.
+/// Uses c0, c1 top nibble, bpos, byte class, run quantized, and match length quantized.
 #[inline]
-fn medium_context(c0: u32, c1: u8, bpos: u8, run_q: u8) -> usize {
-    // c0 (8 bits) + c1_top4 (4 bits) + bpos (3 bits) + bclass (3 bits) + run_q (2 bits) = 20 bits -> hash to 14 bits
+fn medium_context(c0: u32, c1: u8, bpos: u8, run_q: u8, match_q: u8) -> usize {
+    // c0 (8 bits) + c1_top4 (4 bits) + bpos (3 bits) + bclass (3 bits) + run_q (2 bits) + match_q (2 bits) = 22 bits -> hash to 14 bits
     let bclass = byte_class(c1);
     let mut h: usize = c0 as usize & 0xFF;
     h = h.wrapping_mul(67) + (c1 as usize >> 4);
     h = h.wrapping_mul(67) + bpos as usize;
     h = h.wrapping_mul(67) + bclass as usize;
     h = h.wrapping_mul(67) + (run_q as usize & 0x3);
+    h = h.wrapping_mul(67) + (match_q as usize & 0x3);
     h & (MEDIUM_SETS - 1)
 }
 
@@ -296,7 +297,7 @@ mod tests {
     fn medium_context_in_range() {
         for c0 in [1u32, 128, 255] {
             for bpos in 0..8u8 {
-                let ctx = medium_context(c0, 0xFF, bpos, 3);
+                let ctx = medium_context(c0, 0xFF, bpos, 3, 3);
                 assert!(ctx < MEDIUM_SETS, "medium context out of range: {ctx}");
             }
         }

@@ -287,19 +287,28 @@ impl CMEngine {
             .predict(&predictions, c0, c1, bpos, bclass, match_q, run_q);
 
         // --- APM cascade ---
-        // Stage 1: context = c0_partial(8b) + bpos(3b) = 11 bits -> 2048 contexts.
-        let apm1_ctx = ((c0 as usize & 0xFF) << 3) | bpos as usize;
+        // Stage 1: context = c0_partial(8b) + bpos(3b) + run_q(2b) = 13 bits -> 2048 contexts (folded).
+        let apm1_ctx = (((c0 as usize & 0xFF) << 3) | bpos as usize)
+            .wrapping_mul(5)
+            .wrapping_add(run_q as usize & 0x3)
+            & 2047;
         let after_apm1 = self.apm1.predict(mixed, apm1_ctx);
 
-        // Stage 2: context = c1(8b) * bpos(3b) + byte_class(3b).
-        let apm2_ctx = ((c1 as usize) << 3 | bpos as usize) * 8 + bclass as usize;
+        // Stage 2: context = c1(8b) * bpos(3b) + byte_class(3b) + c2_top4(4b).
+        let apm2_ctx = (((c1 as usize) << 3 | bpos as usize) * 8 + bclass as usize)
+            .wrapping_mul(17)
+            .wrapping_add(c2 as usize >> 4)
+            & 16383;
         let after_apm2 = self.apm2.predict(after_apm1, apm2_ctx);
 
-        // Stage 3: context = match_q(2b) * c1_top4(4b) * bpos(3b) * c2_top2(2b).
-        let apm3_ctx = (match_q as usize * 512)
+        // Stage 3: context = match_q(2b) * c1_top4(4b) * bpos(3b) * c2_top2(2b) + match_len_q(2b).
+        let apm3_ctx = ((match_q as usize * 512)
             + ((c2 as usize >> 6) << 7)
             + ((c1 as usize >> 4) << 3)
-            + bpos as usize;
+            + bpos as usize)
+            .wrapping_mul(5)
+            .wrapping_add(match_q as usize)
+            & 4095;
         let final_p = self.apm3.predict(after_apm2, apm3_ctx);
 
         final_p.clamp(1, 4095)
