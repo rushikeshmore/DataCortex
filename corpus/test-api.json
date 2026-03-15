@@ -1,0 +1,155 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "type": "repository",
+      "attributes": {
+        "name": "datacortex",
+        "full_name": "rushikeshmore/DataCortex",
+        "description": "Next-generation lossless text compression engine with format-aware preprocessing",
+        "language": "Rust",
+        "stargazers_count": 42,
+        "forks_count": 7,
+        "open_issues_count": 3,
+        "created_at": "2026-03-15T10:30:00Z",
+        "updated_at": "2026-03-15T16:45:00Z",
+        "pushed_at": "2026-03-15T16:42:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": ["compression", "lossless", "rust", "context-mixing", "text-compression", "entropy-coding", "format-aware", "ramanujan"],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT",
+          "url": "https://api.github.com/licenses/mit"
+        },
+        "owner": {
+          "login": "rushikeshmore",
+          "id": 12345678,
+          "avatar_url": "https://avatars.githubusercontent.com/u/12345678?v=4",
+          "type": "User"
+        }
+      },
+      "relationships": {
+        "contributors": {
+          "data": [
+            {"id": 12345678, "type": "user", "login": "rushikeshmore", "contributions": 156},
+            {"id": 87654321, "type": "user", "login": "claude-assistant", "contributions": 89}
+          ]
+        },
+        "releases": {
+          "data": [
+            {"id": 1, "tag_name": "v0.1.0", "name": "Phase 0: Scaffold", "created_at": "2026-03-16T00:00:00Z", "prerelease": true},
+            {"id": 2, "tag_name": "v0.2.0", "name": "Phase 1: Format + Fast", "created_at": "2026-03-23T00:00:00Z", "prerelease": true},
+            {"id": 3, "tag_name": "v0.3.0", "name": "Phase 2-3: CM Engine", "created_at": "2026-04-06T00:00:00Z", "prerelease": true}
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "repository",
+      "attributes": {
+        "name": "codecortex-ai",
+        "full_name": "rushikeshmore/CodeCortex",
+        "description": "Persistent codebase knowledge layer for AI agents. Pre-digests codebases into structured knowledge served via MCP.",
+        "language": "TypeScript",
+        "stargazers_count": 128,
+        "forks_count": 15,
+        "open_issues_count": 8,
+        "created_at": "2026-02-25T08:00:00Z",
+        "updated_at": "2026-03-12T20:00:00Z",
+        "pushed_at": "2026-03-12T19:55:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": ["mcp", "codebase-knowledge", "tree-sitter", "ai-agents", "context-engineering", "claude", "typescript"],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT",
+          "url": "https://api.github.com/licenses/mit"
+        },
+        "owner": {
+          "login": "rushikeshmore",
+          "id": 12345678,
+          "avatar_url": "https://avatars.githubusercontent.com/u/12345678?v=4",
+          "type": "User"
+        }
+      },
+      "relationships": {
+        "contributors": {
+          "data": [
+            {"id": 12345678, "type": "user", "login": "rushikeshmore", "contributions": 312},
+            {"id": 87654321, "type": "user", "login": "claude-assistant", "contributions": 201}
+          ]
+        },
+        "releases": {
+          "data": [
+            {"id": 10, "tag_name": "v0.5.0", "name": "MCP-first architecture", "created_at": "2026-03-09T00:00:00Z", "prerelease": false},
+            {"id": 11, "tag_name": "v0.6.0", "name": "Context injection", "created_at": "2026-03-12T00:00:00Z", "prerelease": true}
+          ]
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "repository",
+      "attributes": {
+        "name": "agent-karma",
+        "full_name": "rushikeshmore/agent-karma",
+        "description": "AgentKarma scores AI agent wallet addresses for trustworthiness on ERC-8004 and x402 protocols",
+        "language": "TypeScript",
+        "stargazers_count": 67,
+        "forks_count": 12,
+        "open_issues_count": 5,
+        "created_at": "2026-02-23T06:00:00Z",
+        "updated_at": "2026-03-01T22:00:00Z",
+        "pushed_at": "2026-03-01T21:50:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": ["a2a", "erc-8004", "x402", "agent-scoring", "mcp", "blockchain", "ethereum", "trustworthiness"],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT",
+          "url": "https://api.github.com/licenses/mit"
+        },
+        "owner": {
+          "login": "rushikeshmore",
+          "id": 12345678,
+          "avatar_url": "https://avatars.githubusercontent.com/u/12345678?v=4",
+          "type": "User"
+        }
+      },
+      "relationships": {
+        "contributors": {
+          "data": [
+            {"id": 12345678, "type": "user", "login": "rushikeshmore", "contributions": 245}
+          ]
+        },
+        "releases": {
+          "data": [
+            {"id": 20, "tag_name": "v0.5.1", "name": "Sprint 1 deploy", "created_at": "2026-03-01T00:00:00Z", "prerelease": false}
+          ]
+        }
+      }
+    }
+  ],
+  "meta": {
+    "total_count": 3,
+    "page": 1,
+    "per_page": 30,
+    "total_pages": 1,
+    "rate_limit": {
+      "limit": 5000,
+      "remaining": 4987,
+      "reset": 1742060400,
+      "used": 13
+    }
+  },
+  "links": {
+    "self": "https://api.github.com/users/rushikeshmore/repos?page=1&per_page=30",
+    "first": "https://api.github.com/users/rushikeshmore/repos?page=1&per_page=30",
+    "last": "https://api.github.com/users/rushikeshmore/repos?page=1&per_page=30"
+  }
+}

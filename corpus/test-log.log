@@ -1,0 +1,77 @@
+2026-03-15T10:30:00.001Z INFO  [datacortex::server] Starting DataCortex compression server v0.3.0
+2026-03-15T10:30:00.002Z INFO  [datacortex::server] Listening on 0.0.0.0:8080
+2026-03-15T10:30:00.003Z INFO  [datacortex::config] Configuration loaded from /etc/datacortex/config.toml
+2026-03-15T10:30:00.003Z INFO  [datacortex::config]   mode: balanced
+2026-03-15T10:30:00.003Z INFO  [datacortex::config]   max_memory_mb: 4096
+2026-03-15T10:30:00.003Z INFO  [datacortex::config]   workers: 8
+2026-03-15T10:30:00.003Z INFO  [datacortex::config]   corpus_path: /var/lib/datacortex/corpus
+2026-03-15T10:30:00.004Z INFO  [datacortex::engine] Initializing context mixing engine...
+2026-03-15T10:30:00.005Z INFO  [datacortex::engine] Loading StateTable (256 states)
+2026-03-15T10:30:00.006Z INFO  [datacortex::engine] Loading ContextMaps: O0=256B, O1=4MB, O2=512KB, O3=2MB
+2026-03-15T10:30:00.045Z INFO  [datacortex::engine] Loading Match model: ring=8MB, hash=2MB
+2026-03-15T10:30:00.089Z INFO  [datacortex::engine] Loading Word model: 2MB
+2026-03-15T10:30:00.102Z INFO  [datacortex::engine] Mixer initialized: fine=64K weights, coarse=4K weights
+2026-03-15T10:30:00.103Z INFO  [datacortex::engine] APM initialized: stage1=512 contexts, stage2=16K contexts
+2026-03-15T10:30:00.104Z INFO  [datacortex::engine] Engine ready. Total memory: 18.5MB
+2026-03-15T10:30:00.104Z INFO  [datacortex::server] Server ready to accept connections
+2026-03-15T10:30:01.234Z INFO  [datacortex::handler] POST /compress client=192.168.1.100 size=1048576 format=json mode=balanced
+2026-03-15T10:30:01.235Z DEBUG [datacortex::format] Detecting format for 1048576 bytes...
+2026-03-15T10:30:01.236Z DEBUG [datacortex::format] Format detected: JSON (confidence=97)
+2026-03-15T10:30:01.236Z DEBUG [datacortex::format::json] JSON preprocessor: 3456 unique keys found
+2026-03-15T10:30:01.240Z DEBUG [datacortex::format::json] Key dictionary built: 3456 entries, 28KB
+2026-03-15T10:30:01.241Z DEBUG [datacortex::format::json] Whitespace stripped: 1048576 -> 891234 bytes (15.0% reduction)
+2026-03-15T10:30:01.245Z DEBUG [datacortex::ramanujan] RPT: dominant periods detected [4, 8, 12, 24] (block 0)
+2026-03-15T10:30:01.246Z DEBUG [datacortex::ramanujan] RPT: decomposed into 4 periodic components
+2026-03-15T10:30:01.250Z DEBUG [datacortex::mixer] Mixer weights converging: fine_loss=0.0234, coarse_loss=0.0456
+2026-03-15T10:30:01.890Z INFO  [datacortex::handler] POST /compress completed: 1048576 -> 78934 bytes (0.602 bpb) time=656ms
+2026-03-15T10:30:02.001Z INFO  [datacortex::handler] POST /compress client=192.168.1.101 size=524288 format=auto mode=balanced
+2026-03-15T10:30:02.002Z DEBUG [datacortex::format] Detecting format for 524288 bytes...
+2026-03-15T10:30:02.003Z DEBUG [datacortex::format] Format detected: Markdown (confidence=89)
+2026-03-15T10:30:02.003Z DEBUG [datacortex::format::markdown] Header tree extracted: 45 headers (H1=3, H2=12, H3=18, H4=8, H5=4)
+2026-03-15T10:30:02.005Z DEBUG [datacortex::format::markdown] Link pool: 78 URLs, 23 unique base domains
+2026-03-15T10:30:02.006Z DEBUG [datacortex::format::markdown] Code blocks: 12 blocks, 4 languages (rust=5, json=3, bash=2, toml=2)
+2026-03-15T10:30:02.010Z DEBUG [datacortex::ramanujan] RPT: dominant periods detected [2, 4, 6] (block 0)
+2026-03-15T10:30:02.456Z INFO  [datacortex::handler] POST /compress completed: 524288 -> 62914 bytes (0.960 bpb) time=455ms
+2026-03-15T10:30:03.100Z INFO  [datacortex::handler] POST /decompress client=192.168.1.100 size=78934
+2026-03-15T10:30:03.101Z DEBUG [datacortex::codec] Reading .dcx header: version=3, mode=balanced, format=json
+2026-03-15T10:30:03.102Z DEBUG [datacortex::codec] Transform header: json_keys=3456, rpt_periods=[4,8,12,24], dict_size=28KB
+2026-03-15T10:30:03.450Z INFO  [datacortex::handler] POST /decompress completed: 78934 -> 1048576 bytes time=349ms crc=OK
+2026-03-15T10:30:04.200Z WARN  [datacortex::handler] POST /compress client=192.168.1.102 size=0 error="empty input"
+2026-03-15T10:30:04.201Z WARN  [datacortex::handler] Returning 400 Bad Request: "Input file is empty"
+2026-03-15T10:30:05.500Z INFO  [datacortex::handler] POST /compress client=10.0.0.50 size=104857600 format=auto mode=max
+2026-03-15T10:30:05.501Z DEBUG [datacortex::format] Detecting format for 104857600 bytes...
+2026-03-15T10:30:05.510Z DEBUG [datacortex::format] Format detected: Generic text (confidence=65)
+2026-03-15T10:30:05.510Z INFO  [datacortex::engine] Max mode: loading RWKV model (98MB, INT8)
+2026-03-15T10:30:06.234Z INFO  [datacortex::engine] RWKV model loaded in 724ms
+2026-03-15T10:30:06.235Z DEBUG [datacortex::engine] Models active: O0, O1, O2, O3, O4, O5, Match, Word, RWKV
+2026-03-15T10:30:06.235Z DEBUG [datacortex::mixer] Triple mixer: fine=64K, coarse=4K, order=128
+2026-03-15T10:30:06.235Z DEBUG [datacortex::mixer] APM: 3 stages (512, 16K, 64K contexts)
+2026-03-15T10:31:45.890Z INFO  [datacortex::handler] POST /compress completed: 104857600 -> 12345678 bytes (0.942 bpb) time=99655ms
+2026-03-15T10:31:46.001Z INFO  [datacortex::metrics] Compression stats: requests=4, errors=1, avg_ratio=0.081, avg_bpb=0.835
+2026-03-15T10:31:46.002Z INFO  [datacortex::metrics] Model stats: O3 strongest (entropy_contribution=0.31), Match second (0.24), RWKV third (0.19)
+2026-03-15T10:31:46.003Z INFO  [datacortex::metrics] Format breakdown: json=1 (avg 0.602 bpb), markdown=1 (avg 0.960 bpb), generic=1 (avg 0.942 bpb)
+2026-03-15T10:32:00.000Z INFO  [datacortex::health] Health check: status=healthy, uptime=120s, memory=2.1GB/4.0GB, requests_total=4, error_rate=0.25
+2026-03-15T10:33:00.000Z INFO  [datacortex::health] Health check: status=healthy, uptime=180s, memory=1.8GB/4.0GB, requests_total=4, error_rate=0.25
+2026-03-15T10:34:00.000Z INFO  [datacortex::health] Health check: status=healthy, uptime=240s, memory=1.8GB/4.0GB, requests_total=4, error_rate=0.25
+2026-03-15T10:34:12.345Z ERROR [datacortex::handler] POST /compress client=10.0.0.51 size=2147483648 error="file exceeds max size (2GB > 1GB limit)"
+2026-03-15T10:34:12.346Z ERROR [datacortex::handler] Returning 413 Payload Too Large
+2026-03-15T10:34:15.678Z INFO  [datacortex::handler] POST /compress client=192.168.1.103 size=262144 format=auto mode=fast
+2026-03-15T10:34:15.679Z DEBUG [datacortex::format] Detecting format for 262144 bytes...
+2026-03-15T10:34:15.680Z DEBUG [datacortex::format] Format detected: NDJSON (confidence=94)
+2026-03-15T10:34:15.681Z DEBUG [datacortex::format::ndjson] Schema extracted: 18 keys, consistent across 1024 lines
+2026-03-15T10:34:15.682Z DEBUG [datacortex::format::ndjson] Delta encoding: timestamp (monotonic), id (monotonic)
+2026-03-15T10:34:15.685Z DEBUG [datacortex::format::ndjson] Schema dedup: 262144 -> 156789 bytes (40.2% reduction from schema alone)
+2026-03-15T10:34:15.690Z INFO  [datacortex::handler] POST /compress completed: 262144 -> 15728 bytes (0.480 bpb) time=11ms speed=23.8MB/s
+2026-03-15T10:34:20.100Z INFO  [datacortex::handler] GET /info client=192.168.1.100 file=output.dcx
+2026-03-15T10:34:20.101Z INFO  [datacortex::handler] File info: version=3, mode=balanced, format=json, original=1048576, compressed=78934, ratio=0.075, bpb=0.602
+2026-03-15T10:35:00.000Z INFO  [datacortex::health] Health check: status=healthy, uptime=300s, memory=1.7GB/4.0GB, requests_total=7, error_rate=0.14
+2026-03-15T10:35:30.456Z INFO  [datacortex::handler] POST /compress client=192.168.1.104 size=8388608 format=auto mode=balanced
+2026-03-15T10:35:30.457Z DEBUG [datacortex::format] Detecting format for 8388608 bytes...
+2026-03-15T10:35:30.460Z DEBUG [datacortex::format] Format detected: Log file (confidence=91)
+2026-03-15T10:35:30.461Z DEBUG [datacortex::format::log] Timestamp pattern: ISO 8601 with milliseconds
+2026-03-15T10:35:30.462Z DEBUG [datacortex::format::log] Log levels: INFO=45234, DEBUG=23456, WARN=1234, ERROR=567
+2026-03-15T10:35:30.465Z DEBUG [datacortex::format::log] Prefix dedup: 89 unique prefixes covering 94.2% of lines
+2026-03-15T10:35:30.470Z DEBUG [datacortex::format::log] Timestamp factoring: base=2026-03-15T00:00:00Z, deltas stored as u32 milliseconds
+2026-03-15T10:35:32.890Z INFO  [datacortex::handler] POST /compress completed: 8388608 -> 419430 bytes (0.400 bpb) time=2434ms speed=3.4MB/s
+2026-03-15T10:36:00.000Z INFO  [datacortex::health] Health check: status=healthy, uptime=360s, memory=2.3GB/4.0GB, requests_total=8, error_rate=0.12
+2026-03-15T10:36:00.001Z INFO  [datacortex::metrics] Hourly summary: total_input=118MB, total_output=11.2MB, avg_ratio=0.095, throughput=1.97MB/s

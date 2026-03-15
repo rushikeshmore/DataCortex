@@ -1,0 +1,82 @@
+{
+  "name": "datacortex",
+  "version": "0.1.0",
+  "description": "Next-generation lossless text compression engine",
+  "authors": ["Rushikesh More <rush@example.com>"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rushikeshmore/DataCortex"
+  },
+  "keywords": ["compression", "lossless", "text", "format-aware", "context-mixing", "ramanujan"],
+  "categories": ["compression", "encoding", "algorithms"],
+  "rust-version": "1.82.0",
+  "edition": "2024",
+  "workspace": {
+    "members": [
+      "crates/datacortex-core",
+      "crates/datacortex-cli",
+      "crates/datacortex-neural"
+    ],
+    "resolver": "2"
+  },
+  "dependencies": {
+    "clap": { "version": "4.5", "features": ["derive", "env"] },
+    "serde": { "version": "1.0", "features": ["derive"] },
+    "serde_json": "1.0",
+    "crc32fast": "1.4",
+    "memmap2": "0.9",
+    "log": "0.4",
+    "env_logger": "0.11",
+    "thiserror": "2.0",
+    "anyhow": "1.0"
+  },
+  "dev-dependencies": {
+    "criterion": { "version": "0.5", "features": ["html_reports"] },
+    "proptest": "1.4",
+    "tempfile": "3.10"
+  },
+  "features": {
+    "default": [],
+    "neural": ["dep:candle-core", "dep:candle-nn"],
+    "simd": []
+  },
+  "profile": {
+    "release": {
+      "opt-level": 3,
+      "lto": "thin",
+      "codegen-units": 1,
+      "strip": "symbols"
+    },
+    "bench": {
+      "opt-level": 3,
+      "lto": "thin"
+    }
+  },
+  "scripts": {
+    "bench": "cargo bench --bench compress_bench",
+    "bench-full": "cargo bench --bench compress_bench -- --full",
+    "fuzz": "cargo fuzz run compress_roundtrip -- -runs=1000",
+    "lint": "cargo clippy --all-targets -- -D warnings && cargo fmt --check"
+  },
+  "targets": {
+    "max": {
+      "enwik8_bpb": "<1.0",
+      "json_bpb": "<0.5",
+      "memory_mb": 16384,
+      "speed_kbs": 1
+    },
+    "balanced": {
+      "enwik8_bpb": "1.2-1.4",
+      "json_bpb": "<0.6",
+      "memory_mb": 4096,
+      "speed_mbs": "1-10"
+    },
+    "fast": {
+      "enwik8_bpb": "1.8-2.0",
+      "json_bpb": "<0.8",
+      "memory_mb": 512,
+      "speed_mbs": "50-200"
+    }
+  }
+}
