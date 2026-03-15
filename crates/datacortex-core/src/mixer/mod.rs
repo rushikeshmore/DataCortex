@@ -1,4 +1,8 @@
-//! Mixer — combine model predictions using logistic mixing.
+//! Mixer — logistic transforms and model prediction combining.
 //!
+//! Phase 2: squash/stretch logistic transforms.
 //! Phase 3+: logistic mixer in log-odds space, dual/triple hierarchy, APM.
-//! Phase 0: empty stub.
+
+pub mod logistic;
+
+pub use logistic::{squash, stretch};

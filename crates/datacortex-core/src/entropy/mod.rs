@@ -1,5 +1,7 @@
-//! Entropy coding — arithmetic coder and ANS.
+//! Entropy coding — binary arithmetic coder (12-bit precision, carry-free).
 //!
-//! Phase 2+: binary arithmetic coder (12-bit precision, carry-free).
-//! Phase 1: ANS for Fast mode.
-//! Phase 0: empty stub.
+//! Phase 2: PAQ8-style binary arithmetic encoder/decoder.
+
+pub mod arithmetic;
+
+pub use arithmetic::{ArithmeticDecoder, ArithmeticEncoder};

@@ -1,86 +1,65 @@
 {
   "files": [
     {
-      "bpb": 2.998,
-      "compressed_bytes": 57002,
+      "bpb": 5.279,
+      "compressed_bytes": 100366,
       "file": "alice29.txt",
       "format": "generic",
-      "improvement_pct": -0.1,
       "original_bytes": 152089,
-      "raw_zstd_bpb": 2.997,
-      "raw_zstd_bytes": 56970,
-      "time_ms": 9.23
+      "time_ms": 63.47
     },
     {
-      "bpb": 1.973,
-      "compressed_bytes": 1383,
+      "bpb": 4.643,
+      "compressed_bytes": 3254,
       "file": "test-api.json",
       "format": "json",
-      "improvement_pct": -2.4,
       "original_bytes": 5607,
-      "raw_zstd_bpb": 1.928,
-      "raw_zstd_bytes": 1351,
-      "time_ms": 0.24
+      "time_ms": 1.55
     },
     {
-      "bpb": 2.598,
-      "compressed_bytes": 5118,
+      "bpb": 5.374,
+      "compressed_bytes": 10585,
       "file": "test-code.rs",
       "format": "code",
-      "improvement_pct": -0.6,
       "original_bytes": 15758,
-      "raw_zstd_bpb": 2.582,
-      "raw_zstd_bytes": 5086,
-      "time_ms": 0.85
+      "time_ms": 4.55
     },
     {
-      "bpb": 3.529,
-      "compressed_bytes": 925,
+      "bpb": 5.616,
+      "compressed_bytes": 1472,
       "file": "test-config.json",
       "format": "json",
-      "improvement_pct": -3.6,
       "original_bytes": 2097,
-      "raw_zstd_bpb": 3.407,
-      "raw_zstd_bytes": 893,
-      "time_ms": 0.14
+      "time_ms": 0.64
     },
     {
-      "bpb": 3.693,
-      "compressed_bytes": 5867,
+      "bpb": 5.722,
+      "compressed_bytes": 9091,
       "file": "test-doc.md",
       "format": "markdown",
-      "improvement_pct": -0.5,
       "original_bytes": 12711,
-      "raw_zstd_bpb": 3.672,
-      "raw_zstd_bytes": 5835,
-      "time_ms": 0.59
+      "time_ms": 3.52
     },
     {
-      "bpb": 2.325,
-      "compressed_bytes": 2479,
+      "bpb": 6.12,
+      "compressed_bytes": 6525,
       "file": "test-log.log",
       "format": "log",
-      "improvement_pct": -1.3,
       "original_bytes": 8530,
-      "raw_zstd_bpb": 2.295,
-      "raw_zstd_bytes": 2447,
-      "time_ms": 0.35
+      "time_ms": 2.37
     },
     {
-      "bpb": 1.492,
-      "compressed_bytes": 1554,
+      "bpb": 4.49,
+      "compressed_bytes": 4676,
       "file": "test-ndjson.ndjson",
       "format": "ndjson",
-      "improvement_pct": -2.1,
       "original_bytes": 8332,
-      "raw_zstd_bpb": 1.461,
-      "raw_zstd_bytes": 1522,
-      "time_ms": 0.19
+      "time_ms": 1.8
     }
   ],
-  "mode": "fast",
+  "mode": "balanced",
   "phase": "1-fast-preprocess",
-  "total_bpb": 2.899,
-  "total_compressed_bytes": 74328,
+  "total_bpb": 5.303,
+  "total_compressed_bytes": 135969,
   "total_original_bytes": 205124
 }
