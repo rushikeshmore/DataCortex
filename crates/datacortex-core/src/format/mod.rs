@@ -1,9 +1,13 @@
-//! Format detection — identify file type from content.
+//! Format detection and preprocessing pipeline.
 //!
-//! Phase 0: heuristic detection from first bytes + structure.
-//! Phase 1+: full format-aware preprocessing pipelines.
+//! Phase 0: heuristic detection.
+//! Phase 1: format-aware preprocessing (JSON key interning) + detection.
 
-use crate::dcx::FormatHint;
+pub mod json;
+pub mod transform;
+
+use crate::dcx::{FormatHint, Mode};
+use transform::{TRANSFORM_JSON_KEY_INTERN, TransformChain};
 
 /// Detect file format from content bytes.
 pub fn detect_format(data: &[u8]) -> FormatHint {
@@ -11,34 +15,27 @@ pub fn detect_format(data: &[u8]) -> FormatHint {
         return FormatHint::Generic;
     }
 
-    // Skip leading whitespace for structural detection.
     let trimmed = trim_leading_whitespace(data);
 
-    // JSON: starts with { or [
     if starts_with_byte(trimmed, b'{') || starts_with_byte(trimmed, b'[') {
-        // Check if NDJSON: multiple JSON objects separated by newlines.
         if is_ndjson(data) {
             return FormatHint::Ndjson;
         }
         return FormatHint::Json;
     }
 
-    // Markdown: starts with # or has markdown indicators.
     if starts_with_byte(trimmed, b'#') || has_markdown_indicators(data) {
         return FormatHint::Markdown;
     }
 
-    // CSV: consistent comma-separated lines with similar column counts.
     if is_csv(data) {
         return FormatHint::Csv;
     }
 
-    // Log files: lines start with timestamps or log levels.
     if is_log(data) {
         return FormatHint::Log;
     }
 
-    // Source code: common keywords and syntax patterns.
     if is_code(data) {
         return FormatHint::Code;
     }
@@ -62,6 +59,43 @@ pub fn detect_from_extension(path: &str) -> Option<FormatHint> {
     }
 }
 
+/// Apply format-aware preprocessing transforms.
+/// Returns (preprocessed_data, transform_chain).
+///
+/// Key interning helps Balanced/Max (reduces stored bytes) but hurts Fast mode
+/// (zstd already handles key repetition; metadata overhead is net negative).
+pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, TransformChain) {
+    let mut chain = TransformChain::new();
+    let mut current = data.to_vec();
+
+    // JSON key interning: Balanced/Max only (hurts Fast mode due to zstd redundancy).
+    if matches!(mode, Mode::Balanced | Mode::Max)
+        && matches!(format, FormatHint::Json | FormatHint::Ndjson)
+        && let Some(result) = json::preprocess(&current)
+    {
+        chain.push(TRANSFORM_JSON_KEY_INTERN, result.metadata);
+        current = result.data;
+    }
+
+    (current, chain)
+}
+
+/// Reverse preprocessing transforms (applied in reverse order).
+pub fn reverse_preprocess(data: &[u8], chain: &TransformChain) -> Vec<u8> {
+    let mut current = data.to_vec();
+
+    // Apply in reverse order.
+    for record in chain.records.iter().rev() {
+        if record.id == TRANSFORM_JSON_KEY_INTERN {
+            current = json::reverse(&current, &record.metadata);
+        }
+    }
+
+    current
+}
+
+// --- Detection helpers (unchanged from Phase 0) ---
+
 fn trim_leading_whitespace(data: &[u8]) -> &[u8] {
     let start = data
         .iter()
@@ -74,7 +108,6 @@ fn starts_with_byte(data: &[u8], byte: u8) -> bool {
     data.first() == Some(&byte)
 }
 
-/// NDJSON: multiple lines, each starting with { (after optional whitespace).
 fn is_ndjson(data: &[u8]) -> bool {
     let mut json_lines = 0;
     let mut total_lines = 0;
@@ -93,7 +126,6 @@ fn is_ndjson(data: &[u8]) -> bool {
     total_lines >= 2 && json_lines as f64 / total_lines as f64 > 0.8
 }
 
-/// Markdown: look for heading markers, links, emphasis.
 fn has_markdown_indicators(data: &[u8]) -> bool {
     let sample = &data[..data.len().min(4096)];
     let text = String::from_utf8_lossy(sample);
@@ -115,7 +147,6 @@ fn has_markdown_indicators(data: &[u8]) -> bool {
     indicators >= 2
 }
 
-/// CSV: consistent column counts across lines with comma or tab separators.
 fn is_csv(data: &[u8]) -> bool {
     let sample = &data[..data.len().min(4096)];
     let lines: Vec<&[u8]> = sample
@@ -128,7 +159,6 @@ fn is_csv(data: &[u8]) -> bool {
         return false;
     }
 
-    // Check comma-separated consistency.
     let counts: Vec<usize> = lines
         .iter()
         .map(|l| l.iter().filter(|&&b| b == b',').count())
@@ -137,7 +167,6 @@ fn is_csv(data: &[u8]) -> bool {
     first >= 2 && counts.iter().all(|&c| c == first)
 }
 
-/// Log: lines start with timestamps or log level keywords.
 fn is_log(data: &[u8]) -> bool {
     let sample = &data[..data.len().min(4096)];
     let text = String::from_utf8_lossy(sample);
@@ -167,10 +196,8 @@ fn is_log(data: &[u8]) -> bool {
     log_lines as f64 / lines.len() as f64 > 0.5
 }
 
-/// Check if line starts with something that looks like a timestamp.
 fn looks_like_timestamp_prefix(line: &str) -> bool {
     let bytes = line.as_bytes();
-    // 2024-01-15 or [2024-01-15 patterns
     if bytes.len() >= 10 {
         let start = if bytes[0] == b'[' { 1 } else { 0 };
         if start + 10 <= bytes.len() {
@@ -181,7 +208,6 @@ fn looks_like_timestamp_prefix(line: &str) -> bool {
     false
 }
 
-/// Source code: look for common syntax patterns.
 fn is_code(data: &[u8]) -> bool {
     let sample = &data[..data.len().min(4096)];
     let text = String::from_utf8_lossy(sample);
@@ -206,7 +232,6 @@ fn is_code(data: &[u8]) -> bool {
     if text.contains("return ") || text.contains("if ") || text.contains("for ") {
         indicators += 1;
     }
-    // Braces density check (code has lots of { })
     let brace_count = text.matches('{').count() + text.matches('}').count();
     if brace_count > 10 {
         indicators += 1;
@@ -276,5 +301,41 @@ mod tests {
         assert_eq!(detect_from_extension("server.log"), Some(FormatHint::Log));
         assert_eq!(detect_from_extension("main.rs"), Some(FormatHint::Code));
         assert_eq!(detect_from_extension("file.txt"), None);
+    }
+
+    #[test]
+    fn preprocess_json_key_interning() {
+        let data = br#"{"name":"Alice","age":30,"name":"Bob","age":25}"#;
+        let (preprocessed, chain) = preprocess(data, FormatHint::Json, Mode::Balanced);
+        assert!(!chain.is_empty(), "should have applied key interning");
+        assert!(
+            preprocessed.len() < data.len(),
+            "preprocessed should be smaller"
+        );
+
+        // Reverse and verify.
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn preprocess_ndjson_key_interning() {
+        let data = br#"{"ts":"a","val":1}
+{"ts":"b","val":2}
+{"ts":"c","val":3}
+"#;
+        let (preprocessed, chain) = preprocess(data, FormatHint::Ndjson, Mode::Balanced);
+        assert!(!chain.is_empty());
+
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn preprocess_non_json_passthrough() {
+        let data = b"just some plain text with no JSON keys";
+        let (preprocessed, chain) = preprocess(data, FormatHint::Generic, Mode::Fast);
+        assert!(chain.is_empty());
+        assert_eq!(preprocessed, data.to_vec());
     }
 }

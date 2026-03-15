@@ -10,7 +10,7 @@ use datacortex_core::{
     dcx::{FormatHint, Mode},
     decompress, detect_format,
     format::detect_from_extension,
-    read_header,
+    raw_zstd_compress, read_header,
 };
 
 #[derive(Parser)]
@@ -171,16 +171,26 @@ fn cmd_bench(dir: &Path, mode: Mode, save: bool) -> io::Result<()> {
         return Ok(());
     }
 
+    let compare_zstd = mode == Mode::Fast;
+
     println!("DataCortex Benchmark — mode: {mode}");
-    println!("{}", "─".repeat(88));
-    println!(
-        "{:<30} {:>8} {:>8} {:>8} {:>8} {:>8}",
-        "File", "Orig", "Comp", "bpb", "Time", "Format"
-    );
-    println!("{}", "─".repeat(88));
+    println!("{}", "─".repeat(110));
+    if compare_zstd {
+        println!(
+            "{:<25} {:>7} {:>7} {:>6} {:>7} {:>6} {:>7} {:>8}",
+            "File", "Orig", "DCX", "bpb", "zstd", "bpb", "Δ%", "Format"
+        );
+    } else {
+        println!(
+            "{:<25} {:>7} {:>7} {:>7} {:>7} {:>8}",
+            "File", "Orig", "Comp", "bpb", "Time", "Format"
+        );
+    }
+    println!("{}", "─".repeat(110));
 
     let mut total_original: u64 = 0;
     let mut total_compressed: u64 = 0;
+    let mut total_raw_zstd: u64 = 0;
     let mut results = Vec::new();
 
     for entry in &entries {
@@ -205,24 +215,71 @@ fn cmd_bench(dir: &Path, mode: Mode, save: bool) -> io::Result<()> {
         total_original += orig_size;
         total_compressed += comp_size;
 
-        println!(
-            "{:<30} {:>7} {:>7} {:>7.3} {:>7.1}ms {:>8}",
-            name,
-            format_size(orig_size),
-            format_size(comp_size),
-            bpb,
-            elapsed.as_secs_f64() * 1000.0,
-            detected,
-        );
+        if compare_zstd {
+            // Raw zstd at same level DCX uses for fair comparison.
+            let zstd_level = match mode {
+                Mode::Fast => 3,
+                Mode::Balanced => 19,
+                Mode::Max => 22,
+            };
+            let raw = raw_zstd_compress(&data, zstd_level)?;
+            let raw_size = raw.len() as u64;
+            let raw_bpb = if orig_size == 0 {
+                0.0
+            } else {
+                (raw_size as f64 * 8.0) / orig_size as f64
+            };
+            let delta_pct = if raw_size == 0 {
+                0.0
+            } else {
+                (1.0 - comp_size as f64 / raw_size as f64) * 100.0
+            };
 
-        results.push(serde_json::json!({
-            "file": name,
-            "original_bytes": orig_size,
-            "compressed_bytes": comp_size,
-            "bpb": (bpb * 1000.0).round() / 1000.0,
-            "time_ms": (elapsed.as_secs_f64() * 1000.0 * 100.0).round() / 100.0,
-            "format": detected.to_string(),
-        }));
+            total_raw_zstd += raw_size;
+
+            println!(
+                "{:<25} {:>7} {:>7} {:>6.2} {:>7} {:>6.2} {:>+6.1}% {:>8}",
+                name,
+                format_size(orig_size),
+                format_size(comp_size),
+                bpb,
+                format_size(raw_size),
+                raw_bpb,
+                delta_pct,
+                detected,
+            );
+
+            results.push(serde_json::json!({
+                "file": name,
+                "original_bytes": orig_size,
+                "compressed_bytes": comp_size,
+                "bpb": (bpb * 1000.0).round() / 1000.0,
+                "raw_zstd_bytes": raw_size,
+                "raw_zstd_bpb": (raw_bpb * 1000.0).round() / 1000.0,
+                "improvement_pct": (delta_pct * 10.0).round() / 10.0,
+                "time_ms": (elapsed.as_secs_f64() * 1000.0 * 100.0).round() / 100.0,
+                "format": detected.to_string(),
+            }));
+        } else {
+            println!(
+                "{:<25} {:>7} {:>7} {:>7.3} {:>6.1}ms {:>8}",
+                name,
+                format_size(orig_size),
+                format_size(comp_size),
+                bpb,
+                elapsed.as_secs_f64() * 1000.0,
+                detected,
+            );
+
+            results.push(serde_json::json!({
+                "file": name,
+                "original_bytes": orig_size,
+                "compressed_bytes": comp_size,
+                "bpb": (bpb * 1000.0).round() / 1000.0,
+                "time_ms": (elapsed.as_secs_f64() * 1000.0 * 100.0).round() / 100.0,
+                "format": detected.to_string(),
+            }));
+        }
     }
 
     let total_bpb = if total_original == 0 {
@@ -231,19 +288,42 @@ fn cmd_bench(dir: &Path, mode: Mode, save: bool) -> io::Result<()> {
         (total_compressed as f64 * 8.0) / total_original as f64
     };
 
-    println!("{}", "─".repeat(88));
-    println!(
-        "{:<30} {:>7} {:>7} {:>7.3}",
-        "TOTAL",
-        format_size(total_original),
-        format_size(total_compressed),
-        total_bpb,
-    );
+    println!("{}", "─".repeat(110));
+    if compare_zstd {
+        let total_raw_bpb = if total_original == 0 {
+            0.0
+        } else {
+            (total_raw_zstd as f64 * 8.0) / total_original as f64
+        };
+        let total_delta = if total_raw_zstd == 0 {
+            0.0
+        } else {
+            (1.0 - total_compressed as f64 / total_raw_zstd as f64) * 100.0
+        };
+        println!(
+            "{:<25} {:>7} {:>7} {:>6.2} {:>7} {:>6.2} {:>+6.1}%",
+            "TOTAL",
+            format_size(total_original),
+            format_size(total_compressed),
+            total_bpb,
+            format_size(total_raw_zstd),
+            total_raw_bpb,
+            total_delta,
+        );
+    } else {
+        println!(
+            "{:<25} {:>7} {:>7} {:>7.3}",
+            "TOTAL",
+            format_size(total_original),
+            format_size(total_compressed),
+            total_bpb,
+        );
+    }
 
     if save {
         let baseline = serde_json::json!({
             "mode": mode.to_string(),
-            "phase": "0-identity",
+            "phase": "1-fast-preprocess",
             "files": results,
             "total_original_bytes": total_original,
             "total_compressed_bytes": total_compressed,
