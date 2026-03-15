@@ -5,13 +5,23 @@ Lossless text compression engine in Rust. Three modes: Max (sub-1.0 bpb), Balanc
 
 ## Architecture
 ```
-Input → Format Detection → Preprocessing → CM Engine (or Fast ANS) → .dcx output
+Input → Format Detection → Preprocessing → CM Engine (or Fast zstd) → .dcx output
 ```
-- `crates/datacortex-core/` — Core library (format/, model/, state/, mixer/, entropy/, ramanujan/, codec, dcx)
+- `crates/datacortex-core/` — Core library
+  - `format/` — Detection (7 types) + JSON key interning + transform pipeline
+  - `model/` — Order0-4, match model, word model, CMEngine orchestrator
+  - `state/` — StateTable (256-state), StateMap (adaptive), ContextMap (lossy hash)
+  - `mixer/` — Triple logistic mixer (fine 64K + med 16K + coarse 4K), squash/stretch, 3-stage APM
+  - `entropy/` — Binary arithmetic coder (12-bit, carry-free)
+  - `codec.rs` — Pipeline orchestrator (Fast=zstd, Balanced=CM, Max=CM)
+  - `dcx.rs` — .dcx v3 file format (32-byte header + CRC-32)
 - `crates/datacortex-cli/` — CLI binary (compress, decompress, bench, info)
-- `crates/datacortex-neural/` — Optional RWKV model for Max mode (feature-gated)
-- `corpus/` — Tier 1 test files (checked in, never change)
-- `benchmarks/` — Benchmark harness + baseline results
+- `crates/datacortex-neural/` — Optional RWKV model for Max mode (stub)
+- `corpus/` — 7 Tier 1 test files (checked in, never change)
+- `benchmarks/` — baseline.json
+
+## Current Status
+**Phase 3 complete.** 2.34 bpb alice29. 123 tests. Next: Phase 4 (format context + RPT).
 
 ## Build & Test
 ```bash
@@ -38,13 +48,13 @@ cargo bench --bench compress_bench  # Tier 2: full benchmark (~1 min)
 - η=2 for fine mixer (64K weights), η=4 for coarse (4K). Don't increase without A/B test.
 - 2-stage APM for Balanced, 3-stage only for Max mode on large files.
 
-## Proven V2 Techniques (Reimplement These)
-- StateTable: 256-state bit history machine
-- StateMap: state → probability, adaptive 1/n learning, 12-bit output
-- ContextMap: hash → state, lossy hash table
-- Logistic mixing: p = squash(Σ w_i · stretch(p_i)) in log-odds space
+## V3 Engine (Phase 3 — implemented)
+- 7 models: Order-0 (256 direct), Order-1 (8MB), Order-2 (2MB), Order-3 (4MB), Order-4 (4MB), Match (8MB ring + 2M hash), Word (2MB)
+- Triple logistic mixer: fine (64K, η=2), medium (16K, η=3), coarse (4K, η=4)
+- 3-stage APM cascade: 2K/16K/4K contexts, 50/25/25% blend
+- StateTable (256-state), StateMap (adaptive 1/n), ContextMap (lossy hash)
 - Binary AC: 12-bit precision, carry-free
-- 2-stage APM: stage 1 (bpos × byte_class), stage 2 (c1 × c0)
+- JSON key interning: Balanced/Max only (hurts Fast due to zstd redundancy)
 
 ## Corpus (Tier 1 — run on every cargo test)
 - `corpus/alice29.txt` — English prose (152 KB)
