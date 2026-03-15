@@ -1,0 +1,28 @@
+# Build
+/target/
+**/*.rs.bk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Corpus (large files — download via script)
+benchmarks/corpus-large/
+!benchmarks/corpus-large/.gitkeep
+
+# Neural model weights
+crates/datacortex-neural/src/weights/
+!crates/datacortex-neural/src/weights/.gitkeep
+
+# Benchmark results (latest — baseline.json IS tracked)
+benchmarks/latest.json
+
+# Environment
+.env
