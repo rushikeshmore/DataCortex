@@ -93,11 +93,12 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
         current = result.data;
     }
 
-    // WRT (Word Reduce Transform): currently disabled pending mixer improvements.
-    // WRT replaces common words with single bytes (128-254), expanding effective
-    // context order. However, it requires the mixer to handle mixed-alphabet
-    // streams well. Re-enable after hierarchical mixer is in place.
-    // TODO: Re-enable when mixer can discriminate high-byte codes properly.
+    // WRT (Word Reduce Transform): disabled for now.
+    // Testing showed WRT regresses on XML-heavy content (enwik8: 2.14 -> 2.18 bpb)
+    // because WRT codes break natural byte patterns that order models exploit,
+    // and confuse the XML state tracker. Keep byte_class fix for future use,
+    // but don't apply WRT in preprocessing.
+    // TODO: Re-enable WRT only for pure text (Markdown, Log) after per-format A/B test.
 
     (current, chain)
 }

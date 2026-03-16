@@ -9,7 +9,7 @@ Input → Format Detection → Preprocessing → CM Engine (or Fast zstd) → .d
 ```
 - `crates/datacortex-core/` — Core library
   - `format/` — Detection (7 types) + JSON key interning + transform pipeline
-  - `model/` — Order0-7, match model, word model, sparse, run, JSON; CMEngine orchestrator
+  - `model/` — Order0-9, match model, word model, sparse, run, JSON, indirect, XML tracker; CMEngine orchestrator
   - `state/` — StateTable (256-state), StateMap (adaptive), ContextMap (lossy hash, checksum, 2-way assoc)
   - `mixer/` — Triple logistic mixer (fine 64K + med 16K + coarse 4K), squash/stretch, 3-stage APM
   - `entropy/` — Binary arithmetic coder (12-bit, carry-free)
@@ -21,7 +21,7 @@ Input → Format Detection → Preprocessing → CM Engine (or Fast zstd) → .d
 - `benchmarks/` — baseline.json
 
 ## Current Status
-**Phase 5 complete.** 2.17 bpb alice29. 146 tests. ~256MB memory. Next: Phase 6 (RWKV for Max mode).
+**Phase 5+.** 2.15 bpb alice29, 2.08 bpb enwik8. 214 tests. ~264MB memory. Next: Phase 6 (RWKV for Max mode).
 
 ## Build & Test
 ```bash
@@ -39,7 +39,7 @@ cargo bench --bench compress_bench  # Tier 2: full benchmark (~1 min)
 5. **V2 dead ends stay dead.** Don't retry: logistic byte-level mixing, geometric mixing, hybrid byte+bit, η>5, 4+ APM stages on small files. See gotchas below.
 6. **Format-aware advantage >10% on JSON** vs raw zstd. If not meeting this, focus on preprocessing.
 
-## Key V2 Gotchas (Don't Repeat)
+## Key V2/V3 Gotchas (Don't Repeat)
 - Match model: rolling hash must be non-cumulative (V2 bug cost 0.44 bpb)
 - Match model: linear confidence ramp, not step function
 - Match model: length tracking must reset on mismatch
@@ -47,15 +47,20 @@ cargo bench --bench compress_bench  # Tier 2: full benchmark (~1 min)
 - Adding weak models dilutes mixer weights. Solo test first.
 - η=2 for fine mixer (64K weights), η=4 for coarse (4K). Don't increase without A/B test.
 - 2-stage APM for Balanced, 3-stage only for Max mode on large files.
+- WRT regresses on XML-heavy content (enwik8: 2.14 -> 2.18 bpb). Only enable per-format after A/B test.
+- byte_class must split high bytes (128-255) into multiple groups for WRT to work. Single group = mixer can't discriminate word codes.
 
-## V3 Engine (Phase 5 — current)
-- 13 models: Order-0 (256 direct), Order-1 (32MB), Order-2 (16MB), Order-3 (32MB checksum), Order-4 (32MB checksum), Order-5 (32MB assoc), Order-6 (16MB assoc), Order-7 (32MB assoc), Match (16MB ring + 8M hash, multi-candidate), Word (16MB), Sparse (16MB), Run (4MB), JSON (8MB)
-- Triple logistic mixer: fine (64K, η=2), medium (16K, η=3), coarse (4K, η=4). Run-length context in mixer hash.
-- 3-stage APM cascade: 2K/16K/4K contexts, 55/30/25% blend. APM3 uses c2 top bits.
+## V3 Engine (Phase 5+ — current)
+- 16 models: Order-0 (256 direct), Order-1 (32MB), Order-2 (16MB), Order-3 (32MB checksum), Order-4 (32MB checksum), Order-5 (32MB assoc), Order-6 (16MB assoc), Order-7 (32MB assoc), Order-8 (32MB assoc), Order-9 (16MB assoc), Match (16MB ring + 8M hash, multi-candidate), Word (16MB), Sparse (16MB), Run (4MB), JSON (8MB), Indirect (8MB + 2MB pred table)
+- XML state tracker: 8-state FSM provides context bits for markup-heavy content (tag/content/attr/comment/entity)
+- Triple logistic mixer: fine (64K, η=2), medium (16K, η=3), coarse (4K, η=4). XML state + run-length context in mixer hash.
+- 7-stage APM cascade: 2K/16K/4K/4K/4K/2K/4K contexts. XML state injected into APM2 and APM5.
+- byte_class: 12 classes (was 8) — high bytes split into 4 WRT groups + escape for future WRT support.
 - StateTable (256-state PAQ8), StateMap (adaptive 1/n), ContextMap (lossy/checksum/2-way assoc)
 - Binary AC: 12-bit precision, carry-free
 - JSON key interning: Balanced/Max only (hurts Fast due to zstd redundancy)
-- Total memory: ~256MB
+- WRT: implemented but disabled (regresses on XML-heavy content; keep for future per-format enable)
+- Total memory: ~264MB
 
 ## Corpus (Tier 1 — run on every cargo test)
 - `corpus/alice29.txt` — English prose (152 KB)

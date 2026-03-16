@@ -5,6 +5,7 @@
 
 pub mod cm_model;
 pub mod engine;
+pub mod indirect_model;
 pub mod json_model;
 pub mod match_model;
 pub mod neural_model;
@@ -12,6 +13,7 @@ pub mod order0;
 pub mod run_model;
 pub mod sparse_model;
 pub mod word_model;
+pub mod xml_model;
 
 pub use cm_model::{AssociativeContextModel, ChecksumContextModel, ContextModel};
 pub use engine::{CMConfig, CMEngine};

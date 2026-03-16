@@ -1,86 +1,86 @@
 {
   "files": [
     {
-      "bpb": 2.174,
-      "compressed_bytes": 41335,
+      "bpb": 2.151,
+      "compressed_bytes": 40892,
       "file": "alice29.txt",
       "format": "generic",
-      "improvement_pct": 16.0,
+      "improvement_pct": 16.9,
       "original_bytes": 152089,
       "raw_zstd_bpb": 2.589,
       "raw_zstd_bytes": 49211,
-      "time_ms": 245.43
+      "time_ms": 375.0
     },
     {
-      "bpb": 2.073,
-      "compressed_bytes": 1453,
+      "bpb": 2.027,
+      "compressed_bytes": 1421,
       "file": "test-api.json",
       "format": "json",
-      "improvement_pct": -15.5,
+      "improvement_pct": -13.0,
       "original_bytes": 5607,
       "raw_zstd_bpb": 1.795,
       "raw_zstd_bytes": 1258,
-      "time_ms": 13.17
+      "time_ms": 15.84
     },
     {
-      "bpb": 2.113,
-      "compressed_bytes": 4162,
+      "bpb": 2.098,
+      "compressed_bytes": 4132,
       "file": "test-code.rs",
       "format": "code",
-      "improvement_pct": 10.2,
+      "improvement_pct": 10.8,
       "original_bytes": 15758,
       "raw_zstd_bpb": 2.352,
       "raw_zstd_bytes": 4633,
-      "time_ms": 24.56
+      "time_ms": 36.98
     },
     {
-      "bpb": 3.365,
-      "compressed_bytes": 882,
+      "bpb": 3.338,
+      "compressed_bytes": 875,
       "file": "test-config.json",
       "format": "json",
-      "improvement_pct": -4.1,
+      "improvement_pct": -3.3,
       "original_bytes": 2097,
       "raw_zstd_bpb": 3.231,
       "raw_zstd_bytes": 847,
-      "time_ms": 6.47
+      "time_ms": 8.2
     },
     {
-      "bpb": 3.074,
-      "compressed_bytes": 4884,
+      "bpb": 3.06,
+      "compressed_bytes": 4862,
       "file": "test-doc.md",
       "format": "markdown",
-      "improvement_pct": 11.4,
+      "improvement_pct": 11.8,
       "original_bytes": 12711,
       "raw_zstd_bpb": 3.47,
       "raw_zstd_bytes": 5514,
-      "time_ms": 21.85
+      "time_ms": 33.27
     },
     {
-      "bpb": 1.969,
-      "compressed_bytes": 2099,
+      "bpb": 1.942,
+      "compressed_bytes": 2071,
       "file": "test-log.log",
       "format": "log",
-      "improvement_pct": 8.3,
+      "improvement_pct": 9.5,
       "original_bytes": 8530,
       "raw_zstd_bpb": 2.146,
       "raw_zstd_bytes": 2288,
-      "time_ms": 13.56
+      "time_ms": 20.23
     },
     {
-      "bpb": 1.505,
-      "compressed_bytes": 1567,
+      "bpb": 0.389,
+      "compressed_bytes": 5350,
       "file": "test-ndjson.ndjson",
       "format": "ndjson",
-      "improvement_pct": -10.1,
-      "original_bytes": 8332,
-      "raw_zstd_bpb": 1.366,
-      "raw_zstd_bytes": 1423,
-      "time_ms": 9.17
+      "improvement_pct": 24.2,
+      "original_bytes": 110104,
+      "raw_zstd_bpb": 0.513,
+      "raw_zstd_bytes": 7060,
+      "time_ms": 104.15
     }
   ],
   "mode": "balanced",
-  "total_bpb": 2.199,
-  "total_compressed_bytes": 56382,
-  "total_original_bytes": 205124,
+  "total_bpb": 1.554,
+  "total_compressed_bytes": 59603,
+  "total_original_bytes": 306896,
   "version": "0.1.0"
 }

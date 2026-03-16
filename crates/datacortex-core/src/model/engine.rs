@@ -22,12 +22,14 @@
 use crate::mixer::apm::APMStage;
 use crate::mixer::dual_mixer::{DualMixer, byte_class};
 use crate::model::cm_model::{AssociativeContextModel, ChecksumContextModel, ContextModel};
+use crate::model::indirect_model::IndirectModel;
 use crate::model::json_model::JsonModel;
 use crate::model::match_model::MatchModel;
 use crate::model::order0::Order0Model;
 use crate::model::run_model::RunModel;
 use crate::model::sparse_model::SparseModel;
 use crate::model::word_model::WordModel;
+use crate::model::xml_model::XmlTracker;
 
 /// Configuration for the CM engine -- controls memory/quality trade-off.
 ///
@@ -147,6 +149,8 @@ pub struct CMEngine {
     run_model: RunModel,
     /// JSON model: structure-aware context. 4MB.
     json_model: JsonModel,
+    /// Indirect model: second-order context prediction. ~2MB.
+    indirect_model: IndirectModel,
 
     // --- Mixer + APM ---
     /// Triple logistic mixer (fine 64K + medium 16K + coarse 4K).
@@ -196,6 +200,8 @@ pub struct CMEngine {
     run_len: u8,
     /// Distance since last newline (quantized).
     line_pos: u16,
+    /// XML structural state tracker (provides context bits for markup-heavy content).
+    xml_tracker: XmlTracker,
 }
 
 impl CMEngine {
@@ -222,6 +228,7 @@ impl CMEngine {
             sparse_model: SparseModel::with_size(config.sparse_size),
             run_model: RunModel::with_size(config.run_size),
             json_model: JsonModel::with_size(config.json_size),
+            indirect_model: IndirectModel::new(),
             mixer: DualMixer::new(),
             apm1: APMStage::new(2048, 55),  // c0(256) * bpos(8) = 2048
             apm2: APMStage::new(16384, 30), // c1*bpos*byte_class = 256*8*8 = 16K
@@ -243,6 +250,7 @@ impl CMEngine {
             bpos: 0,
             run_len: 0,
             line_pos: 0,
+            xml_tracker: XmlTracker::new(),
         }
     }
 
@@ -319,17 +327,23 @@ impl CMEngine {
         // JSON model (structure-aware).
         let p_json = self.json_model.predict(c0, bpos, c1);
 
-        // --- Mix (15 models) ---
+        // Indirect model (second-order context).
+        let p_indirect = self.indirect_model.predict(c0, bpos, c1);
+
+        // --- Mix (16 models) ---
         let predictions = [
             p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p_match, p_word, p_sparse, p_run, p_json,
+            p_indirect,
         ];
         let bclass = byte_class(c1);
         let match_q = self.match_model.match_length_quantized();
         let run_q = quantize_run_for_mixer(self.run_len);
+        let xml_s = self.xml_tracker.state_bits();
+        let xml_d = self.xml_tracker.depth_quantized();
 
         let mixed = self
             .mixer
-            .predict(&predictions, c0, c1, bpos, bclass, match_q, run_q);
+            .predict(&predictions, c0, c1, bpos, bclass, match_q, run_q, xml_s);
 
         // --- APM cascade ---
         // Stage 1: context = c0_partial(8b) + bpos(3b) + run_q(2b) = 13 bits -> 2048 contexts (folded).
@@ -339,10 +353,12 @@ impl CMEngine {
             & 2047;
         let after_apm1 = self.apm1.predict(mixed, apm1_ctx);
 
-        // Stage 2: context = c1(8b) * bpos(3b) + byte_class(3b) + c2_top4(4b).
+        // Stage 2: context = c1(8b) * bpos(3b) + byte_class(3b) + c2_top4(4b) + xml_state(3b).
         let apm2_ctx = (((c1 as usize) << 3 | bpos as usize) * 8 + bclass as usize)
             .wrapping_mul(17)
             .wrapping_add(c2 as usize >> 4)
+            .wrapping_mul(9)
+            .wrapping_add(xml_s as usize)
             & 16383;
         let after_apm2 = self.apm2.predict(after_apm1, apm2_ctx);
 
@@ -367,11 +383,14 @@ impl CMEngine {
             & 4095;
         let after_apm4 = self.apm4.predict(after_apm3, apm4_ctx);
 
-        // Stage 5: Longer-range byte pattern context.
-        // (c3_top4, c2_top4, c1_top2, bpos) — captures trigram character patterns.
+        // Stage 5: Longer-range byte pattern context + XML depth.
+        // (c3_top4, c2_top4, c1_top2, bpos, xml_depth_q) — captures trigram character patterns
+        // with structural depth awareness.
         let apm5_ctx = ((c3 as usize >> 4).wrapping_mul(67) + (c2 as usize >> 4))
             .wrapping_mul(67)
             .wrapping_add((c1 as usize >> 6) * 8 + bpos as usize)
+            .wrapping_mul(5)
+            .wrapping_add(xml_d as usize)
             & 4095;
         let after_apm5 = self.apm5.predict(after_apm4, apm5_ctx);
 
@@ -426,6 +445,7 @@ impl CMEngine {
         self.sparse_model.update(bit);
         self.run_model.update(bit);
         self.json_model.update(bit);
+        self.indirect_model.update(bit);
 
         // Advance context state.
         self.c0 = (self.c0 << 1) | bit as u32;
@@ -446,6 +466,9 @@ impl CMEngine {
             } else {
                 self.line_pos = self.line_pos.saturating_add(1);
             }
+
+            // Update XML state tracker with the completed byte.
+            self.xml_tracker.update(byte);
 
             self.c9 = self.c8;
             self.c8 = self.c7;
