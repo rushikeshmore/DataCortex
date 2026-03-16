@@ -21,6 +21,7 @@
 
 use crate::mixer::apm::APMStage;
 use crate::mixer::dual_mixer::{DualMixer, byte_class};
+use crate::mixer::isse::IsseChain;
 use crate::model::cm_model::{AssociativeContextModel, ChecksumContextModel, ContextModel};
 use crate::model::dmc_model::DmcModel;
 use crate::model::indirect_model::IndirectModel;
@@ -184,6 +185,9 @@ pub struct CMEngine {
     /// APM Stage 7: 2K contexts (line_pos_q * bpos * c1_class), 10% blend.
     /// Position-within-line aware refinement.
     apm7: APMStage,
+    /// ISSE model: 3-level ICM→ISSE→ISSE chain used as model #19 in the mixer.
+    /// Provides a complementary ZPAQ-style cascaded prediction.
+    isse_model: IsseChain,
 
     // --- Context state ---
     /// Partial byte being decoded (1-255). Starts at 1.
@@ -251,6 +255,7 @@ impl CMEngine {
             apm5: APMStage::new(4096, 15), // c3_top4(16) * c2_top4(16) * bpos(8) -> 2K mapped to 4K
             apm6: APMStage::new(2048, 12), // match_q(4) * c1_class(8) * bpos(8) -> 256 mapped to 2K
             apm7: APMStage::new(4096, 12), // line_pos_q(4) * bpos(8) * c1_class(8) -> 256 mapped to 4K
+            isse_model: IsseChain::new(),
             c0: 1,
             c1: 0,
             c2: 0,
@@ -351,10 +356,13 @@ impl CMEngine {
         // DMC model (bit-level dynamic Markov compression).
         let p_dmc = self.dmc_model.predict();
 
-        // --- Mix (18 models) ---
+        // ISSE model (3-level ICM→ISSE→ISSE chain with cross-context hashes).
+        let p_isse = self.isse_model.predict(c0, c1, c2, c3, bpos);
+
+        // --- Mix (19 models) ---
         let predictions = [
             p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p_match, p_word, p_sparse, p_run, p_json,
-            p_indirect, p_ppm, p_dmc,
+            p_indirect, p_ppm, p_dmc, p_isse,
         ];
         let bclass = byte_class(c1);
         let match_q = self.match_model.match_length_quantized();
@@ -468,6 +476,7 @@ impl CMEngine {
         self.json_model.update(bit);
         self.indirect_model.update(bit);
         self.dmc_model.update(bit);
+        self.isse_model.update(bit, self.c0, self.bpos);
 
         // Advance context state.
         self.c0 = (self.c0 << 1) | bit as u32;
