@@ -11,7 +11,7 @@
 use crate::mixer::logistic::{squash, stretch};
 
 /// Number of models feeding the mixer.
-pub const NUM_MODELS: usize = 13; // order0..7, match, word, sparse, run, json
+pub const NUM_MODELS: usize = 15; // order0..9, match, word, sparse, run, json
 
 /// Fine mixer: 64K weight sets.
 const FINE_SETS: usize = 65536;
@@ -26,11 +26,9 @@ const COARSE_SETS: usize = 4096;
 const W_SCALE: i32 = 4096;
 
 /// Initial weights per model (non-uniform).
-/// order0=200, order1=300, order2=350, order3=450, order4=450, order5=450, order6=300, order7=250,
-/// match=300, word=250, sparse=250, run=200, json=250
-/// Sum = 4000
+/// order0-9 then match, word, sparse, run, json
 const INITIAL_WEIGHTS: [i32; NUM_MODELS] = [
-    200, 300, 350, 450, 450, 450, 300, 250, 300, 250, 250, 200, 250,
+    200, 300, 350, 450, 450, 450, 300, 250, 200, 180, 300, 250, 250, 200, 250,
 ];
 
 /// Fine mixer learning rate.
@@ -237,7 +235,7 @@ mod tests {
     fn prediction_in_range() {
         let mut mixer = DualMixer::new();
         let preds = [
-            100, 4000, 2048, 3000, 500, 2048, 1500, 2048, 2048, 2048, 2048, 2048, 2048,
+            100, 4000, 2048, 3000, 500, 2048, 1500, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
         ];
         let p = mixer.predict(&preds, 128, b'a', 3, 4, 1, 0);
         assert!((1..=4095).contains(&p), "prediction out of range: {p}");
@@ -259,14 +257,16 @@ mod tests {
         let mut mixer = DualMixer::new();
         for _ in 0..100 {
             let preds = [
-                3500, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
+                3500, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
+                2048,
             ];
             let p = mixer.predict(&preds, 1, 0, 0, 0, 0, 0);
             let _ = p;
             mixer.update(1);
         }
         let preds = [
-            3500, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
+            3500, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
+            2048,
         ];
         let p = mixer.predict(&preds, 1, 0, 0, 0, 0, 0);
         assert!(p > 2500, "mixer should have learned to trust model 0: {p}");

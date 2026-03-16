@@ -6,9 +6,12 @@
 pub mod json;
 pub mod ndjson;
 pub mod transform;
+pub mod wrt;
 
 use crate::dcx::{FormatHint, Mode};
-use transform::{TRANSFORM_JSON_KEY_INTERN, TRANSFORM_NDJSON_COLUMNAR, TransformChain};
+use transform::{
+    TRANSFORM_JSON_KEY_INTERN, TRANSFORM_NDJSON_COLUMNAR, TRANSFORM_WRT, TransformChain,
+};
 
 /// Detect file format from content bytes.
 pub fn detect_format(data: &[u8]) -> FormatHint {
@@ -90,6 +93,12 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
         current = result.data;
     }
 
+    // WRT (Word Reduce Transform): currently disabled pending mixer improvements.
+    // WRT replaces common words with single bytes (128-254), expanding effective
+    // context order. However, it requires the mixer to handle mixed-alphabet
+    // streams well. Re-enable after hierarchical mixer is in place.
+    // TODO: Re-enable when mixer can discriminate high-byte codes properly.
+
     (current, chain)
 }
 
@@ -105,6 +114,9 @@ pub fn reverse_preprocess(data: &[u8], chain: &TransformChain) -> Vec<u8> {
             }
             TRANSFORM_NDJSON_COLUMNAR => {
                 current = ndjson::reverse(&current, &record.metadata);
+            }
+            TRANSFORM_WRT => {
+                current = wrt::reverse(&current);
             }
             _ => {} // Unknown transform — skip.
         }

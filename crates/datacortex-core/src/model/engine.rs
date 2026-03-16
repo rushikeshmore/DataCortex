@@ -50,6 +50,10 @@ pub struct CMConfig {
     pub order6_size: usize,
     /// Order-7 AssociativeContextMap size (default: 32MB).
     pub order7_size: usize,
+    /// Order-8 AssociativeContextMap size (default: 32MB).
+    pub order8_size: usize,
+    /// Order-9 AssociativeContextMap size (default: 16MB).
+    pub order9_size: usize,
     /// Match model ring buffer size in bytes (default: 16MB). Must be power of 2.
     pub match_ring_size: usize,
     /// Match model hash table entry count (default: 8M). Must be power of 2.
@@ -75,6 +79,8 @@ impl CMConfig {
             order5_size: 1 << 25,      // 32MB
             order6_size: 1 << 24,      // 16MB
             order7_size: 1 << 25,      // 32MB
+            order8_size: 1 << 25,      // 32MB
+            order9_size: 1 << 24,      // 16MB
             match_ring_size: 16 << 20, // 16MB
             match_hash_size: 8 << 20,  // 8M entries
             word_size: 1 << 24,        // 16MB
@@ -96,6 +102,8 @@ impl CMConfig {
             order5_size: 1 << 26,      // 64MB
             order6_size: 1 << 25,      // 32MB
             order7_size: 1 << 26,      // 64MB
+            order8_size: 1 << 26,      // 64MB
+            order9_size: 1 << 25,      // 32MB
             match_ring_size: 32 << 20, // 32MB
             match_hash_size: 16 << 20, // 16M entries
             word_size: 1 << 25,        // 32MB
@@ -125,6 +133,10 @@ pub struct CMEngine {
     order6: AssociativeContextModel,
     /// Order-7: previous 7 bytes + partial byte context. AssociativeContextMap 32MB.
     order7: AssociativeContextModel,
+    /// Order-8: previous 8 bytes + partial byte context. AssociativeContextMap 32MB.
+    order8: AssociativeContextModel,
+    /// Order-9: previous 9 bytes + partial byte context. AssociativeContextMap 16MB.
+    order9: AssociativeContextModel,
     /// Match model: ring buffer (16MB) + hash table (8M entries).
     match_model: MatchModel,
     /// Word model: word boundary context. ContextMap 16MB.
@@ -147,6 +159,15 @@ pub struct CMEngine {
     apm3: APMStage,
     /// APM Stage 4: 4K contexts (byte_class pair transition + run), 15% blend.
     apm4: APMStage,
+    /// APM Stage 5: 2K contexts (c3_top4 * c2_top4 * bpos), 12% blend.
+    /// Captures longer-range byte patterns (trigram character class).
+    apm5: APMStage,
+    /// APM Stage 6: 2K contexts (match_length_quantized * c1_class * bpos), 10% blend.
+    /// Match-dependent refinement.
+    apm6: APMStage,
+    /// APM Stage 7: 2K contexts (line_pos_q * bpos * c1_class), 10% blend.
+    /// Position-within-line aware refinement.
+    apm7: APMStage,
 
     // --- Context state ---
     /// Partial byte being decoded (1-255). Starts at 1.
@@ -165,6 +186,10 @@ pub struct CMEngine {
     c6: u8,
     /// Seventh-to-last completed byte.
     c7: u8,
+    /// Eighth-to-last completed byte.
+    c8: u8,
+    /// Ninth-to-last completed byte.
+    c9: u8,
     /// Bit position within current byte (0-7).
     bpos: u8,
     /// Byte-level run length (consecutive identical bytes).
@@ -190,6 +215,8 @@ impl CMEngine {
             order5: AssociativeContextModel::new(config.order5_size),
             order6: AssociativeContextModel::new(config.order6_size),
             order7: AssociativeContextModel::new(config.order7_size),
+            order8: AssociativeContextModel::new(config.order8_size),
+            order9: AssociativeContextModel::new(config.order9_size),
             match_model: MatchModel::with_sizes(config.match_ring_size, config.match_hash_size),
             word_model: WordModel::with_size(config.word_size),
             sparse_model: SparseModel::with_size(config.sparse_size),
@@ -200,6 +227,9 @@ impl CMEngine {
             apm2: APMStage::new(16384, 30), // c1*bpos*byte_class = 256*8*8 = 16K
             apm3: APMStage::new(4096, 25), // match_q(4) * c2_top2(4) * c1_top4(16) * bpos(8) = 2048, use 4K
             apm4: APMStage::new(4096, 15), // bclass(8) * bc2(8) * bpos(8) * run_q(4) -> 4K
+            apm5: APMStage::new(4096, 15), // c3_top4(16) * c2_top4(16) * bpos(8) -> 2K mapped to 4K
+            apm6: APMStage::new(2048, 12), // match_q(4) * c1_class(8) * bpos(8) -> 256 mapped to 2K
+            apm7: APMStage::new(4096, 12), // line_pos_q(4) * bpos(8) * c1_class(8) -> 256 mapped to 4K
             c0: 1,
             c1: 0,
             c2: 0,
@@ -208,6 +238,8 @@ impl CMEngine {
             c5: 0,
             c6: 0,
             c7: 0,
+            c8: 0,
+            c9: 0,
             bpos: 0,
             run_len: 0,
             line_pos: 0,
@@ -262,6 +294,16 @@ impl CMEngine {
         let h7 = order7_hash(c7, c6, c5, c4, c3, c2, c1, c0);
         let p7 = self.order7.predict(h7);
 
+        // Order-8: context hash = c8..c1, partial byte.
+        let c8 = self.c8;
+        let h8 = order8_hash(c8, c7, c6, c5, c4, c3, c2, c1, c0);
+        let p8 = self.order8.predict(h8);
+
+        // Order-9: context hash = c9..c1, partial byte.
+        let c9 = self.c9;
+        let h9 = order9_hash(c9, c8, c7, c6, c5, c4, c3, c2, c1, c0);
+        let p9 = self.order9.predict(h9);
+
         // Match model.
         let p_match = self.match_model.predict(c0, bpos, c1, c2, c3);
 
@@ -277,9 +319,9 @@ impl CMEngine {
         // JSON model (structure-aware).
         let p_json = self.json_model.predict(c0, bpos, c1);
 
-        // --- Mix (13 models) ---
+        // --- Mix (15 models) ---
         let predictions = [
-            p0, p1, p2, p3, p4, p5, p6, p7, p_match, p_word, p_sparse, p_run, p_json,
+            p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p_match, p_word, p_sparse, p_run, p_json,
         ];
         let bclass = byte_class(c1);
         let match_q = self.match_model.match_length_quantized();
@@ -323,7 +365,29 @@ impl CMEngine {
             .wrapping_mul(33)
             .wrapping_add(bpos as usize * 4 + run_q as usize)
             & 4095;
-        let final_p = self.apm4.predict(after_apm3, apm4_ctx);
+        let after_apm4 = self.apm4.predict(after_apm3, apm4_ctx);
+
+        // Stage 5: Longer-range byte pattern context.
+        // (c3_top4, c2_top4, c1_top2, bpos) — captures trigram character patterns.
+        let apm5_ctx = ((c3 as usize >> 4).wrapping_mul(67) + (c2 as usize >> 4))
+            .wrapping_mul(67)
+            .wrapping_add((c1 as usize >> 6) * 8 + bpos as usize)
+            & 4095;
+        let after_apm5 = self.apm5.predict(after_apm4, apm5_ctx);
+
+        // Stage 6: Match-dependent refinement (match_q, c1_class, bpos).
+        // When a match is active, this helps the APM adapt to match confidence.
+        let apm6_ctx = (match_q as usize * 64 + bclass as usize * 8 + bpos as usize) & 2047;
+        let after_apm6 = self.apm6.predict(after_apm5, apm6_ctx);
+
+        // Stage 7: Position-within-line + byte nibble context.
+        // (line_pos_q, c0_partial, bpos) — captures column-dependent patterns.
+        let line_pos_q = quantize_line_pos(self.line_pos);
+        let apm7_ctx = ((line_pos_q as usize).wrapping_mul(67) + (c0 as usize & 0xFF))
+            .wrapping_mul(67)
+            .wrapping_add(bpos as usize)
+            & 4095;
+        let final_p = self.apm7.predict(after_apm6, apm7_ctx);
 
         final_p.clamp(1, 4095)
     }
@@ -333,7 +397,10 @@ impl CMEngine {
     /// CRITICAL: encoder and decoder must call this with identical state and bit.
     #[inline(always)]
     pub fn update(&mut self, bit: u8) {
-        // Update APM (reverse order: stage 4 first, then 3, 2, 1).
+        // Update APM (reverse order: stage 7 first, then 6, 5, 4, 3, 2, 1).
+        self.apm7.update(bit);
+        self.apm6.update(bit);
+        self.apm5.update(bit);
         self.apm4.update(bit);
         self.apm3.update(bit);
         self.apm2.update(bit);
@@ -351,6 +418,8 @@ impl CMEngine {
         self.order5.update(bit);
         self.order6.update(bit);
         self.order7.update(bit);
+        self.order8.update(bit);
+        self.order9.update(bit);
         self.match_model
             .update(bit, self.bpos, self.c0, self.c1, self.c2);
         self.word_model.update(bit);
@@ -378,6 +447,8 @@ impl CMEngine {
                 self.line_pos = self.line_pos.saturating_add(1);
             }
 
+            self.c9 = self.c8;
+            self.c8 = self.c7;
             self.c7 = self.c6;
             self.c6 = self.c5;
             self.c5 = self.c4;
@@ -527,6 +598,71 @@ fn order7_hash(c7: u8, c6: u8, c5: u8, c4: u8, c3: u8, c2: u8, c1: u8, c0: u32) 
     h
 }
 
+/// Order-8 context hash: combines last 8 bytes with partial byte.
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn order8_hash(c8: u8, c7: u8, c6: u8, c5: u8, c4: u8, c3: u8, c2: u8, c1: u8, c0: u32) -> u32 {
+    let mut h = FNV_OFFSET;
+    h ^= c8 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c7 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c6 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c5 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c4 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c3 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c2 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c1 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c0 & 0xFF;
+    h = h.wrapping_mul(FNV_PRIME);
+    h
+}
+
+/// Order-9 context hash: combines last 9 bytes with partial byte.
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn order9_hash(
+    c9: u8,
+    c8: u8,
+    c7: u8,
+    c6: u8,
+    c5: u8,
+    c4: u8,
+    c3: u8,
+    c2: u8,
+    c1: u8,
+    c0: u32,
+) -> u32 {
+    let mut h = FNV_OFFSET;
+    h ^= c9 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c8 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c7 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c6 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c5 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c4 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c3 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c2 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c1 as u32;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= c0 & 0xFF;
+    h = h.wrapping_mul(FNV_PRIME);
+    h
+}
+
 /// Quantize run length to 0-3 for mixer context.
 #[inline]
 fn quantize_run_for_mixer(run_len: u8) -> u8 {
@@ -535,6 +671,17 @@ fn quantize_run_for_mixer(run_len: u8) -> u8 {
         2..=3 => 1,
         4..=8 => 2,
         _ => 3,
+    }
+}
+
+/// Quantize line position to 0-3 for APM context.
+#[inline]
+fn quantize_line_pos(line_pos: u16) -> u8 {
+    match line_pos {
+        0..=3 => 0,   // start of line (indentation)
+        4..=15 => 1,  // early in line
+        16..=63 => 2, // mid-line
+        _ => 3,       // late in line
     }
 }
 

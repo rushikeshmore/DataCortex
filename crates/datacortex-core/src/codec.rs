@@ -456,8 +456,7 @@ pub fn decompress_with_model<R: Read>(
                 #[cfg(not(feature = "neural"))]
                 {
                     let _ = model_path;
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
+                    return Err(io::Error::other(
                         "file was compressed with neural mode but this build lacks the \
                          `neural` feature. Rebuild with --features neural.",
                     ));

@@ -125,6 +125,23 @@ impl WordModel {
             self.word_len = 0;
         }
     }
+
+    /// Returns whether currently inside a word.
+    #[inline]
+    pub fn in_word(&self) -> bool {
+        self.in_word
+    }
+
+    /// Returns quantized word length (0-3).
+    #[inline]
+    pub fn word_len_quantized(&self) -> u8 {
+        match self.word_len {
+            0 => 0,
+            1..=2 => 1,
+            3..=6 => 2,
+            _ => 3,
+        }
+    }
 }
 
 impl Default for WordModel {
