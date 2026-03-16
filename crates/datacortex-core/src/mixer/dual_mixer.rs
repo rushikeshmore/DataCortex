@@ -1,6 +1,11 @@
 //! TripleMixer — three-level logistic mixer (fine + medium + coarse) in log-odds space.
 //!
-//! Phase 3: PAQ8-style logistic mixer following V2 proven parameters.
+//! Phase 3+: PAQ8-style logistic mixer with multi-output ContextMap support.
+//!
+//! 37 model inputs:
+//! - Order-0: 1 (state only)
+//! - Order-1 through Order-9: 3 each (state + run + byte_hist) = 27
+//! - Match, Word, Sparse, Run, JSON, Indirect, PPM, DMC, ISSE: 1 each = 9
 //!
 //! Fine mixer: 64K weight sets, learning rate eta=2.
 //! Medium mixer: 16K weight sets, learning rate eta=3.
@@ -11,7 +16,10 @@
 use crate::mixer::logistic::{squash, stretch};
 
 /// Number of models feeding the mixer.
-pub const NUM_MODELS: usize = 19; // order0..9, match, word, sparse, run, json, indirect, ppm, dmc, isse
+/// Layout: [O0, O1_s, O1_r, O2_s, O2_r, ..., O9_s, O9_r,
+///          match, word, sparse, run, json, indirect, ppm, dmc, isse]
+/// = 1 + 9*2 + 9 = 28
+pub const NUM_MODELS: usize = 28;
 
 /// Fine mixer: 64K weight sets.
 const FINE_SETS: usize = 65536;
@@ -25,10 +33,29 @@ const COARSE_SETS: usize = 4096;
 /// Weight scale factor (2^12 = 4096).
 const W_SCALE: i32 = 4096;
 
-/// Initial weights per model (non-uniform).
-/// order0-9 then match, word, sparse, run, json, indirect, ppm, dmc, isse
+/// Initial weights per model.
+/// Order models: state predictions get higher weight, run starts low.
+/// Layout: O0, O1(s,r), O2(s,r), ..., O9(s,r), match, word, sparse, run, json, indirect, ppm, dmc, isse
 const INITIAL_WEIGHTS: [i32; NUM_MODELS] = [
-    200, 300, 350, 450, 450, 450, 300, 250, 200, 180, 300, 250, 250, 200, 250, 200, 50, 30, 150,
+    200, // O0
+    300, 60, // O1 (state, run)
+    350, 60, // O2
+    450, 60, // O3
+    450, 60, // O4
+    450, 60, // O5
+    300, 60, // O6
+    250, 60, // O7
+    200, 60, // O8
+    180, 60,  // O9
+    300, // match
+    250, // word
+    250, // sparse
+    200, // run
+    250, // json
+    200, // indirect
+    50,  // ppm
+    30,  // dmc
+    150, // isse
 ];
 
 /// Fine mixer learning rate.
@@ -255,10 +282,11 @@ mod tests {
     #[test]
     fn prediction_in_range() {
         let mut mixer = DualMixer::new();
-        let preds = [
-            100, 4000, 2048, 3000, 500, 2048, 1500, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
-            2048, 2048, 2048, 2048,
-        ];
+        let mut preds = [2048u32; NUM_MODELS];
+        preds[0] = 100;
+        preds[1] = 4000;
+        preds[4] = 3000;
+        preds[7] = 500;
         let p = mixer.predict(&preds, 128, b'a', 3, 4, 1, 0, 0);
         assert!((1..=4095).contains(&p), "prediction out of range: {p}");
     }
@@ -278,18 +306,14 @@ mod tests {
     fn mixer_adapts_to_biased_input() {
         let mut mixer = DualMixer::new();
         for _ in 0..100 {
-            let preds = [
-                3500, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
-                2048, 2048, 2048, 2048, 2048,
-            ];
+            let mut preds = [2048u32; NUM_MODELS];
+            preds[0] = 3500;
             let p = mixer.predict(&preds, 1, 0, 0, 0, 0, 0, 0);
             let _ = p;
             mixer.update(1);
         }
-        let preds = [
-            3500, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
-            2048, 2048, 2048, 2048, 2048,
-        ];
+        let mut preds = [2048u32; NUM_MODELS];
+        preds[0] = 3500;
         let p = mixer.predict(&preds, 1, 0, 0, 0, 0, 0, 0);
         assert!(p > 2500, "mixer should have learned to trust model 0: {p}");
     }

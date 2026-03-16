@@ -10,8 +10,10 @@ pub mod dual_mixer;
 pub mod hierarchical_mixer;
 pub mod isse;
 pub mod logistic;
+pub mod multi_set_mixer;
 
 pub use apm::APMStage;
 pub use dual_mixer::{DualMixer, NUM_MODELS, byte_class};
 pub use isse::IsseChain;
 pub use logistic::{squash, stretch};
+pub use multi_set_mixer::MultiSetMixer;

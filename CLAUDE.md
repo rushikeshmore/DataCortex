@@ -21,7 +21,7 @@ Input → Format Detection → Preprocessing → CM Engine (or Fast zstd) → .d
 - `benchmarks/` — baseline.json
 
 ## Current Status
-**Phase 5+.** 2.15 bpb alice29, 2.08 bpb enwik8. 214 tests. ~264MB memory. Next: Phase 6 (RWKV for Max mode).
+**Phase 5+.** 2.15 bpb alice29, 1.87 bpb enwik8 (was 1.89). 246 tests. ~280MB memory. Multi-output ContextMaps (run-count predictions, 28 mixer inputs).
 
 ## Build & Test
 ```bash
@@ -53,7 +53,9 @@ cargo bench --bench compress_bench  # Tier 2: full benchmark (~1 min)
 ## V3 Engine (Phase 5+ — current)
 - 16 models: Order-0 (256 direct), Order-1 (32MB), Order-2 (16MB), Order-3 (32MB checksum), Order-4 (32MB checksum), Order-5 (32MB assoc), Order-6 (16MB assoc), Order-7 (32MB assoc), Order-8 (32MB assoc), Order-9 (16MB assoc), Match (16MB ring + 8M hash, multi-candidate), Word (16MB), Sparse (16MB), Run (4MB), JSON (8MB), Indirect (8MB + 2MB pred table)
 - XML state tracker: 8-state FSM provides context bits for markup-heavy content (tag/content/attr/comment/entity)
+- Multi-output ContextMaps: each order model (O1-O9) produces 2 predictions (state + run-count). 28 total mixer inputs (was 19).
 - Triple logistic mixer: fine (64K, η=2), medium (16K, η=3), coarse (4K, η=4). XML state + run-length context in mixer hash.
+- Multi-set mixer available but not used (regresses on 1MB; needs larger data).
 - 7-stage APM cascade: 2K/16K/4K/4K/4K/2K/4K contexts. XML state injected into APM2 and APM5.
 - byte_class: 12 classes (was 8) — high bytes split into 4 WRT groups + escape for future WRT support.
 - StateTable (256-state PAQ8), StateMap (adaptive 1/n), ContextMap (lossy/checksum/2-way assoc)

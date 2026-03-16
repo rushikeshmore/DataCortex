@@ -1,26 +1,23 @@
 //! CMEngine -- orchestrates all context models + mixer + APM.
 //!
-//! Phase 5: Scaled context mixing engine with configurable sizes (CMConfig).
+//! Phase 5+: Multi-output ContextMap engine.
 //!
-//! Balanced preset (~256MB):
-//! - Order-0 through Order-7 context models (16-32MB each)
-//! - Match model: ring buffer (16MB) + hash table (8M entries)
-//! - Word, Sparse, Run, JSON models
+//! Each order model (O1-O9) now produces 3 predictions:
+//! - StateMap prediction (primary)
+//! - Run-count prediction (consecutive same-bit tracking)
+//! - Byte-history prediction (last byte seen in this context)
 //!
-//! Max preset (~512MB):
-//! - 2x all ContextMap sizes vs Balanced
-//! - Match model: ring buffer (32MB) + hash table (16M entries)
-//! - Fewer hash collisions = better predictions
+//! Total mixer inputs: 1 (O0) + 9*3 (O1-O9) + 9 (other) = 37.
 //!
 //! Both presets use:
 //! - Triple logistic mixer (fine 64K + med 16K + coarse 4K)
-//! - 3-stage APM cascade
+//! - 7-stage APM cascade
 //!
 //! Probability always in [1, 4095] -- clamped after every operation.
 //! CRITICAL: Encoder/decoder must use IDENTICAL prediction sequence.
 
 use crate::mixer::apm::APMStage;
-use crate::mixer::dual_mixer::{DualMixer, byte_class};
+use crate::mixer::dual_mixer::{DualMixer, NUM_MODELS, byte_class};
 use crate::mixer::isse::IsseChain;
 use crate::model::cm_model::{AssociativeContextModel, ChecksumContextModel, ContextModel};
 use crate::model::dmc_model::DmcModel;
@@ -185,7 +182,7 @@ pub struct CMEngine {
     /// APM Stage 7: 2K contexts (line_pos_q * bpos * c1_class), 10% blend.
     /// Position-within-line aware refinement.
     apm7: APMStage,
-    /// ISSE model: 3-level ICM→ISSE→ISSE chain used as model #19 in the mixer.
+    /// ISSE model: 3-level ICM→ISSE→ISSE chain used as model #37 in the mixer.
     /// Provides a complementary ZPAQ-style cascaded prediction.
     isse_model: IsseChain,
 
@@ -290,46 +287,38 @@ impl CMEngine {
         let c7 = self.c7;
         let bpos = self.bpos;
 
-        // Order-0: context is the partial byte.
+        // Order-0: context is the partial byte. Single prediction.
         let p0 = self.order0.predict(c0 as usize);
 
-        // Order-1: context hash = c1 combined with partial byte.
+        // Order-1 through Order-9: each produces (state_p, run_p).
         let h1 = order1_hash(c1, c0);
-        let p1 = self.order1.predict(h1);
+        let (p1_s, p1_r) = self.order1.predict_multi(h1);
 
-        // Order-2: context hash = c2, c1, partial byte.
         let h2 = order2_hash(c2, c1, c0);
-        let p2 = self.order2.predict(h2);
+        let (p2_s, p2_r) = self.order2.predict_multi(h2);
 
-        // Order-3: context hash = c3, c2, c1, partial byte.
         let h3 = order3_hash(c3, c2, c1, c0);
-        let p3 = self.order3.predict(h3);
+        let (p3_s, p3_r) = self.order3.predict_multi(h3);
 
-        // Order-4: context hash = c4, c3, c2, c1, partial byte.
         let h4 = order4_hash(c4, c3, c2, c1, c0);
-        let p4 = self.order4.predict(h4);
+        let (p4_s, p4_r) = self.order4.predict_multi(h4);
 
-        // Order-5: context hash = c5, c4, c3, c2, c1, partial byte.
         let h5 = order5_hash(c5, c4, c3, c2, c1, c0);
-        let p5 = self.order5.predict(h5);
+        let (p5_s, p5_r) = self.order5.predict_multi(h5);
 
-        // Order-6: context hash = c6, c5, c4, c3, c2, c1, partial byte.
         let h6 = order6_hash(c6, c5, c4, c3, c2, c1, c0);
-        let p6 = self.order6.predict(h6);
+        let (p6_s, p6_r) = self.order6.predict_multi(h6);
 
-        // Order-7: context hash = c7..c1, partial byte.
         let h7 = order7_hash(c7, c6, c5, c4, c3, c2, c1, c0);
-        let p7 = self.order7.predict(h7);
+        let (p7_s, p7_r) = self.order7.predict_multi(h7);
 
-        // Order-8: context hash = c8..c1, partial byte.
         let c8 = self.c8;
         let h8 = order8_hash(c8, c7, c6, c5, c4, c3, c2, c1, c0);
-        let p8 = self.order8.predict(h8);
+        let (p8_s, p8_r) = self.order8.predict_multi(h8);
 
-        // Order-9: context hash = c9..c1, partial byte.
         let c9 = self.c9;
         let h9 = order9_hash(c9, c8, c7, c6, c5, c4, c3, c2, c1, c0);
-        let p9 = self.order9.predict(h9);
+        let (p9_s, p9_r) = self.order9.predict_multi(h9);
 
         // Match model.
         let p_match = self.match_model.predict(c0, bpos, c1, c2, c3);
@@ -359,10 +348,13 @@ impl CMEngine {
         // ISSE model (3-level ICM→ISSE→ISSE chain with cross-context hashes).
         let p_isse = self.isse_model.predict(c0, c1, c2, c3, bpos);
 
-        // --- Mix (19 models) ---
-        let predictions = [
-            p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p_match, p_word, p_sparse, p_run, p_json,
-            p_indirect, p_ppm, p_dmc, p_isse,
+        // --- Mix (28 models) ---
+        // Layout: [O0, O1_s, O1_r, O2_s, O2_r, ..., O9_s, O9_r,
+        //          match, word, sparse, run, json, indirect, ppm, dmc, isse]
+        let predictions: [u32; NUM_MODELS] = [
+            p0, p1_s, p1_r, p2_s, p2_r, p3_s, p3_r, p4_s, p4_r, p5_s, p5_r, p6_s, p6_r, p7_s, p7_r,
+            p8_s, p8_r, p9_s, p9_r, p_match, p_word, p_sparse, p_run, p_json, p_indirect, p_ppm,
+            p_dmc, p_isse,
         ];
         let bclass = byte_class(c1);
         let match_q = self.match_model.match_length_quantized();
