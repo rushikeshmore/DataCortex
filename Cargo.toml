@@ -16,7 +16,7 @@ authors = ["Rushikesh More"]
 rust-version = "1.85"
 
 [workspace.dependencies]
-datacortex-core = { path = "crates/datacortex-core" }
+datacortex-core = { path = "crates/datacortex-core", version = "0.1.0" }
 datacortex-neural = { path = "crates/datacortex-neural" }
 crc32fast = "1"
 clap = { version = "4", features = ["derive"] }

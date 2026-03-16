@@ -16,10 +16,11 @@ crc32fast = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 zstd = { workspace = true }
-datacortex-neural = { path = "../datacortex-neural", optional = true }
 
 [features]
 default = []
-neural = ["datacortex-neural/neural"]
+# Neural feature requires building from source (datacortex-neural not on crates.io).
+# Enable with: cargo build --features neural (from workspace root)
+neural = []
 
 [dev-dependencies]
