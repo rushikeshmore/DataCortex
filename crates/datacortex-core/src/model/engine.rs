@@ -26,6 +26,7 @@ use crate::model::indirect_model::IndirectModel;
 use crate::model::json_model::JsonModel;
 use crate::model::match_model::MatchModel;
 use crate::model::order0::Order0Model;
+use crate::model::ppm_model::PpmModel;
 use crate::model::run_model::RunModel;
 use crate::model::sparse_model::SparseModel;
 use crate::model::word_model::WordModel;
@@ -151,6 +152,9 @@ pub struct CMEngine {
     json_model: JsonModel,
     /// Indirect model: second-order context prediction. ~2MB.
     indirect_model: IndirectModel,
+    /// PPM model: byte-level prediction by partial matching (PPMd Method D).
+    /// Different paradigm from CM — trie/hash-based, byte-level, adaptive order with exclusion.
+    ppm_model: PpmModel,
 
     // --- Mixer + APM ---
     /// Triple logistic mixer (fine 64K + medium 16K + coarse 4K).
@@ -229,6 +233,7 @@ impl CMEngine {
             run_model: RunModel::with_size(config.run_size),
             json_model: JsonModel::with_size(config.json_size),
             indirect_model: IndirectModel::new(),
+            ppm_model: PpmModel::new(),
             mixer: DualMixer::new(),
             apm1: APMStage::new(2048, 55),  // c0(256) * bpos(8) = 2048
             apm2: APMStage::new(16384, 30), // c1*bpos*byte_class = 256*8*8 = 16K
@@ -330,10 +335,14 @@ impl CMEngine {
         // Indirect model (second-order context).
         let p_indirect = self.indirect_model.predict(c0, bpos, c1);
 
-        // --- Mix (16 models) ---
+        // PPM model (byte-level prediction by partial matching).
+        // PPM updates at byte level; here we just convert cached byte probs to bit prediction.
+        let p_ppm = self.ppm_model.predict_bit(bpos, c0);
+
+        // --- Mix (17 models) ---
         let predictions = [
             p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p_match, p_word, p_sparse, p_run, p_json,
-            p_indirect,
+            p_indirect, p_ppm,
         ];
         let bclass = byte_class(c1);
         let match_q = self.match_model.match_length_quantized();
@@ -469,6 +478,9 @@ impl CMEngine {
 
             // Update XML state tracker with the completed byte.
             self.xml_tracker.update(byte);
+
+            // Update PPM model at byte level (NOT per-bit).
+            self.ppm_model.update_byte(byte);
 
             self.c9 = self.c8;
             self.c8 = self.c7;
