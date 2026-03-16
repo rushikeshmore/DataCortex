@@ -89,14 +89,66 @@ impl PpmEntry {
     }
 }
 
+/// PPM table sizes configuration.
+#[derive(Debug, Clone)]
+pub struct PpmConfig {
+    /// Table sizes per order (0..=MAX_ORDER). Each must be a power of 2.
+    pub sizes: [usize; NUM_ORDERS],
+}
+
+impl PpmConfig {
+    /// Default (~90MB): original sizes.
+    pub fn default_sizes() -> Self {
+        PpmConfig {
+            sizes: [
+                1,       // order 0:  1 entry (unigram)
+                1 << 8,  // order 1:  256 entries
+                1 << 16, // order 2:  64K entries
+                1 << 18, // order 3:  256K entries
+                1 << 19, // order 4:  512K entries
+                1 << 19, // order 5:  512K entries
+                1 << 19, // order 6:  512K entries
+                1 << 18, // order 7:  256K entries
+                1 << 18, // order 8:  256K entries
+                1 << 17, // order 9:  128K entries
+                1 << 17, // order 10: 128K entries
+                1 << 16, // order 11: 64K entries
+                1 << 16, // order 12: 64K entries
+            ],
+        }
+    }
+
+    /// Scaled 4x (~360MB): 4x entries at orders 3-12 for fewer collisions.
+    pub fn scaled_4x() -> Self {
+        PpmConfig {
+            sizes: [
+                1,       // order 0:  1 entry (unigram)
+                1 << 8,  // order 1:  256 entries
+                1 << 16, // order 2:  64K entries
+                1 << 20, // order 3:  1M entries (was 256K)
+                1 << 21, // order 4:  2M entries (was 512K)
+                1 << 21, // order 5:  2M entries (was 512K)
+                1 << 21, // order 6:  2M entries (was 512K)
+                1 << 20, // order 7:  1M entries (was 256K)
+                1 << 20, // order 8:  1M entries (was 256K)
+                1 << 19, // order 9:  512K entries (was 128K)
+                1 << 19, // order 10: 512K entries (was 128K)
+                1 << 18, // order 11: 256K entries (was 64K)
+                1 << 18, // order 12: 256K entries (was 64K)
+            ],
+        }
+    }
+}
+
 /// PPM model with checksum-validated hash tables at orders 0-12.
 ///
-/// Memory budget: ~90MB total.
+/// Memory budget depends on config:
+/// - Default: ~90MB total
+/// - Scaled 4x: ~360MB total
 /// - Order 0: 1 entry (global unigram)
 /// - Order 1: 256 entries
 /// - Order 2: 64K entries
-/// - Order 3-6: 256K-512K entries
-/// - Order 7-12: 128K-256K entries
+/// - Orders 3+: configurable
 pub struct PpmModel {
     /// Hash tables for orders 0..=MAX_ORDER.
     tables: Vec<Box<[PpmEntry]>>,
@@ -118,29 +170,16 @@ fn make_table(size: usize) -> Box<[PpmEntry]> {
 }
 
 impl PpmModel {
-    /// Create a new PPM model (~90MB).
+    /// Create a new PPM model with default sizes (~90MB).
     pub fn new() -> Self {
-        // Table sizes per order. Lower orders need fewer slots (less context variety).
-        // Higher orders use smaller tables (sparser context space).
-        let sizes: [usize; NUM_ORDERS] = [
-            1,       // order 0:  1 entry (unigram)
-            1 << 8,  // order 1:  256 entries
-            1 << 16, // order 2:  64K entries
-            1 << 18, // order 3:  256K entries
-            1 << 19, // order 4:  512K entries
-            1 << 19, // order 5:  512K entries
-            1 << 19, // order 6:  512K entries
-            1 << 18, // order 7:  256K entries
-            1 << 18, // order 8:  256K entries
-            1 << 17, // order 9:  128K entries
-            1 << 17, // order 10: 128K entries
-            1 << 16, // order 11: 64K entries
-            1 << 16, // order 12: 64K entries
-        ];
+        Self::with_config(PpmConfig::default_sizes())
+    }
 
+    /// Create a PPM model with the given configuration.
+    pub fn with_config(config: PpmConfig) -> Self {
         let mut tables = Vec::with_capacity(NUM_ORDERS);
         let mut masks = [0usize; NUM_ORDERS];
-        for (i, &size) in sizes.iter().enumerate() {
+        for (i, &size) in config.sizes.iter().enumerate() {
             tables.push(make_table(size));
             masks[i] = size - 1;
         }

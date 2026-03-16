@@ -22,11 +22,12 @@
 use crate::mixer::apm::APMStage;
 use crate::mixer::dual_mixer::{DualMixer, byte_class};
 use crate::model::cm_model::{AssociativeContextModel, ChecksumContextModel, ContextModel};
+use crate::model::dmc_model::DmcModel;
 use crate::model::indirect_model::IndirectModel;
 use crate::model::json_model::JsonModel;
 use crate::model::match_model::MatchModel;
 use crate::model::order0::Order0Model;
-use crate::model::ppm_model::PpmModel;
+use crate::model::ppm_model::{PpmConfig, PpmModel};
 use crate::model::run_model::RunModel;
 use crate::model::sparse_model::SparseModel;
 use crate::model::word_model::WordModel;
@@ -69,10 +70,12 @@ pub struct CMConfig {
     pub run_size: usize,
     /// JSON model ContextMap size (default: 8MB).
     pub json_size: usize,
+    /// PPM model table sizes configuration.
+    pub ppm_config: PpmConfig,
 }
 
 impl CMConfig {
-    /// Balanced preset: current production sizes (~256MB total).
+    /// Balanced preset: production sizes (~256MB CM + ~360MB PPM).
     pub fn balanced() -> Self {
         CMConfig {
             order1_size: 1 << 25,      // 32MB
@@ -90,10 +93,11 @@ impl CMConfig {
             sparse_size: 1 << 23,      // 8MB per gap (16MB total)
             run_size: 1 << 22,         // 4MB
             json_size: 1 << 23,        // 8MB
+            ppm_config: PpmConfig::scaled_4x(),
         }
     }
 
-    /// Max preset: 2x everything for better compression (~512MB total).
+    /// Max preset: 2x everything for better compression (~512MB CM + ~360MB PPM).
     /// Doubles all ContextMap sizes, match ring, and hash table.
     /// More context slots = fewer collisions = better predictions.
     pub fn max() -> Self {
@@ -113,6 +117,7 @@ impl CMConfig {
             sparse_size: 1 << 24,      // 16MB per gap (32MB total)
             run_size: 1 << 23,         // 8MB
             json_size: 1 << 24,        // 16MB
+            ppm_config: PpmConfig::scaled_4x(),
         }
     }
 }
@@ -155,6 +160,9 @@ pub struct CMEngine {
     /// PPM model: byte-level prediction by partial matching (PPMd Method D).
     /// Different paradigm from CM — trie/hash-based, byte-level, adaptive order with exclusion.
     ppm_model: PpmModel,
+    /// DMC model: bit-level dynamic Markov compression automaton.
+    /// State-cloning captures sub-byte and cross-byte patterns.
+    dmc_model: DmcModel,
 
     // --- Mixer + APM ---
     /// Triple logistic mixer (fine 64K + medium 16K + coarse 4K).
@@ -233,7 +241,8 @@ impl CMEngine {
             run_model: RunModel::with_size(config.run_size),
             json_model: JsonModel::with_size(config.json_size),
             indirect_model: IndirectModel::new(),
-            ppm_model: PpmModel::new(),
+            ppm_model: PpmModel::with_config(config.ppm_config),
+            dmc_model: DmcModel::new_single(),
             mixer: DualMixer::new(),
             apm1: APMStage::new(2048, 55),  // c0(256) * bpos(8) = 2048
             apm2: APMStage::new(16384, 30), // c1*bpos*byte_class = 256*8*8 = 16K
@@ -339,10 +348,13 @@ impl CMEngine {
         // PPM updates at byte level; here we just convert cached byte probs to bit prediction.
         let p_ppm = self.ppm_model.predict_bit(bpos, c0);
 
-        // --- Mix (17 models) ---
+        // DMC model (bit-level dynamic Markov compression).
+        let p_dmc = self.dmc_model.predict();
+
+        // --- Mix (18 models) ---
         let predictions = [
             p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p_match, p_word, p_sparse, p_run, p_json,
-            p_indirect, p_ppm,
+            p_indirect, p_ppm, p_dmc,
         ];
         let bclass = byte_class(c1);
         let match_q = self.match_model.match_length_quantized();
@@ -455,6 +467,7 @@ impl CMEngine {
         self.run_model.update(bit);
         self.json_model.update(bit);
         self.indirect_model.update(bit);
+        self.dmc_model.update(bit);
 
         // Advance context state.
         self.c0 = (self.c0 << 1) | bit as u32;
@@ -481,6 +494,9 @@ impl CMEngine {
 
             // Update PPM model at byte level (NOT per-bit).
             self.ppm_model.update_byte(byte);
+
+            // Notify DMC model of byte completion (for state reset to byte context).
+            self.dmc_model.on_byte_complete(byte);
 
             self.c9 = self.c8;
             self.c8 = self.c7;
