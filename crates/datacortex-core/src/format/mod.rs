@@ -4,13 +4,15 @@
 //! Phase 1: format-aware preprocessing (JSON key interning) + detection.
 
 pub mod json;
+pub mod lzp;
 pub mod ndjson;
 pub mod transform;
 pub mod wrt;
 
 use crate::dcx::{FormatHint, Mode};
 use transform::{
-    TRANSFORM_JSON_KEY_INTERN, TRANSFORM_NDJSON_COLUMNAR, TRANSFORM_WRT, TransformChain,
+    TRANSFORM_JSON_KEY_INTERN, TRANSFORM_LZP, TRANSFORM_NDJSON_COLUMNAR, TRANSFORM_WRT,
+    TransformChain,
 };
 
 /// Detect file format from content bytes.
@@ -100,6 +102,12 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
     // but don't apply WRT in preprocessing.
     // TODO: Re-enable WRT only for pure text (Markdown, Log) after per-format A/B test.
 
+    // LZP (Lempel-Ziv Prediction): DISABLED.
+    // A/B testing showed LZP HURTS context mixing (2.00 -> 2.20 bpb on enwik8 10MB).
+    // The CM engine's match model already captures the same redundancy more efficiently.
+    // LZP escape tokens break context models and remove bytes that order models learn from.
+    // Keep the code for potential future use with different coders (BWT, Fast mode).
+
     (current, chain)
 }
 
@@ -118,6 +126,9 @@ pub fn reverse_preprocess(data: &[u8], chain: &TransformChain) -> Vec<u8> {
             }
             TRANSFORM_WRT => {
                 current = wrt::reverse(&current);
+            }
+            TRANSFORM_LZP => {
+                current = lzp::reverse(&current);
             }
             _ => {} // Unknown transform — skip.
         }

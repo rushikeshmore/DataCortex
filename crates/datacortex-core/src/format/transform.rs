@@ -26,6 +26,7 @@ pub struct TransformChain {
 pub const TRANSFORM_JSON_KEY_INTERN: u8 = 1;
 pub const TRANSFORM_NDJSON_COLUMNAR: u8 = 2;
 pub const TRANSFORM_WRT: u8 = 3;
+pub const TRANSFORM_LZP: u8 = 4;
 
 impl TransformChain {
     pub fn new() -> Self {
