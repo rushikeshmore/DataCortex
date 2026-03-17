@@ -5,6 +5,7 @@
 
 pub mod csv;
 pub mod json;
+pub mod log_transform;
 pub mod lzp;
 pub mod ndjson;
 pub mod transform;
@@ -12,8 +13,8 @@ pub mod wrt;
 
 use crate::dcx::{FormatHint, Mode};
 use transform::{
-    TRANSFORM_CSV_COLUMNAR, TRANSFORM_JSON_KEY_INTERN, TRANSFORM_LZP, TRANSFORM_NDJSON_COLUMNAR,
-    TRANSFORM_WRT, TransformChain,
+    TRANSFORM_CSV_COLUMNAR, TRANSFORM_JSON_KEY_INTERN, TRANSFORM_LOG_COLUMNAR, TRANSFORM_LZP,
+    TRANSFORM_NDJSON_COLUMNAR, TRANSFORM_WRT, TransformChain,
 };
 
 /// Detect file format from content bytes.
@@ -96,6 +97,18 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
         }
     }
 
+    // Log columnar reorg: ALL modes (dramatic improvement for structured log files).
+    // Timestamps grouped together (differ by milliseconds) -> massive compression.
+    // Log levels (~5 values) -> near-zero entropy when grouped.
+    // Module paths (small set, high repetition) -> excellent LZ/CM match.
+    if format == FormatHint::Log {
+        if let Some(result) = log_transform::preprocess(&current) {
+            chain.push(TRANSFORM_LOG_COLUMNAR, result.metadata);
+            current = result.data;
+            return (current, chain);
+        }
+    }
+
     // JSON key interning: Balanced/Max only (hurts Fast mode due to zstd redundancy).
     if matches!(mode, Mode::Balanced | Mode::Max)
         && matches!(format, FormatHint::Json | FormatHint::Ndjson)
@@ -136,6 +149,9 @@ pub fn reverse_preprocess(data: &[u8], chain: &TransformChain) -> Vec<u8> {
             }
             TRANSFORM_CSV_COLUMNAR => {
                 current = csv::reverse(&current, &record.metadata);
+            }
+            TRANSFORM_LOG_COLUMNAR => {
+                current = log_transform::reverse(&current, &record.metadata);
             }
             TRANSFORM_WRT => {
                 current = wrt::reverse(&current);
@@ -429,6 +445,49 @@ mod tests {
         // Verify columnar data groups values.
         let cols: Vec<&[u8]> = preprocessed.split(|&b| b == 0x00).collect();
         assert_eq!(cols.len(), 3, "should have 3 columns");
+    }
+
+    #[test]
+    fn preprocess_log_columnar() {
+        let data = b"2026-03-15T10:30:00.001Z INFO  [app::server] Starting server\n\
+2026-03-15T10:30:00.002Z INFO  [app::server] Listening on 0.0.0.0:8080\n\
+2026-03-15T10:30:00.003Z DEBUG [app::format] Detecting format\n\
+2026-03-15T10:30:00.004Z WARN  [app::handler] Slow query detected\n\
+2026-03-15T10:30:00.005Z ERROR [app::handler] Connection refused\n";
+        let (preprocessed, chain) = preprocess(data, FormatHint::Log, Mode::Balanced);
+        assert!(!chain.is_empty());
+        assert_eq!(
+            chain.records[0].id,
+            transform::TRANSFORM_LOG_COLUMNAR,
+            "Log should use columnar transform"
+        );
+
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn preprocess_log_columnar_fast_mode() {
+        // Columnar should apply for ALL modes, including Fast.
+        let data = b"2026-03-15T10:30:00.001Z INFO  [app::server] msg1\n\
+2026-03-15T10:30:00.002Z INFO  [app::server] msg2\n\
+2026-03-15T10:30:00.003Z DEBUG [app::format] msg3\n\
+2026-03-15T10:30:00.004Z WARN  [app::handler] msg4\n\
+2026-03-15T10:30:00.005Z ERROR [app::handler] msg5\n";
+        let (preprocessed, chain) = preprocess(data, FormatHint::Log, Mode::Fast);
+        assert!(!chain.is_empty());
+        assert_eq!(chain.records[0].id, transform::TRANSFORM_LOG_COLUMNAR);
+
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(restored, data.to_vec());
+
+        // Verify columnar data groups values (4 columns).
+        let cols: Vec<&[u8]> = preprocessed.split(|&b| b == 0x00).collect();
+        assert_eq!(
+            cols.len(),
+            4,
+            "should have 4 columns: timestamp, level, module, message"
+        );
     }
 
     #[test]

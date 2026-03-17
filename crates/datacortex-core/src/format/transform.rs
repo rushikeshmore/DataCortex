@@ -28,6 +28,7 @@ pub const TRANSFORM_NDJSON_COLUMNAR: u8 = 2;
 pub const TRANSFORM_WRT: u8 = 3;
 pub const TRANSFORM_LZP: u8 = 4;
 pub const TRANSFORM_CSV_COLUMNAR: u8 = 5;
+pub const TRANSFORM_LOG_COLUMNAR: u8 = 6;
 
 impl TransformChain {
     pub fn new() -> Self {
