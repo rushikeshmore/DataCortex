@@ -5,44 +5,27 @@
       "type": "repository",
       "attributes": {
         "name": "datacortex",
-        "full_name": "rushikeshmore/DataCortex",
-        "description": "Next-generation lossless text compression engine with format-aware preprocessing",
+        "full_name": "rushikeshmore/datacortex",
+        "description": "A high-performance rust web tool for systems workloads",
         "language": "Rust",
-        "stargazers_count": 42,
-        "forks_count": 7,
-        "open_issues_count": 3,
-        "created_at": "2026-03-15T10:30:00Z",
-        "updated_at": "2026-03-15T16:45:00Z",
-        "pushed_at": "2026-03-15T16:42:00Z",
+        "stargazers_count": 68,
+        "forks_count": 1,
+        "open_issues_count": 18,
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-03-01T00:30:00Z",
         "default_branch": "main",
         "visibility": "public",
-        "topics": ["compression", "lossless", "rust", "context-mixing", "text-compression", "entropy-coding", "format-aware", "ramanujan"],
+        "topics": [
+          "web",
+          "systems",
+          "api",
+          "compression",
+          "cloud"
+        ],
         "license": {
           "key": "mit",
           "name": "MIT License",
-          "spdx_id": "MIT",
-          "url": "https://api.github.com/licenses/mit"
-        },
-        "owner": {
-          "login": "rushikeshmore",
-          "id": 12345678,
-          "avatar_url": "https://avatars.githubusercontent.com/u/12345678?v=4",
-          "type": "User"
-        }
-      },
-      "relationships": {
-        "contributors": {
-          "data": [
-            {"id": 12345678, "type": "user", "login": "rushikeshmore", "contributions": 156},
-            {"id": 87654321, "type": "user", "login": "claude-assistant", "contributions": 89}
-          ]
-        },
-        "releases": {
-          "data": [
-            {"id": 1, "tag_name": "v0.1.0", "name": "Phase 0: Scaffold", "created_at": "2026-03-16T00:00:00Z", "prerelease": true},
-            {"id": 2, "tag_name": "v0.2.0", "name": "Phase 1: Format + Fast", "created_at": "2026-03-23T00:00:00Z", "prerelease": true},
-            {"id": 3, "tag_name": "v0.3.0", "name": "Phase 2-3: CM Engine", "created_at": "2026-04-06T00:00:00Z", "prerelease": true}
-          ]
+          "spdx_id": "MIT"
         }
       }
     },
@@ -50,44 +33,25 @@
       "id": 2,
       "type": "repository",
       "attributes": {
-        "name": "codecortex-ai",
-        "full_name": "rushikeshmore/CodeCortex",
-        "description": "Persistent codebase knowledge layer for AI agents. Pre-digests codebases into structured knowledge served via MCP.",
+        "name": "codecortex",
+        "full_name": "rushikeshmore/codecortex",
+        "description": "A high-performance typescript compression tool for api workloads",
         "language": "TypeScript",
-        "stargazers_count": 128,
-        "forks_count": 15,
-        "open_issues_count": 8,
-        "created_at": "2026-02-25T08:00:00Z",
-        "updated_at": "2026-03-12T20:00:00Z",
-        "pushed_at": "2026-03-12T19:55:00Z",
+        "stargazers_count": 187,
+        "forks_count": 23,
+        "open_issues_count": 17,
+        "created_at": "2026-02-02T01:00:00Z",
+        "updated_at": "2026-03-02T01:30:00Z",
         "default_branch": "main",
         "visibility": "public",
-        "topics": ["mcp", "codebase-knowledge", "tree-sitter", "ai-agents", "context-engineering", "claude", "typescript"],
+        "topics": [
+          "compression",
+          "api"
+        ],
         "license": {
           "key": "mit",
           "name": "MIT License",
-          "spdx_id": "MIT",
-          "url": "https://api.github.com/licenses/mit"
-        },
-        "owner": {
-          "login": "rushikeshmore",
-          "id": 12345678,
-          "avatar_url": "https://avatars.githubusercontent.com/u/12345678?v=4",
-          "type": "User"
-        }
-      },
-      "relationships": {
-        "contributors": {
-          "data": [
-            {"id": 12345678, "type": "user", "login": "rushikeshmore", "contributions": 312},
-            {"id": 87654321, "type": "user", "login": "claude-assistant", "contributions": 201}
-          ]
-        },
-        "releases": {
-          "data": [
-            {"id": 10, "tag_name": "v0.5.0", "name": "MCP-first architecture", "created_at": "2026-03-09T00:00:00Z", "prerelease": false},
-            {"id": 11, "tag_name": "v0.6.0", "name": "Context injection", "created_at": "2026-03-12T00:00:00Z", "prerelease": true}
-          ]
+          "spdx_id": "MIT"
         }
       }
     },
@@ -97,59 +61,1334 @@
       "attributes": {
         "name": "agent-karma",
         "full_name": "rushikeshmore/agent-karma",
-        "description": "AgentKarma scores AI agent wallet addresses for trustworthiness on ERC-8004 and x402 protocols",
-        "language": "TypeScript",
-        "stargazers_count": 67,
-        "forks_count": 12,
-        "open_issues_count": 5,
-        "created_at": "2026-02-23T06:00:00Z",
-        "updated_at": "2026-03-01T22:00:00Z",
-        "pushed_at": "2026-03-01T21:50:00Z",
+        "description": "A high-performance python devtools tool for web workloads",
+        "language": "Python",
+        "stargazers_count": 211,
+        "forks_count": 11,
+        "open_issues_count": 11,
+        "created_at": "2026-03-03T02:00:00Z",
+        "updated_at": "2026-03-03T02:30:00Z",
         "default_branch": "main",
         "visibility": "public",
-        "topics": ["a2a", "erc-8004", "x402", "agent-scoring", "mcp", "blockchain", "ethereum", "trustworthiness"],
+        "topics": [
+          "devtools",
+          "web",
+          "compression",
+          "cloud"
+        ],
         "license": {
           "key": "mit",
           "name": "MIT License",
-          "spdx_id": "MIT",
-          "url": "https://api.github.com/licenses/mit"
-        },
-        "owner": {
-          "login": "rushikeshmore",
-          "id": 12345678,
-          "avatar_url": "https://avatars.githubusercontent.com/u/12345678?v=4",
-          "type": "User"
+          "spdx_id": "MIT"
         }
-      },
-      "relationships": {
-        "contributors": {
-          "data": [
-            {"id": 12345678, "type": "user", "login": "rushikeshmore", "contributions": 245}
-          ]
-        },
-        "releases": {
-          "data": [
-            {"id": 20, "tag_name": "v0.5.1", "name": "Sprint 1 deploy", "created_at": "2026-03-01T00:00:00Z", "prerelease": false}
-          ]
+      }
+    },
+    {
+      "id": 4,
+      "type": "repository",
+      "attributes": {
+        "name": "indra",
+        "full_name": "rushikeshmore/indra",
+        "description": "A high-performance go database tool for systems workloads",
+        "language": "Go",
+        "stargazers_count": 129,
+        "forks_count": 4,
+        "open_issues_count": 16,
+        "created_at": "2026-04-04T03:00:00Z",
+        "updated_at": "2026-03-04T03:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "database",
+          "systems"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "repository",
+      "attributes": {
+        "name": "neural-net",
+        "full_name": "rushikeshmore/neural-net",
+        "description": "A high-performance java systems tool for ml workloads",
+        "language": "Java",
+        "stargazers_count": 437,
+        "forks_count": 134,
+        "open_issues_count": 15,
+        "created_at": "2026-05-05T04:00:00Z",
+        "updated_at": "2026-03-05T04:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "systems",
+          "ml",
+          "compression"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "repository",
+      "attributes": {
+        "name": "fast-cache",
+        "full_name": "rushikeshmore/fast-cache",
+        "description": "A high-performance c++ devtools tool for api workloads",
+        "language": "C++",
+        "stargazers_count": 17,
+        "forks_count": 4,
+        "open_issues_count": 15,
+        "created_at": "2026-06-06T05:00:00Z",
+        "updated_at": "2026-03-06T05:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "devtools",
+          "api",
+          "ai",
+          "database"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "repository",
+      "attributes": {
+        "name": "data-pipe",
+        "full_name": "rushikeshmore/data-pipe",
+        "description": "A high-performance ruby systems tool for database workloads",
+        "language": "Ruby",
+        "stargazers_count": 285,
+        "forks_count": 41,
+        "open_issues_count": 9,
+        "created_at": "2026-07-07T06:00:00Z",
+        "updated_at": "2026-03-07T06:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "systems",
+          "database",
+          "ml"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "repository",
+      "attributes": {
+        "name": "log-stream",
+        "full_name": "rushikeshmore/log-stream",
+        "description": "A high-performance zig web tool for ml workloads",
+        "language": "Zig",
+        "stargazers_count": 427,
+        "forks_count": 131,
+        "open_issues_count": 13,
+        "created_at": "2026-08-08T07:00:00Z",
+        "updated_at": "2026-03-08T07:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "web",
+          "ml"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "repository",
+      "attributes": {
+        "name": "auth-proxy",
+        "full_name": "rushikeshmore/auth-proxy",
+        "description": "A high-performance rust cloud tool for cli workloads",
+        "language": "Rust",
+        "stargazers_count": 153,
+        "forks_count": 41,
+        "open_issues_count": 13,
+        "created_at": "2026-09-09T08:00:00Z",
+        "updated_at": "2026-03-09T08:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "cloud",
+          "cli"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "repository",
+      "attributes": {
+        "name": "api-gateway",
+        "full_name": "rushikeshmore/api-gateway",
+        "description": "A high-performance typescript systems tool for compression workloads",
+        "language": "TypeScript",
+        "stargazers_count": 240,
+        "forks_count": 41,
+        "open_issues_count": 1,
+        "created_at": "2026-10-10T09:00:00Z",
+        "updated_at": "2026-03-10T09:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "systems",
+          "compression",
+          "cli"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "repository",
+      "attributes": {
+        "name": "queue-worker",
+        "full_name": "rushikeshmore/queue-worker",
+        "description": "A high-performance python systems tool for ai workloads",
+        "language": "Python",
+        "stargazers_count": 393,
+        "forks_count": 90,
+        "open_issues_count": 14,
+        "created_at": "2026-11-11T10:00:00Z",
+        "updated_at": "2026-03-11T10:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "systems",
+          "ai",
+          "api"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "repository",
+      "attributes": {
+        "name": "rate-limiter",
+        "full_name": "rushikeshmore/rate-limiter",
+        "description": "A high-performance go compression tool for api workloads",
+        "language": "Go",
+        "stargazers_count": 189,
+        "forks_count": 16,
+        "open_issues_count": 1,
+        "created_at": "2026-12-12T11:00:00Z",
+        "updated_at": "2026-03-12T11:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "compression",
+          "api"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "repository",
+      "attributes": {
+        "name": "config-server",
+        "full_name": "rushikeshmore/config-server",
+        "description": "A high-performance java devtools tool for ai workloads",
+        "language": "Java",
+        "stargazers_count": 498,
+        "forks_count": 141,
+        "open_issues_count": 7,
+        "created_at": "2026-01-13T12:00:00Z",
+        "updated_at": "2026-03-13T12:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "devtools",
+          "ai",
+          "web",
+          "database",
+          "cloud"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "repository",
+      "attributes": {
+        "name": "health-check",
+        "full_name": "rushikeshmore/health-check",
+        "description": "A high-performance c++ systems tool for cli workloads",
+        "language": "C++",
+        "stargazers_count": 220,
+        "forks_count": 69,
+        "open_issues_count": 6,
+        "created_at": "2026-02-14T13:00:00Z",
+        "updated_at": "2026-03-14T13:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "systems",
+          "cli",
+          "ml",
+          "database"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "repository",
+      "attributes": {
+        "name": "metric-sink",
+        "full_name": "rushikeshmore/metric-sink",
+        "description": "A high-performance ruby ai tool for web workloads",
+        "language": "Ruby",
+        "stargazers_count": 93,
+        "forks_count": 21,
+        "open_issues_count": 5,
+        "created_at": "2026-03-15T14:00:00Z",
+        "updated_at": "2026-03-15T14:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "ai",
+          "web",
+          "compression"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "repository",
+      "attributes": {
+        "name": "trace-viewer",
+        "full_name": "rushikeshmore/trace-viewer",
+        "description": "A high-performance zig cli tool for ai workloads",
+        "language": "Zig",
+        "stargazers_count": 226,
+        "forks_count": 68,
+        "open_issues_count": 9,
+        "created_at": "2026-04-16T15:00:00Z",
+        "updated_at": "2026-03-16T15:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "cli",
+          "ai",
+          "web",
+          "systems",
+          "database"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 17,
+      "type": "repository",
+      "attributes": {
+        "name": "batch-proc",
+        "full_name": "rushikeshmore/batch-proc",
+        "description": "A high-performance rust cli tool for web workloads",
+        "language": "Rust",
+        "stargazers_count": 189,
+        "forks_count": 44,
+        "open_issues_count": 17,
+        "created_at": "2026-05-17T16:00:00Z",
+        "updated_at": "2026-03-17T16:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "cli",
+          "web",
+          "database",
+          "ml"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "repository",
+      "attributes": {
+        "name": "event-bus",
+        "full_name": "rushikeshmore/event-bus",
+        "description": "A high-performance typescript devtools tool for api workloads",
+        "language": "TypeScript",
+        "stargazers_count": 179,
+        "forks_count": 38,
+        "open_issues_count": 0,
+        "created_at": "2026-06-18T17:00:00Z",
+        "updated_at": "2026-03-18T17:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "devtools",
+          "api",
+          "database"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 19,
+      "type": "repository",
+      "attributes": {
+        "name": "file-sync",
+        "full_name": "rushikeshmore/file-sync",
+        "description": "A high-performance python ml tool for devtools workloads",
+        "language": "Python",
+        "stargazers_count": 59,
+        "forks_count": 16,
+        "open_issues_count": 11,
+        "created_at": "2026-07-19T18:00:00Z",
+        "updated_at": "2026-03-19T18:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "ml",
+          "devtools",
+          "cloud",
+          "web",
+          "database"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "repository",
+      "attributes": {
+        "name": "key-vault",
+        "full_name": "rushikeshmore/key-vault",
+        "description": "A high-performance go database tool for ml workloads",
+        "language": "Go",
+        "stargazers_count": 277,
+        "forks_count": 84,
+        "open_issues_count": 7,
+        "created_at": "2026-08-20T19:00:00Z",
+        "updated_at": "2026-03-20T19:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "database",
+          "ml",
+          "api",
+          "devtools",
+          "systems"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "repository",
+      "attributes": {
+        "name": "schema-reg",
+        "full_name": "rushikeshmore/schema-reg",
+        "description": "A high-performance java api tool for cloud workloads",
+        "language": "Java",
+        "stargazers_count": 75,
+        "forks_count": 14,
+        "open_issues_count": 9,
+        "created_at": "2026-09-21T20:00:00Z",
+        "updated_at": "2026-03-21T20:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "api",
+          "cloud",
+          "ai",
+          "database"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "repository",
+      "attributes": {
+        "name": "load-test",
+        "full_name": "rushikeshmore/load-test",
+        "description": "A high-performance c++ devtools tool for compression workloads",
+        "language": "C++",
+        "stargazers_count": 150,
+        "forks_count": 1,
+        "open_issues_count": 6,
+        "created_at": "2026-10-22T21:00:00Z",
+        "updated_at": "2026-03-22T21:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "devtools",
+          "compression",
+          "api",
+          "cloud",
+          "ai"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 23,
+      "type": "repository",
+      "attributes": {
+        "name": "code-gen",
+        "full_name": "rushikeshmore/code-gen",
+        "description": "A high-performance ruby ai tool for web workloads",
+        "language": "Ruby",
+        "stargazers_count": 279,
+        "forks_count": 27,
+        "open_issues_count": 6,
+        "created_at": "2026-11-23T22:00:00Z",
+        "updated_at": "2026-03-23T22:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "ai",
+          "web",
+          "systems",
+          "ml",
+          "database"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 24,
+      "type": "repository",
+      "attributes": {
+        "name": "doc-search",
+        "full_name": "rushikeshmore/doc-search",
+        "description": "A high-performance zig api tool for systems workloads",
+        "language": "Zig",
+        "stargazers_count": 58,
+        "forks_count": 11,
+        "open_issues_count": 10,
+        "created_at": "2026-12-24T23:00:00Z",
+        "updated_at": "2026-03-24T23:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "api",
+          "systems",
+          "cli",
+          "devtools",
+          "ai"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 25,
+      "type": "repository",
+      "attributes": {
+        "name": "link-short",
+        "full_name": "rushikeshmore/link-short",
+        "description": "A high-performance rust devtools tool for cli workloads",
+        "language": "Rust",
+        "stargazers_count": 241,
+        "forks_count": 38,
+        "open_issues_count": 1,
+        "created_at": "2026-01-25T00:00:00Z",
+        "updated_at": "2026-03-25T00:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "devtools",
+          "cli"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 26,
+      "type": "repository",
+      "attributes": {
+        "name": "image-opt",
+        "full_name": "rushikeshmore/image-opt",
+        "description": "A high-performance typescript cloud tool for web workloads",
+        "language": "TypeScript",
+        "stargazers_count": 223,
+        "forks_count": 52,
+        "open_issues_count": 13,
+        "created_at": "2026-02-26T01:00:00Z",
+        "updated_at": "2026-03-26T01:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "cloud",
+          "web"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 27,
+      "type": "repository",
+      "attributes": {
+        "name": "mail-send",
+        "full_name": "rushikeshmore/mail-send",
+        "description": "A high-performance python ai tool for systems workloads",
+        "language": "Python",
+        "stargazers_count": 436,
+        "forks_count": 141,
+        "open_issues_count": 13,
+        "created_at": "2026-03-27T02:00:00Z",
+        "updated_at": "2026-03-27T02:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "ai",
+          "systems",
+          "web"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 28,
+      "type": "repository",
+      "attributes": {
+        "name": "task-sched",
+        "full_name": "rushikeshmore/task-sched",
+        "description": "A high-performance go ai tool for api workloads",
+        "language": "Go",
+        "stargazers_count": 361,
+        "forks_count": 68,
+        "open_issues_count": 6,
+        "created_at": "2026-04-28T03:00:00Z",
+        "updated_at": "2026-03-28T03:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "ai",
+          "api",
+          "cloud",
+          "compression"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 29,
+      "type": "repository",
+      "attributes": {
+        "name": "dns-proxy",
+        "full_name": "rushikeshmore/dns-proxy",
+        "description": "A high-performance java ai tool for api workloads",
+        "language": "Java",
+        "stargazers_count": 239,
+        "forks_count": 18,
+        "open_issues_count": 4,
+        "created_at": "2026-05-01T04:00:00Z",
+        "updated_at": "2026-03-01T04:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "ai",
+          "api",
+          "cloud"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 30,
+      "type": "repository",
+      "attributes": {
+        "name": "cert-mgr",
+        "full_name": "rushikeshmore/cert-mgr",
+        "description": "A high-performance c++ ai tool for cli workloads",
+        "language": "C++",
+        "stargazers_count": 87,
+        "forks_count": 7,
+        "open_issues_count": 20,
+        "created_at": "2026-06-02T05:00:00Z",
+        "updated_at": "2026-03-02T05:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "ai",
+          "cli"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 31,
+      "type": "repository",
+      "attributes": {
+        "name": "sec-scan",
+        "full_name": "rushikeshmore/sec-scan",
+        "description": "A high-performance ruby web tool for api workloads",
+        "language": "Ruby",
+        "stargazers_count": 319,
+        "forks_count": 72,
+        "open_issues_count": 14,
+        "created_at": "2026-07-03T06:00:00Z",
+        "updated_at": "2026-03-03T06:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "web",
+          "api",
+          "compression"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 32,
+      "type": "repository",
+      "attributes": {
+        "name": "dep-check",
+        "full_name": "rushikeshmore/dep-check",
+        "description": "A high-performance zig ml tool for systems workloads",
+        "language": "Zig",
+        "stargazers_count": 343,
+        "forks_count": 96,
+        "open_issues_count": 9,
+        "created_at": "2026-08-04T07:00:00Z",
+        "updated_at": "2026-03-04T07:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "ml",
+          "systems",
+          "database",
+          "ai",
+          "devtools"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 33,
+      "type": "repository",
+      "attributes": {
+        "name": "lint-fix",
+        "full_name": "rushikeshmore/lint-fix",
+        "description": "A high-performance rust cli tool for ai workloads",
+        "language": "Rust",
+        "stargazers_count": 419,
+        "forks_count": 38,
+        "open_issues_count": 15,
+        "created_at": "2026-09-05T08:00:00Z",
+        "updated_at": "2026-03-05T08:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "cli",
+          "ai"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 34,
+      "type": "repository",
+      "attributes": {
+        "name": "test-runner",
+        "full_name": "rushikeshmore/test-runner",
+        "description": "A high-performance typescript web tool for api workloads",
+        "language": "TypeScript",
+        "stargazers_count": 94,
+        "forks_count": 17,
+        "open_issues_count": 12,
+        "created_at": "2026-10-06T09:00:00Z",
+        "updated_at": "2026-03-06T09:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "web",
+          "api",
+          "ml",
+          "systems",
+          "devtools"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 35,
+      "type": "repository",
+      "attributes": {
+        "name": "bench-suite",
+        "full_name": "rushikeshmore/bench-suite",
+        "description": "A high-performance python web tool for systems workloads",
+        "language": "Python",
+        "stargazers_count": 214,
+        "forks_count": 44,
+        "open_issues_count": 19,
+        "created_at": "2026-11-07T10:00:00Z",
+        "updated_at": "2026-03-07T10:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "web",
+          "systems",
+          "database",
+          "ai"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 36,
+      "type": "repository",
+      "attributes": {
+        "name": "deploy-bot",
+        "full_name": "rushikeshmore/deploy-bot",
+        "description": "A high-performance go systems tool for api workloads",
+        "language": "Go",
+        "stargazers_count": 76,
+        "forks_count": 3,
+        "open_issues_count": 12,
+        "created_at": "2026-12-08T11:00:00Z",
+        "updated_at": "2026-03-08T11:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "systems",
+          "api",
+          "compression",
+          "web",
+          "devtools"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 37,
+      "type": "repository",
+      "attributes": {
+        "name": "ci-runner",
+        "full_name": "rushikeshmore/ci-runner",
+        "description": "A high-performance java systems tool for cloud workloads",
+        "language": "Java",
+        "stargazers_count": 404,
+        "forks_count": 40,
+        "open_issues_count": 17,
+        "created_at": "2026-01-09T12:00:00Z",
+        "updated_at": "2026-03-09T12:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "systems",
+          "cloud"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 38,
+      "type": "repository",
+      "attributes": {
+        "name": "cd-pipe",
+        "full_name": "rushikeshmore/cd-pipe",
+        "description": "A high-performance c++ cloud tool for api workloads",
+        "language": "C++",
+        "stargazers_count": 436,
+        "forks_count": 27,
+        "open_issues_count": 6,
+        "created_at": "2026-02-10T13:00:00Z",
+        "updated_at": "2026-03-10T13:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "cloud",
+          "api",
+          "devtools"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 39,
+      "type": "repository",
+      "attributes": {
+        "name": "infra-mgr",
+        "full_name": "rushikeshmore/infra-mgr",
+        "description": "A high-performance ruby database tool for devtools workloads",
+        "language": "Ruby",
+        "stargazers_count": 467,
+        "forks_count": 81,
+        "open_issues_count": 15,
+        "created_at": "2026-03-11T14:00:00Z",
+        "updated_at": "2026-03-11T14:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "database",
+          "devtools",
+          "ai",
+          "cli",
+          "web"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 40,
+      "type": "repository",
+      "attributes": {
+        "name": "cost-opt",
+        "full_name": "rushikeshmore/cost-opt",
+        "description": "A high-performance zig devtools tool for ai workloads",
+        "language": "Zig",
+        "stargazers_count": 59,
+        "forks_count": 3,
+        "open_issues_count": 17,
+        "created_at": "2026-04-12T15:00:00Z",
+        "updated_at": "2026-03-12T15:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "devtools",
+          "ai",
+          "cli",
+          "web",
+          "compression"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 41,
+      "type": "repository",
+      "attributes": {
+        "name": "alert-hub",
+        "full_name": "rushikeshmore/alert-hub",
+        "description": "A high-performance rust database tool for api workloads",
+        "language": "Rust",
+        "stargazers_count": 51,
+        "forks_count": 15,
+        "open_issues_count": 4,
+        "created_at": "2026-05-13T16:00:00Z",
+        "updated_at": "2026-03-13T16:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "database",
+          "api",
+          "cli",
+          "cloud"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 42,
+      "type": "repository",
+      "attributes": {
+        "name": "dash-build",
+        "full_name": "rushikeshmore/dash-build",
+        "description": "A high-performance typescript cloud tool for compression workloads",
+        "language": "TypeScript",
+        "stargazers_count": 286,
+        "forks_count": 83,
+        "open_issues_count": 20,
+        "created_at": "2026-06-14T17:00:00Z",
+        "updated_at": "2026-03-14T17:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "cloud",
+          "compression"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 43,
+      "type": "repository",
+      "attributes": {
+        "name": "report-gen",
+        "full_name": "rushikeshmore/report-gen",
+        "description": "A high-performance python web tool for cli workloads",
+        "language": "Python",
+        "stargazers_count": 283,
+        "forks_count": 81,
+        "open_issues_count": 7,
+        "created_at": "2026-07-15T18:00:00Z",
+        "updated_at": "2026-03-15T18:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "web",
+          "cli",
+          "database",
+          "devtools"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 44,
+      "type": "repository",
+      "attributes": {
+        "name": "backup-mgr",
+        "full_name": "rushikeshmore/backup-mgr",
+        "description": "A high-performance go web tool for cli workloads",
+        "language": "Go",
+        "stargazers_count": 102,
+        "forks_count": 29,
+        "open_issues_count": 7,
+        "created_at": "2026-08-16T19:00:00Z",
+        "updated_at": "2026-03-16T19:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "web",
+          "cli"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 45,
+      "type": "repository",
+      "attributes": {
+        "name": "migrate-db",
+        "full_name": "rushikeshmore/migrate-db",
+        "description": "A high-performance java ai tool for devtools workloads",
+        "language": "Java",
+        "stargazers_count": 239,
+        "forks_count": 48,
+        "open_issues_count": 15,
+        "created_at": "2026-09-17T20:00:00Z",
+        "updated_at": "2026-03-17T20:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "ai",
+          "devtools",
+          "cloud",
+          "ml",
+          "database"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 46,
+      "type": "repository",
+      "attributes": {
+        "name": "seed-data",
+        "full_name": "rushikeshmore/seed-data",
+        "description": "A high-performance c++ ml tool for devtools workloads",
+        "language": "C++",
+        "stargazers_count": 275,
+        "forks_count": 86,
+        "open_issues_count": 6,
+        "created_at": "2026-10-18T21:00:00Z",
+        "updated_at": "2026-03-18T21:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "ml",
+          "devtools"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 47,
+      "type": "repository",
+      "attributes": {
+        "name": "mock-server",
+        "full_name": "rushikeshmore/mock-server",
+        "description": "A high-performance ruby web tool for cloud workloads",
+        "language": "Ruby",
+        "stargazers_count": 262,
+        "forks_count": 33,
+        "open_issues_count": 14,
+        "created_at": "2026-11-19T22:00:00Z",
+        "updated_at": "2026-03-19T22:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "web",
+          "cloud",
+          "ml",
+          "systems"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 48,
+      "type": "repository",
+      "attributes": {
+        "name": "proxy-pool",
+        "full_name": "rushikeshmore/proxy-pool",
+        "description": "A high-performance zig ml tool for systems workloads",
+        "language": "Zig",
+        "stargazers_count": 483,
+        "forks_count": 40,
+        "open_issues_count": 9,
+        "created_at": "2026-12-20T23:00:00Z",
+        "updated_at": "2026-03-20T23:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "ml",
+          "systems"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 49,
+      "type": "repository",
+      "attributes": {
+        "name": "edge-func",
+        "full_name": "rushikeshmore/edge-func",
+        "description": "A high-performance rust database tool for api workloads",
+        "language": "Rust",
+        "stargazers_count": 420,
+        "forks_count": 38,
+        "open_issues_count": 11,
+        "created_at": "2026-01-21T00:00:00Z",
+        "updated_at": "2026-03-21T00:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "database",
+          "api"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
+        }
+      }
+    },
+    {
+      "id": 50,
+      "type": "repository",
+      "attributes": {
+        "name": "wasm-rt",
+        "full_name": "rushikeshmore/wasm-rt",
+        "description": "A high-performance typescript compression tool for cli workloads",
+        "language": "TypeScript",
+        "stargazers_count": 308,
+        "forks_count": 49,
+        "open_issues_count": 10,
+        "created_at": "2026-02-22T01:00:00Z",
+        "updated_at": "2026-03-22T01:30:00Z",
+        "default_branch": "main",
+        "visibility": "public",
+        "topics": [
+          "compression",
+          "cli",
+          "web"
+        ],
+        "license": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT"
         }
       }
     }
   ],
   "meta": {
-    "total_count": 3,
+    "total_count": 50,
     "page": 1,
-    "per_page": 30,
+    "per_page": 50,
     "total_pages": 1,
     "rate_limit": {
       "limit": 5000,
-      "remaining": 4987,
+      "remaining": 4950,
       "reset": 1742060400,
-      "used": 13
+      "used": 50
     }
   },
   "links": {
-    "self": "https://api.github.com/users/rushikeshmore/repos?page=1&per_page=30",
-    "first": "https://api.github.com/users/rushikeshmore/repos?page=1&per_page=30",
-    "last": "https://api.github.com/users/rushikeshmore/repos?page=1&per_page=30"
+    "self": "https://api.github.com/users/rushikeshmore/repos?page=1&per_page=50",
+    "first": "https://api.github.com/users/rushikeshmore/repos?page=1&per_page=50",
+    "last": "https://api.github.com/users/rushikeshmore/repos?page=1&per_page=50"
   }
 }

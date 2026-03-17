@@ -5,16 +5,19 @@
 
 pub mod csv;
 pub mod json;
+pub mod json_array;
 pub mod log_transform;
 pub mod lzp;
+pub mod markdown;
 pub mod ndjson;
 pub mod transform;
 pub mod wrt;
 
 use crate::dcx::{FormatHint, Mode};
 use transform::{
-    TRANSFORM_CSV_COLUMNAR, TRANSFORM_JSON_KEY_INTERN, TRANSFORM_LOG_COLUMNAR, TRANSFORM_LZP,
-    TRANSFORM_NDJSON_COLUMNAR, TRANSFORM_WRT, TransformChain,
+    TRANSFORM_CSV_COLUMNAR, TRANSFORM_JSON_ARRAY_COLUMNAR, TRANSFORM_JSON_KEY_INTERN,
+    TRANSFORM_LOG_COLUMNAR, TRANSFORM_LZP, TRANSFORM_MD_STRUCTURAL, TRANSFORM_NDJSON_COLUMNAR,
+    TRANSFORM_WRT, TransformChain,
 };
 
 /// Detect file format from content bytes.
@@ -109,6 +112,27 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
         }
     }
 
+    // Markdown structural transform: ALL modes.
+    // Separates code blocks from prose — different statistical properties.
+    if format == FormatHint::Markdown {
+        if let Some(result) = markdown::preprocess(&current) {
+            chain.push(TRANSFORM_MD_STRUCTURAL, result.metadata);
+            current = result.data;
+            return (current, chain);
+        }
+    }
+
+    // JSON array columnar reorg: ALL modes.
+    // For JSON with nested arrays of objects (JSON-API style responses).
+    // Try this BEFORE key interning — columnar already removes key repetition.
+    if format == FormatHint::Json {
+        if let Some(result) = json_array::preprocess(&current) {
+            chain.push(TRANSFORM_JSON_ARRAY_COLUMNAR, result.metadata);
+            current = result.data;
+            return (current, chain);
+        }
+    }
+
     // JSON key interning: Balanced/Max only (hurts Fast mode due to zstd redundancy).
     if matches!(mode, Mode::Balanced | Mode::Max)
         && matches!(format, FormatHint::Json | FormatHint::Ndjson)
@@ -152,6 +176,12 @@ pub fn reverse_preprocess(data: &[u8], chain: &TransformChain) -> Vec<u8> {
             }
             TRANSFORM_LOG_COLUMNAR => {
                 current = log_transform::reverse(&current, &record.metadata);
+            }
+            TRANSFORM_JSON_ARRAY_COLUMNAR => {
+                current = json_array::reverse(&current, &record.metadata);
+            }
+            TRANSFORM_MD_STRUCTURAL => {
+                current = markdown::reverse(&current, &record.metadata);
             }
             TRANSFORM_WRT => {
                 current = wrt::reverse(&current);
@@ -488,6 +518,65 @@ mod tests {
             4,
             "should have 4 columns: timestamp, level, module, message"
         );
+    }
+
+    #[test]
+    fn preprocess_markdown_structural() {
+        let md = b"# Title\n\nSome prose text here.\n\n```rust\nfn main() {\n    println!(\"hello\");\n}\n```\n\nMore prose after code.\n";
+        let (preprocessed, chain) = preprocess(md, FormatHint::Markdown, Mode::Balanced);
+        assert!(!chain.is_empty());
+        assert_eq!(
+            chain.records[0].id,
+            transform::TRANSFORM_MD_STRUCTURAL,
+            "Markdown should use structural transform"
+        );
+
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(restored, md.to_vec());
+    }
+
+    #[test]
+    fn preprocess_markdown_structural_fast_mode() {
+        let md = b"# Title\n\nSome prose text here.\n\n```rust\nfn main() {\n    println!(\"hello\");\n}\n```\n\nMore prose after code.\n";
+        let (preprocessed, chain) = preprocess(md, FormatHint::Markdown, Mode::Fast);
+        assert!(!chain.is_empty());
+        assert_eq!(chain.records[0].id, transform::TRANSFORM_MD_STRUCTURAL);
+
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(restored, md.to_vec());
+    }
+
+    #[test]
+    fn preprocess_json_array_columnar() {
+        let data = br#"{"data": [{"id": 1, "type": "a"}, {"id": 2, "type": "b"}, {"id": 3, "type": "c"}, {"id": 4, "type": "d"}, {"id": 5, "type": "e"}], "meta": {"count": 5}}"#;
+        let (preprocessed, chain) = preprocess(data, FormatHint::Json, Mode::Balanced);
+        assert!(!chain.is_empty());
+        assert_eq!(
+            chain.records[0].id,
+            transform::TRANSFORM_JSON_ARRAY_COLUMNAR,
+            "JSON with array should use array columnar transform"
+        );
+
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn preprocess_json_array_too_few_falls_through() {
+        // Only 3 elements — below MIN_ROWS, should fall through to key interning.
+        let data = br#"{"data": [{"id": 1, "type": "a"}, {"id": 2, "type": "a"}, {"id": 3, "type": "a"}], "meta": {"count": 3}, "data2": [{"id": 1, "type": "a"}, {"id": 2, "type": "a"}, {"id": 3, "type": "a"}]}"#;
+        let (preprocessed, chain) = preprocess(data, FormatHint::Json, Mode::Balanced);
+        // Should fall through to key interning (not array columnar).
+        if !chain.is_empty() {
+            assert_ne!(
+                chain.records[0].id,
+                transform::TRANSFORM_JSON_ARRAY_COLUMNAR,
+                "3 elements should NOT trigger array columnar"
+            );
+        }
+
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(restored, data.to_vec());
     }
 
     #[test]
