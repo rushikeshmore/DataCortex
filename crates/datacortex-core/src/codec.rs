@@ -4,6 +4,7 @@
 //! Phase 3: Full CM engine with higher-order models + mixer + APM (Balanced mode, ~256MB).
 //! Phase 5: Full CM engine with 2x context maps (Max mode, ~512MB).
 //! Phase 6: Dual-path CM + LLM with MetaMixer (Max mode with `neural` feature).
+//! Phase 7: Dual-path CM + GRU byte-level predictor (Balanced mode).
 
 use std::io::{self, Cursor, Read, Write};
 
@@ -11,6 +12,8 @@ use crate::dcx::{DcxHeader, FormatHint, Mode};
 use crate::entropy::arithmetic::{ArithmeticDecoder, ArithmeticEncoder};
 use crate::format::transform::TransformChain;
 use crate::format::{detect_format, preprocess, reverse_preprocess};
+use crate::mixer::MetaMixer;
+use crate::model::gru_model::GruModel;
 use crate::model::{CMConfig, CMEngine};
 
 /// zstd compression level per mode (for Fast mode).
@@ -56,6 +59,147 @@ fn cm_decompress(compressed: &[u8], original_size: usize, config: CMConfig) -> V
             byte_val |= bit << (7 - bpos);
         }
         output.push(byte_val);
+    }
+
+    output
+}
+
+// ─── GRU dual-path (CM + GRU byte predictor) ────────────────────────────────
+// The GRU provides a DIFFERENT signal from CM: byte-level cross-bit correlations.
+// It's blended AFTER the full CM pipeline via MetaMixer.
+// CRITICAL: encoder and decoder must produce IDENTICAL GRU + CM state.
+
+/// Compress using dual-path: CM engine + GRU byte predictor + MetaMixer.
+/// Used for Balanced mode.
+fn gru_compress(data: &[u8], config: CMConfig) -> Vec<u8> {
+    let mut engine = CMEngine::with_config(config);
+    let mut gru = GruModel::new();
+    let mut meta_mixer = MetaMixer::new(8); // 8% GRU weight
+    let mut encoder = ArithmeticEncoder::new();
+
+    let total_bytes = data.len();
+    let report_interval = if total_bytes > 100_000 {
+        total_bytes / 20
+    } else {
+        0
+    };
+
+    let mut last_byte: u8 = 0;
+
+    for (byte_idx, &byte) in data.iter().enumerate() {
+        // At bpos==0 of each byte, run GRU forward with the PREVIOUS byte
+        // (so GRU predicts THIS byte). For the first byte, GRU has no context
+        // and returns uniform (2048).
+        if byte_idx > 0 {
+            // GRU already ran forward for last_byte at end of previous byte.
+            // byte_probs are cached and valid.
+        }
+
+        for bpos in 0..8u8 {
+            let bit = (byte >> (7 - bpos)) & 1;
+
+            // CM prediction (full pipeline: 19 models + mixer + 7 APM).
+            let p_cm = engine.predict();
+
+            // GRU bit prediction from cached byte probs.
+            let partial = if bpos == 0 {
+                1u32
+            } else {
+                let mut p = 1u32;
+                for prev_bpos in 0..bpos {
+                    let prev_bit = (byte >> (7 - prev_bpos)) & 1;
+                    p = (p << 1) | prev_bit as u32;
+                }
+                p
+            };
+            let p_gru = gru.predict_bit(bpos, partial);
+
+            // MetaMixer blend.
+            let p_final = meta_mixer.blend(p_cm, p_gru);
+
+            encoder.encode(bit, p_final);
+            engine.update(bit);
+            meta_mixer.update(bit);
+        }
+
+        // Byte complete: train GRU on observed byte, then forward for next prediction.
+        gru.train(byte);
+        gru.forward(byte);
+        last_byte = byte;
+
+        if report_interval > 0 && (byte_idx + 1) % report_interval == 0 {
+            let pct = (byte_idx + 1) * 100 / total_bytes;
+            eprint!("\r[gru] compressing... {pct}%");
+        }
+    }
+
+    let _ = last_byte; // suppress warning
+
+    if total_bytes > 100_000 {
+        eprintln!("\r[gru] compressing... 100%");
+    }
+
+    encoder.finish()
+}
+
+/// Decompress using dual-path: CM engine + GRU byte predictor + MetaMixer.
+/// Must produce IDENTICAL GRU + CM state as the encoder.
+fn gru_decompress(compressed: &[u8], original_size: usize, config: CMConfig) -> Vec<u8> {
+    let mut engine = CMEngine::with_config(config);
+    let mut gru = GruModel::new();
+    let mut meta_mixer = MetaMixer::new(8); // same 8% as encoder
+    let mut decoder = ArithmeticDecoder::new(compressed);
+    let mut output = Vec::with_capacity(original_size);
+
+    let report_interval = if original_size > 100_000 {
+        original_size / 20
+    } else {
+        0
+    };
+
+    for byte_idx in 0..original_size {
+        let mut byte_val: u8 = 0;
+
+        for bpos in 0..8u8 {
+            // CM prediction.
+            let p_cm = engine.predict();
+
+            // GRU bit prediction (same partial byte state as encoder).
+            let partial = if bpos == 0 {
+                1u32
+            } else {
+                let mut p = 1u32;
+                for prev_bpos in 0..bpos {
+                    let prev_bit = (byte_val >> (7 - prev_bpos)) & 1;
+                    p = (p << 1) | prev_bit as u32;
+                }
+                p
+            };
+            let p_gru = gru.predict_bit(bpos, partial);
+
+            // MetaMixer blend.
+            let p_final = meta_mixer.blend(p_cm, p_gru);
+
+            let bit = decoder.decode(p_final);
+            engine.update(bit);
+            meta_mixer.update(bit);
+            byte_val |= bit << (7 - bpos);
+        }
+
+        output.push(byte_val);
+
+        // Byte complete: train GRU then forward (same as encoder).
+        gru.train(byte_val);
+        gru.forward(byte_val);
+
+        if report_interval > 0 && (byte_idx + 1) % report_interval == 0 {
+            let pct = (byte_idx + 1) * 100 / original_size;
+            eprint!("\r[gru] decompressing... {pct}%");
+        }
+    }
+
+    if original_size > 100_000 {
+        eprintln!("\r[gru] decompressing... 100%");
     }
 
     output
@@ -298,10 +442,10 @@ pub fn compress_with_model<W: Write>(
         Mode::Fast => {
             zstd::bulk::compress(&preprocessed, zstd_level(mode)).map_err(io::Error::other)?
         }
-        // Balanced mode: CM engine only.
+        // Balanced mode: dual-path CM + GRU byte predictor.
         Mode::Balanced => {
             let config = cm_config_for_mode(mode);
-            let cm_data = cm_compress(&preprocessed, config);
+            let cm_data = gru_compress(&preprocessed, config);
             let mut payload = Vec::with_capacity(8 + cm_data.len());
             payload.extend_from_slice(&(preprocessed.len() as u64).to_le_bytes());
             payload.extend_from_slice(&cm_data);
@@ -401,8 +545,21 @@ pub fn decompress_with_model<R: Read>(
             zstd::bulk::decompress(&compressed, header.original_size as usize * 2 + 65536)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
         }
-        Mode::Balanced | Mode::Max => {
-            // CM modes embed the preprocessed length as the first 8 bytes of the payload.
+        Mode::Balanced => {
+            // Balanced mode: dual-path CM + GRU byte predictor.
+            if compressed.len() < 8 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "CM mode compressed data too short",
+                ));
+            }
+            let size_raw = u64::from_le_bytes(compressed[..8].try_into().unwrap());
+            let preprocessed_size = (size_raw & !(1u64 << 63)) as usize;
+            let config = cm_config_for_mode(header.mode);
+            gru_decompress(&compressed[8..], preprocessed_size, config)
+        }
+        Mode::Max => {
+            // Max mode: may use neural (LLM) dual-path or CM-only.
             if compressed.len() < 8 {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,

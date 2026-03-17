@@ -6,6 +6,7 @@
 pub mod cm_model;
 pub mod dmc_model;
 pub mod engine;
+pub mod gru_model;
 pub mod indirect_model;
 pub mod json_model;
 pub mod match_model;
@@ -20,6 +21,7 @@ pub mod xml_model;
 pub use cm_model::{AssociativeContextModel, ChecksumContextModel, ContextModel};
 pub use dmc_model::DmcModel;
 pub use engine::{CMConfig, CMEngine};
+pub use gru_model::GruModel;
 pub use match_model::MatchModel;
 pub use neural_model::NeuralModel;
 pub use order0::Order0Model;
