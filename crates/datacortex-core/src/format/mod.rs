@@ -3,6 +3,7 @@
 //! Phase 0: heuristic detection.
 //! Phase 1: format-aware preprocessing (JSON key interning) + detection.
 
+pub mod csv;
 pub mod json;
 pub mod lzp;
 pub mod ndjson;
@@ -11,8 +12,8 @@ pub mod wrt;
 
 use crate::dcx::{FormatHint, Mode};
 use transform::{
-    TRANSFORM_JSON_KEY_INTERN, TRANSFORM_LZP, TRANSFORM_NDJSON_COLUMNAR, TRANSFORM_WRT,
-    TransformChain,
+    TRANSFORM_CSV_COLUMNAR, TRANSFORM_JSON_KEY_INTERN, TRANSFORM_LZP, TRANSFORM_NDJSON_COLUMNAR,
+    TRANSFORM_WRT, TransformChain,
 };
 
 /// Detect file format from content bytes.
@@ -86,6 +87,15 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
         }
     }
 
+    // CSV columnar reorg: ALL modes (dramatic improvement for tabular CSV data).
+    if format == FormatHint::Csv {
+        if let Some(result) = csv::preprocess(&current) {
+            chain.push(TRANSFORM_CSV_COLUMNAR, result.metadata);
+            current = result.data;
+            return (current, chain);
+        }
+    }
+
     // JSON key interning: Balanced/Max only (hurts Fast mode due to zstd redundancy).
     if matches!(mode, Mode::Balanced | Mode::Max)
         && matches!(format, FormatHint::Json | FormatHint::Ndjson)
@@ -123,6 +133,9 @@ pub fn reverse_preprocess(data: &[u8], chain: &TransformChain) -> Vec<u8> {
             }
             TRANSFORM_NDJSON_COLUMNAR => {
                 current = ndjson::reverse(&current, &record.metadata);
+            }
+            TRANSFORM_CSV_COLUMNAR => {
+                current = csv::reverse(&current, &record.metadata);
             }
             TRANSFORM_WRT => {
                 current = wrt::reverse(&current);
@@ -191,23 +204,9 @@ fn has_markdown_indicators(data: &[u8]) -> bool {
 }
 
 fn is_csv(data: &[u8]) -> bool {
-    let sample = &data[..data.len().min(4096)];
-    let lines: Vec<&[u8]> = sample
-        .split(|&b| b == b'\n')
-        .filter(|l| !l.is_empty())
-        .take(10)
-        .collect();
-
-    if lines.len() < 3 {
-        return false;
-    }
-
-    let counts: Vec<usize> = lines
-        .iter()
-        .map(|l| l.iter().filter(|&&b| b == b',').count())
-        .collect();
-    let first = counts[0];
-    first >= 2 && counts.iter().all(|&c| c == first)
+    // Delegate to the CSV module's delimiter detection, which handles
+    // quoted fields with embedded delimiters correctly.
+    csv::detect_csv(data)
 }
 
 fn is_log(data: &[u8]) -> bool {
@@ -397,6 +396,39 @@ mod tests {
         // Verify columnar data groups values.
         let cols: Vec<&[u8]> = preprocessed.split(|&b| b == 0x00).collect();
         assert_eq!(cols.len(), 2, "should have 2 columns");
+    }
+
+    #[test]
+    fn preprocess_csv_columnar() {
+        let data =
+            b"name,age,city\nAlice,30,NYC\nBob,25,SF\nCarol,35,LA\nDave,28,CHI\nEve,32,BOS\n";
+        let (preprocessed, chain) = preprocess(data, FormatHint::Csv, Mode::Balanced);
+        assert!(!chain.is_empty());
+        assert_eq!(
+            chain.records[0].id,
+            transform::TRANSFORM_CSV_COLUMNAR,
+            "CSV should use columnar transform"
+        );
+
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn preprocess_csv_columnar_fast_mode() {
+        // Columnar should apply for ALL modes, including Fast.
+        let data =
+            b"name,age,city\nAlice,30,NYC\nBob,25,SF\nCarol,35,LA\nDave,28,CHI\nEve,32,BOS\n";
+        let (preprocessed, chain) = preprocess(data, FormatHint::Csv, Mode::Fast);
+        assert!(!chain.is_empty());
+        assert_eq!(chain.records[0].id, transform::TRANSFORM_CSV_COLUMNAR);
+
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(restored, data.to_vec());
+
+        // Verify columnar data groups values.
+        let cols: Vec<&[u8]> = preprocessed.split(|&b| b == 0x00).collect();
+        assert_eq!(cols.len(), 3, "should have 3 columns");
     }
 
     #[test]

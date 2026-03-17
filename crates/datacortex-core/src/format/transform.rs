@@ -27,6 +27,7 @@ pub const TRANSFORM_JSON_KEY_INTERN: u8 = 1;
 pub const TRANSFORM_NDJSON_COLUMNAR: u8 = 2;
 pub const TRANSFORM_WRT: u8 = 3;
 pub const TRANSFORM_LZP: u8 = 4;
+pub const TRANSFORM_CSV_COLUMNAR: u8 = 5;
 
 impl TransformChain {
     pub fn new() -> Self {

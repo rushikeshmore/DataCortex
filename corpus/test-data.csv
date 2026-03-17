@@ -1,0 +1,602 @@
+id,name,email,city,date,amount,category,status,department,score
+1,Hank Smith,hank.smith@icloud.com,"San Diego, Metro Area",2024-03-24,1030.33,Toys,completed,Design,55
+2,Frank Miller,frank.miller@hotmail.com,San Francisco,2023-09-07,7161.89,Toys,returned,Support,58
+3,Alice Lewis,alice.lewis@outlook.com,Louisville,2026-06-09,1559.85,Sports,completed,Marketing,49
+4,Wendy Lopez,wendy.lopez@icloud.com,Los Angeles,2026-09-04,9731.31,Health,completed,Product,38
+5,Oscar Hall,oscar.hall@protonmail.com,Denver,2024-12-03,463.96,Books,shipped,Marketing,30
+6,Yvonne Rodriguez,yvonne.rodriguez@zoho.com,Portland,2025-03-12,3556.57,Home,processing,Marketing,78
+7,Julia Clark,julia.clark@hotmail.com,Philadelphia,2026-07-09,9895.29,Toys,pending,HR,99
+8,Olivia Walker,olivia.walker@gmail.com,Austin,2026-05-03,2114.55,Auto,processing,HR,28
+9,Zach Hall,zach.hall@zoho.com,Phoenix,2025-03-08,7451.41,Toys,shipped,Design,55
+10,Zach Taylor,zach.taylor@hotmail.com,Phoenix,2026-02-25,476.87,Clothing,pending,Sales,88
+11,Eve Thomas,eve.thomas@fastmail.com,Nashville,2026-09-09,9710.95,Electronics,processing,Marketing,88
+12,Rachel Lewis,rachel.lewis@protonmail.com,Houston,2025-07-06,4540.50,Home,cancelled,Sales,65
+13,Tina Walker,tina.walker@aol.com,Nashville,2024-03-12,7626.52,Toys,cancelled,Engineering,77
+14,Bob Brown,bob.brown@protonmail.com,San Jose,2024-01-08,8780.82,Clothing,completed,Operations,9
+15,Julia Lewis,julia.lewis@outlook.com,Phoenix,2026-09-06,2654.97,Auto,returned,Support,70
+16,Mia Harris,mia.harris@icloud.com,"Fort Worth, Metro Area",2025-08-17,4518.14,Books,pending,Marketing,44
+17,Kyle Davis,kyle.davis@mail.com,San Diego,2023-02-23,6313.23,Books,completed,Engineering,43
+18,Pete Rodriguez,pete.rodriguez@zoho.com,San Antonio,2024-12-19,5764.65,Books,returned,Legal,25
+19,Caleb Taylor,caleb.taylor@fastmail.com,Columbus,2026-12-02,6735.60,Clothing,completed,Legal,94
+20,Grace Davis,grace.davis@hotmail.com,San Antonio,2026-03-14,1839.77,Beauty,pending,Marketing,57
+21,Kyle Brown,kyle.brown@gmail.com,Portland,2023-02-25,8487.86,Food,returned,Operations,62
+22,Zach Hall,zach.hall@gmail.com,Philadelphia,2026-01-13,2656.43,Beauty,shipped,Legal,90
+23,Kyle Gonzalez,kyle.gonzalez@zoho.com,Phoenix,2024-05-07,9687.27,Auto,processing,Product,8
+24,Dave Johnson,dave.johnson@mail.com,Indianapolis,2024-01-17,806.62,Food,completed,Design,9
+25,Pete Thomas,pete.thomas@yahoo.com,Denver,2024-10-20,403.17,Clothing,returned,Design,73
+26,Quinn Miller,quinn.miller@protonmail.com,San Diego,2025-07-05,6718.86,Home,returned,HR,97
+27,Alice Moore,alice.moore@mail.com,Denver,2023-02-18,2136.25,Home,pending,HR,9
+28,Xavier Martinez,xavier.martinez@outlook.com,Charlotte,2025-10-26,6541.83,Electronics,processing,Product,39
+29,Grace Hall,grace.hall@outlook.com,Dallas,2023-02-24,5534.91,Home,shipped,Design,27
+30,Nick Gonzalez,nick.gonzalez@icloud.com,San Francisco,2026-05-28,513.67,Health,shipped,Engineering,1
+31,Iris Lee,iris.lee@icloud.com,Philadelphia,2026-09-23,4280.29,Electronics,completed,Marketing,89
+32,Julia Johnson,julia.johnson@protonmail.com,Denver,2024-07-05,424.03,Sports,completed,HR,27
+33,Grace Taylor,grace.taylor@aol.com,Columbus,2024-04-28,1630.03,Food,returned,Engineering,23
+34,Victor Robinson,victor.robinson@fastmail.com,Memphis,2024-05-06,7875.01,Clothing,returned,Engineering,61
+35,Ethan Taylor,ethan.taylor@icloud.com,San Diego,2024-01-22,1936.13,Sports,shipped,Marketing,99
+36,Hannah Thomas,hannah.thomas@aol.com,Austin,2023-02-09,1790.60,Home,completed,Marketing,77
+37,Uma Hernandez,uma.hernandez@mail.com,San Francisco,2023-07-19,1905.64,Electronics,processing,Legal,1
+38,Julia Gonzalez,julia.gonzalez@hotmail.com,Jacksonville,2026-02-22,9208.17,Auto,shipped,Marketing,93
+39,Hannah Martinez,hannah.martinez@fastmail.com,Austin,2026-12-10,5546.79,Books,returned,Legal,87
+40,Leo Lopez,leo.lopez@mail.com,San Jose,2026-09-27,10.05,Home,pending,Legal,75
+41,Uma Moore,uma.moore@zoho.com,Charlotte,2024-09-16,7938.58,Food,processing,Marketing,37
+42,Oscar Anderson,oscar.anderson@yahoo.com,Milwaukee,2024-11-10,2251.05,Books,pending,Engineering,6
+43,Fiona Lopez,fiona.lopez@yahoo.com,Charlotte,2026-11-19,1949.18,Health,returned,Legal,32
+44,Alice Hall,alice.hall@yahoo.com,Milwaukee,2026-04-06,8042.26,Toys,returned,Engineering,72
+45,Hank Moore,hank.moore@outlook.com,Charlotte,2025-08-20,8151.17,Toys,returned,Product,58
+46,Fiona Moore,fiona.moore@icloud.com,Milwaukee,2024-11-09,7659.53,Toys,returned,Support,36
+47,Steve Davis,steve.davis@icloud.com,Austin,2025-09-03,1388.90,Books,returned,Sales,91
+48,Bella Hernandez,bella.hernandez@protonmail.com,"Seattle, Metro Area",2026-07-02,2073.09,Health,returned,Design,90
+49,Luna Thomas,luna.thomas@zoho.com,New York,2025-05-25,3903.52,Health,cancelled,Product,78
+50,George Davis,george.davis@icloud.com,Columbus,2026-01-13,3365.27,Health,processing,Sales,60
+51,Oscar Thompson,oscar.thompson@gmail.com,Fort Worth,2023-02-21,4289.55,Beauty,pending,Engineering,34
+52,Nick Moore,nick.moore@protonmail.com,"Austin, Metro Area",2026-05-25,9512.32,Health,shipped,Marketing,61
+53,Julia Johnson,julia.johnson@protonmail.com,San Diego,2023-11-02,7543.80,Books,pending,Engineering,80
+54,Iris Martin,iris.martin@yahoo.com,Denver,2024-08-23,2566.89,Sports,pending,Design,78
+55,Hank Lewis,hank.lewis@outlook.com,San Jose,2023-10-01,9289.29,Auto,processing,Legal,51
+56,Mia Williams,mia.williams@mail.com,Louisville,2024-02-23,7726.16,Auto,completed,Design,6
+57,Caleb Gonzalez,caleb.gonzalez@protonmail.com,Chicago,2025-01-28,4204.06,Beauty,completed,Legal,47
+58,Ethan Harris,ethan.harris@outlook.com,Columbus,2024-12-17,9654.93,Home,cancelled,Product,100
+59,Caleb Walker,caleb.walker@mail.com,Dallas,2025-04-27,9346.60,Home,returned,Support,97
+60,Oscar Gonzalez,oscar.gonzalez@fastmail.com,Austin,2023-08-28,3254.18,Beauty,pending,HR,34
+61,Nina Harris,nina.harris@icloud.com,Seattle,2023-09-07,861.61,Health,returned,Product,98
+62,Fiona Lee,fiona.lee@zoho.com,Charlotte,2023-02-10,2220.62,Books,shipped,Design,48
+63,Ivan Taylor,ivan.taylor@fastmail.com,Baltimore,2025-06-23,4540.72,Home,shipped,Support,16
+64,Uma Brown,uma.brown@aol.com,Milwaukee,2024-04-07,7387.60,Home,processing,Design,98
+65,Steve Brown,steve.brown@hotmail.com,San Jose,2024-06-06,3026.85,Toys,pending,Finance,6
+66,Kyle Martinez,kyle.martinez@outlook.com,Portland,2026-02-28,128.57,Home,returned,Operations,57
+67,Dave Rodriguez,dave.rodriguez@zoho.com,Houston,2023-07-16,746.37,Electronics,pending,Sales,73
+68,Frank Davis,frank.davis@yahoo.com,Seattle,2026-10-20,7908.65,Books,cancelled,Legal,58
+69,Tina Perez,tina.perez@mail.com,Columbus,2025-10-20,607.93,Clothing,pending,Support,34
+70,Karen Davis,karen.davis@outlook.com,Seattle,2023-03-01,4088.71,Auto,returned,Finance,5
+71,Steve Harris,steve.harris@zoho.com,Chicago,2024-05-26,7913.72,Auto,processing,Support,55
+72,Olivia Lee,olivia.lee@outlook.com,Dallas,2024-02-02,1664.22,Home,cancelled,Design,37
+73,Ethan Harris,ethan.harris@icloud.com,Louisville,2026-05-17,5402.57,Beauty,completed,Design,6
+74,Uma Lopez,uma.lopez@icloud.com,New York,2023-04-22,8360.56,Auto,cancelled,Engineering,98
+75,Rachel White,rachel.white@gmail.com,Milwaukee,2024-08-17,6517.18,Home,pending,Design,56
+76,George Williams,george.williams@zoho.com,Jacksonville,2026-06-11,6703.30,Food,shipped,Legal,89
+77,Zach Walker,zach.walker@aol.com,Los Angeles,2026-02-11,2528.46,Clothing,returned,Product,1
+78,Julia Moore,julia.moore@fastmail.com,Los Angeles,2024-09-12,6228.59,Beauty,processing,Operations,98
+79,Rachel Thompson,rachel.thompson@outlook.com,San Jose,2026-12-16,1219.52,Auto,pending,Sales,40
+80,Kyle Hernandez,kyle.hernandez@yahoo.com,San Diego,2023-08-04,6479.20,Food,returned,Finance,66
+81,Bella Walker,bella.walker@zoho.com,Indianapolis,2024-08-18,1451.54,Books,cancelled,Product,96
+82,Eve Rodriguez,eve.rodriguez@fastmail.com,Austin,2025-01-10,7262.14,Auto,cancelled,Operations,20
+83,Fiona Taylor,fiona.taylor@protonmail.com,Seattle,2026-08-11,8696.79,Books,cancelled,Legal,30
+84,Bella Johnson,bella.johnson@protonmail.com,Baltimore,2026-12-26,3816.01,Food,returned,Engineering,17
+85,Marco Anderson,marco.anderson@yahoo.com,Charlotte,2023-09-15,159.37,Food,returned,Sales,10
+86,Quinn Anderson,quinn.anderson@mail.com,Louisville,2026-11-03,8518.53,Toys,returned,HR,81
+87,George Perez,george.perez@aol.com,Los Angeles,2023-04-21,6845.88,Home,pending,Marketing,56
+88,Grace Moore,grace.moore@outlook.com,Louisville,2025-01-02,3247.79,Electronics,shipped,HR,48
+89,Pete Jackson,pete.jackson@fastmail.com,Denver,2024-03-06,795.20,Health,cancelled,Support,64
+90,Jack Davis,jack.davis@zoho.com,Portland,2025-08-09,6670.40,Beauty,shipped,Product,21
+91,Wendy White,wendy.white@icloud.com,Portland,2026-12-09,4571.61,Home,pending,Legal,62
+92,Yvonne White,yvonne.white@protonmail.com,Denver,2025-12-10,225.25,Health,shipped,Engineering,73
+93,Dave Young,dave.young@mail.com,Baltimore,2026-05-25,7989.80,Auto,shipped,Support,82
+94,Quinn Gonzalez,quinn.gonzalez@outlook.com,Portland,2023-11-21,399.98,Beauty,completed,Design,47
+95,Frank Young,frank.young@icloud.com,Austin,2026-03-07,1326.80,Toys,shipped,Product,65
+96,Karen Rodriguez,karen.rodriguez@zoho.com,San Jose,2025-02-15,9629.15,Food,pending,Legal,72
+97,Zach Smith,zach.smith@icloud.com,Seattle,2023-08-12,6730.24,Home,cancelled,Legal,82
+98,Grace Gonzalez,grace.gonzalez@hotmail.com,Indianapolis,2023-10-18,3284.08,Auto,pending,Marketing,82
+99,Tina Lee,tina.lee@fastmail.com,Houston,2024-01-02,3047.81,Beauty,completed,Marketing,31
+100,Iris Thomas,iris.thomas@zoho.com,Jacksonville,2026-10-24,7267.62,Health,processing,Marketing,63
+101,Rachel Johnson,rachel.johnson@protonmail.com,San Antonio,2026-08-08,8555.36,Clothing,processing,HR,70
+102,Wendy Johnson,wendy.johnson@fastmail.com,Dallas,2024-02-28,8242.96,Clothing,processing,Support,83
+103,Bob Johnson,bob.johnson@protonmail.com,San Diego,2024-10-07,691.68,Toys,pending,Design,28
+104,Olivia Anderson,olivia.anderson@outlook.com,Nashville,2023-05-28,9840.37,Food,cancelled,Finance,23
+105,Bob Jones,bob.jones@gmail.com,Jacksonville,2024-10-11,163.71,Home,completed,Sales,95
+106,Hank Clark,hank.clark@yahoo.com,"Indianapolis, Metro Area",2026-06-17,5939.09,Beauty,cancelled,Support,79
+107,Ivan Martinez,ivan.martinez@zoho.com,Portland,2023-01-16,8473.89,Health,processing,Marketing,63
+108,Diana Williams,diana.williams@yahoo.com,Austin,2024-02-05,2754.50,Auto,cancelled,HR,49
+109,Ivan Martinez,ivan.martinez@zoho.com,San Francisco,2026-02-26,7019.57,Toys,processing,Support,56
+110,Olivia Hernandez,olivia.hernandez@protonmail.com,Charlotte,2026-07-24,956.28,Health,shipped,Finance,48
+111,Fiona Williams,fiona.williams@yahoo.com,Chicago,2023-07-04,7447.41,Sports,pending,Product,8
+112,Kyle Thompson,kyle.thompson@protonmail.com,Memphis,2023-07-12,8736.82,Health,processing,Engineering,37
+113,Wendy Brown,wendy.brown@mail.com,San Francisco,2024-03-22,4824.99,Clothing,shipped,Product,48
+114,Rachel White,rachel.white@hotmail.com,Columbus,2023-10-22,8295.62,Home,completed,Sales,35
+115,Tina Young,tina.young@protonmail.com,Jacksonville,2023-03-28,1437.65,Health,completed,Sales,95
+116,Bob Williams,bob.williams@aol.com,San Antonio,2026-07-15,3412.90,Sports,shipped,HR,100
+117,Nina Williams,nina.williams@gmail.com,Phoenix,2024-10-02,6741.63,Home,returned,Legal,63
+118,Bella Rodriguez,bella.rodriguez@hotmail.com,Milwaukee,2023-06-14,1114.22,Auto,returned,Product,86
+119,Olivia Thomas,olivia.thomas@mail.com,Los Angeles,2023-04-10,9453.56,Food,shipped,Finance,42
+120,George Clark,george.clark@fastmail.com,Philadelphia,2024-07-18,7038.48,Toys,cancelled,HR,10
+121,Carol Hernandez,carol.hernandez@gmail.com,Charlotte,2023-06-19,4296.26,Health,processing,Legal,38
+122,Bob Anderson,bob.anderson@outlook.com,Nashville,2026-12-12,886.76,Clothing,pending,Legal,76
+123,Frank Thomas,frank.thomas@icloud.com,Baltimore,2025-04-11,7792.49,Clothing,cancelled,Marketing,68
+124,Wendy Taylor,wendy.taylor@outlook.com,San Diego,2023-03-09,1977.52,Auto,pending,Marketing,23
+125,George Moore,george.moore@mail.com,Milwaukee,2026-11-19,6432.05,Auto,shipped,HR,20
+126,Fiona Moore,fiona.moore@icloud.com,Dallas,2023-06-17,747.45,Beauty,returned,Engineering,8
+127,Steve Williams,steve.williams@yahoo.com,Nashville,2026-08-19,5545.83,Electronics,returned,Design,84
+128,Nina Martin,nina.martin@aol.com,Phoenix,2023-08-04,8110.79,Sports,processing,Marketing,65
+129,Carol Davis,carol.davis@zoho.com,Charlotte,2024-06-12,9179.85,Health,returned,HR,87
+130,Victor Williams,victor.williams@protonmail.com,Houston,2026-05-09,7238.98,Auto,pending,HR,11
+131,Jack Young,jack.young@protonmail.com,San Jose,2026-03-20,7090.08,Clothing,shipped,Product,49
+132,Victor Walker,victor.walker@outlook.com,Memphis,2023-11-22,4237.51,Sports,completed,HR,40
+133,Nick Anderson,nick.anderson@zoho.com,San Antonio,2024-03-05,777.18,Clothing,cancelled,Product,95
+134,Carol Gonzalez,carol.gonzalez@protonmail.com,Milwaukee,2024-10-13,1547.59,Food,processing,Design,22
+135,Carol Hernandez,carol.hernandez@protonmail.com,Memphis,2024-08-20,2853.56,Beauty,pending,Product,31
+136,Fiona Hall,fiona.hall@hotmail.com,Jacksonville,2026-08-25,2822.02,Health,cancelled,Product,54
+137,Mia Robinson,mia.robinson@mail.com,Phoenix,2025-01-21,4809.01,Sports,cancelled,Marketing,92
+138,Hank Martinez,hank.martinez@yahoo.com,Milwaukee,2024-05-15,9053.62,Food,returned,Marketing,29
+139,Wendy Young,wendy.young@gmail.com,"Columbus, Metro Area",2023-07-17,3743.36,Health,completed,HR,29
+140,Grace Walker,grace.walker@protonmail.com,Phoenix,2024-01-10,9174.45,Beauty,processing,Sales,98
+141,Diana Lopez,diana.lopez@gmail.com,Chicago,2023-05-07,8350.61,Toys,processing,Design,68
+142,Steve Davis,steve.davis@icloud.com,Houston,2023-04-14,6391.67,Auto,returned,Marketing,15
+143,George Lopez,george.lopez@aol.com,New York,2024-12-05,2916.96,Electronics,cancelled,HR,31
+144,Leo Gonzalez,leo.gonzalez@yahoo.com,San Francisco,2025-02-17,5443.55,Toys,cancelled,Engineering,50
+145,Carol Lee,carol.lee@fastmail.com,Jacksonville,2025-12-01,3574.79,Clothing,shipped,Support,94
+146,Grace Lewis,grace.lewis@mail.com,Baltimore,2025-03-02,3526.87,Sports,processing,Sales,100
+147,Fiona Lee,fiona.lee@outlook.com,Phoenix,2023-12-25,9436.38,Electronics,shipped,Support,6
+148,Carol Anderson,carol.anderson@icloud.com,"San Francisco, Metro Area",2026-09-16,2537.61,Books,shipped,HR,100
+149,Victor Rodriguez,victor.rodriguez@yahoo.com,Jacksonville,2026-07-24,4400.72,Health,shipped,Sales,64
+150,Xavier Young,xavier.young@aol.com,Dallas,2023-12-14,794.79,Auto,pending,Product,38
+151,Frank Anderson,frank.anderson@icloud.com,San Jose,2026-10-23,4264.59,Beauty,shipped,Operations,6
+152,Wendy Lopez,wendy.lopez@fastmail.com,Dallas,2023-02-22,6377.29,Sports,cancelled,Sales,4
+153,Nina Gonzalez,nina.gonzalez@zoho.com,"Los Angeles, Metro Area",2024-02-08,7786.47,Sports,shipped,Legal,73
+154,Jack Gonzalez,jack.gonzalez@zoho.com,Jacksonville,2025-08-25,774.38,Food,cancelled,HR,51
+155,Rachel Davis,rachel.davis@yahoo.com,New York,2024-08-17,3873.54,Toys,completed,Finance,100
+156,Diana Miller,diana.miller@mail.com,San Jose,2026-04-04,1362.46,Clothing,returned,Sales,92
+157,Frank Robinson,frank.robinson@protonmail.com,Memphis,2025-12-03,5502.66,Home,shipped,Sales,92
+158,Leo Robinson,leo.robinson@protonmail.com,San Francisco,2024-02-07,7921.89,Books,returned,Engineering,47
+159,Xavier Moore,xavier.moore@aol.com,Phoenix,2023-02-10,3985.20,Beauty,cancelled,Legal,99
+160,Luna Williams,luna.williams@outlook.com,Austin,2023-08-15,6803.00,Sports,pending,Product,82
+161,Iris Hernandez,iris.hernandez@aol.com,Los Angeles,2023-09-05,3045.41,Food,shipped,Support,45
+162,Ivan Hall,ivan.hall@icloud.com,Chicago,2025-04-21,9563.77,Home,pending,Finance,79
+163,Hannah Lee,hannah.lee@outlook.com,Denver,2024-03-22,6247.03,Auto,shipped,Design,6
+164,Bob Williams,bob.williams@gmail.com,Portland,2025-11-07,7670.98,Health,cancelled,Engineering,64
+165,Julia Martinez,julia.martinez@icloud.com,Indianapolis,2024-11-13,2978.54,Clothing,processing,Engineering,21
+166,Fiona Moore,fiona.moore@hotmail.com,Austin,2024-06-28,7185.31,Sports,returned,Sales,98
+167,Kyle Brown,kyle.brown@protonmail.com,San Diego,2026-02-09,4499.25,Food,completed,Engineering,38
+168,Oscar Hernandez,oscar.hernandez@hotmail.com,Philadelphia,2025-10-24,3131.26,Food,returned,Product,60
+169,Tina Martin,tina.martin@gmail.com,Chicago,2026-09-15,9667.06,Books,cancelled,HR,7
+170,George Lopez,george.lopez@zoho.com,San Jose,2023-02-14,1344.54,Home,processing,HR,98
+171,Carol Thomas,carol.thomas@gmail.com,Denver,2024-06-18,2890.28,Health,cancelled,Operations,98
+172,Oscar Gonzalez,oscar.gonzalez@mail.com,Houston,2024-02-13,3735.73,Sports,cancelled,HR,97
+173,Nina Jackson,nina.jackson@fastmail.com,San Francisco,2023-01-02,1375.53,Sports,returned,Product,59
+174,Hannah Jones,hannah.jones@protonmail.com,Nashville,2025-03-13,9906.20,Home,cancelled,HR,65
+175,Julia Martin,julia.martin@mail.com,San Jose,2026-01-12,3316.40,Clothing,returned,Design,40
+176,Bob Lopez,bob.lopez@zoho.com,Dallas,2024-12-02,5837.72,Food,cancelled,Design,100
+177,Jack Walker,jack.walker@hotmail.com,Los Angeles,2023-04-01,4413.73,Health,pending,Legal,89
+178,Hannah Lewis,hannah.lewis@mail.com,Indianapolis,2023-12-05,5189.71,Toys,shipped,Operations,68
+179,Leo Moore,leo.moore@aol.com,Austin,2025-11-25,8677.33,Home,cancelled,Operations,25
+180,Rachel Thompson,rachel.thompson@icloud.com,San Diego,2025-05-23,2077.52,Beauty,shipped,Operations,45
+181,Rachel Martinez,rachel.martinez@yahoo.com,Denver,2026-07-27,3455.27,Food,shipped,Engineering,37
+182,Frank Taylor,frank.taylor@zoho.com,Portland,2025-12-16,2144.57,Toys,shipped,Product,90
+183,Grace Lopez,grace.lopez@mail.com,San Diego,2024-01-22,9052.40,Books,processing,Support,7
+184,Victor Harris,victor.harris@zoho.com,Houston,2024-01-18,9779.23,Food,returned,Operations,62
+185,Steve Anderson,steve.anderson@icloud.com,Portland,2023-02-21,5743.88,Toys,processing,Engineering,23
+186,Leo Young,leo.young@gmail.com,Fort Worth,2026-03-24,9621.53,Home,completed,Engineering,39
+187,Grace Young,grace.young@protonmail.com,San Jose,2026-11-18,5246.03,Food,cancelled,Operations,35
+188,Hank Anderson,hank.anderson@outlook.com,Baltimore,2026-11-09,7187.66,Electronics,processing,HR,38
+189,Mia Garcia,mia.garcia@mail.com,Portland,2026-07-17,3283.29,Health,processing,Marketing,24
+190,Fiona Anderson,fiona.anderson@hotmail.com,New York,2025-07-08,4470.66,Home,shipped,Finance,75
+191,Alice Rodriguez,alice.rodriguez@protonmail.com,Louisville,2024-01-22,1187.53,Home,pending,Legal,88
+192,Tina Harris,tina.harris@yahoo.com,Portland,2025-06-20,2213.16,Food,returned,Sales,59
+193,Nina Taylor,nina.taylor@fastmail.com,Louisville,2026-09-26,6642.95,Books,pending,Design,11
+194,Ivan Harris,ivan.harris@protonmail.com,Chicago,2023-01-27,5479.20,Toys,pending,Design,69
+195,Uma Perez,uma.perez@aol.com,Charlotte,2023-11-07,7170.87,Beauty,completed,Product,58
+196,Ethan Jones,ethan.jones@aol.com,Columbus,2026-10-02,5590.61,Home,processing,Engineering,51
+197,Alice Clark,alice.clark@hotmail.com,Denver,2023-01-14,3449.21,Clothing,cancelled,Engineering,9
+198,Fiona Johnson,fiona.johnson@icloud.com,Columbus,2024-03-25,6417.39,Health,shipped,Legal,58
+199,Yvonne Thomas,yvonne.thomas@yahoo.com,Memphis,2024-11-28,3481.60,Food,cancelled,Legal,68
+200,Olivia Walker,olivia.walker@gmail.com,Milwaukee,2023-05-15,6736.95,Toys,returned,Product,49
+201,Pete Moore,pete.moore@protonmail.com,Phoenix,2025-04-24,7656.30,Electronics,processing,Legal,79
+202,Bob Davis,bob.davis@hotmail.com,Chicago,2023-10-02,4467.72,Electronics,pending,Engineering,52
+203,Julia Miller,julia.miller@gmail.com,Phoenix,2025-04-27,9164.46,Auto,shipped,Design,77
+204,Uma Davis,uma.davis@icloud.com,Phoenix,2024-07-10,2755.88,Toys,cancelled,Sales,81
+205,Kyle Martin,kyle.martin@gmail.com,Jacksonville,2026-09-11,6964.90,Health,pending,Finance,49
+206,Julia Martin,julia.martin@hotmail.com,San Diego,2025-12-05,8058.92,Electronics,cancelled,Legal,54
+207,Iris Thomas,iris.thomas@hotmail.com,Dallas,2024-06-21,796.22,Beauty,shipped,Marketing,69
+208,Mia Johnson,mia.johnson@icloud.com,Fort Worth,2023-02-07,8047.67,Auto,processing,Product,28
+209,Victor Martinez,victor.martinez@gmail.com,San Antonio,2024-12-04,7470.30,Beauty,pending,Design,91
+210,Pete Thompson,pete.thompson@protonmail.com,Milwaukee,2025-07-15,5339.29,Sports,shipped,Finance,47
+211,George Moore,george.moore@yahoo.com,Baltimore,2026-06-07,3710.81,Health,completed,Design,29
+212,Bob Rodriguez,bob.rodriguez@aol.com,Denver,2026-05-05,1966.73,Books,returned,Design,32
+213,Victor Rodriguez,victor.rodriguez@zoho.com,Baltimore,2026-08-06,7329.32,Sports,pending,Sales,93
+214,Leo Young,leo.young@aol.com,"Portland, Metro Area",2023-09-02,8391.64,Clothing,processing,Engineering,98
+215,Iris Walker,iris.walker@hotmail.com,Chicago,2024-01-07,5060.28,Sports,completed,Design,82
+216,Oscar Young,oscar.young@zoho.com,Memphis,2026-01-01,5324.92,Health,completed,Engineering,68
+217,Julia Martinez,julia.martinez@gmail.com,San Francisco,2026-03-04,9180.97,Toys,pending,Support,25
+218,Quinn Walker,quinn.walker@protonmail.com,Dallas,2026-02-12,9593.21,Beauty,cancelled,Support,90
+219,Frank Lee,frank.lee@gmail.com,Chicago,2026-07-13,5529.69,Electronics,processing,Engineering,90
+220,George Perez,george.perez@fastmail.com,Portland,2025-10-28,9738.54,Toys,completed,Support,28
+221,Luna Martin,luna.martin@icloud.com,Los Angeles,2023-11-09,8993.71,Auto,processing,Engineering,23
+222,Uma Smith,uma.smith@hotmail.com,Denver,2024-12-27,3986.56,Clothing,shipped,Sales,73
+223,Yvonne Gonzalez,yvonne.gonzalez@aol.com,Austin,2026-12-05,7906.23,Clothing,cancelled,HR,7
+224,Olivia Walker,olivia.walker@yahoo.com,Austin,2026-06-01,6343.41,Beauty,returned,Support,46
+225,Yvonne Hernandez,yvonne.hernandez@outlook.com,Memphis,2026-02-25,6188.44,Books,processing,Marketing,11
+226,Yvonne Harris,yvonne.harris@outlook.com,Baltimore,2026-06-12,1070.86,Electronics,shipped,Operations,47
+227,Grace Jones,grace.jones@yahoo.com,Philadelphia,2026-08-18,5550.06,Health,completed,Engineering,12
+228,Frank Lopez,frank.lopez@mail.com,Austin,2026-01-10,4141.61,Clothing,processing,Product,32
+229,Karen Gonzalez,karen.gonzalez@fastmail.com,Philadelphia,2024-05-10,2688.45,Food,completed,Sales,56
+230,Tina Martin,tina.martin@yahoo.com,Jacksonville,2025-04-24,6252.58,Auto,cancelled,Support,59
+231,Tina Smith,tina.smith@fastmail.com,Austin,2026-06-15,3351.34,Auto,pending,Finance,42
+232,Mia Martin,mia.martin@protonmail.com,Philadelphia,2026-06-10,7350.32,Beauty,cancelled,Support,42
+233,Zach Taylor,zach.taylor@yahoo.com,Denver,2024-10-18,1804.18,Toys,completed,Operations,91
+234,Steve Walker,steve.walker@yahoo.com,Columbus,2026-03-21,3032.50,Home,processing,Sales,92
+235,Yvonne Williams,yvonne.williams@zoho.com,Nashville,2026-10-13,5346.46,Health,cancelled,Engineering,47
+236,Julia Lopez,julia.lopez@yahoo.com,Houston,2024-11-22,3553.95,Auto,completed,Design,83
+237,Zach Lewis,zach.lewis@protonmail.com,Columbus,2023-01-04,2591.82,Toys,processing,Product,72
+238,Luna Davis,luna.davis@zoho.com,Jacksonville,2026-08-25,6797.47,Toys,pending,HR,4
+239,Steve Hernandez,steve.hernandez@yahoo.com,Houston,2024-06-10,3434.60,Books,cancelled,Operations,45
+240,Diana Clark,diana.clark@zoho.com,Austin,2023-05-02,8102.99,Clothing,completed,HR,83
+241,Karen Young,karen.young@hotmail.com,San Francisco,2024-09-06,3313.90,Health,returned,Support,52
+242,Leo Lee,leo.lee@fastmail.com,"Fort Worth, Metro Area",2023-12-20,8831.67,Beauty,cancelled,Legal,50
+243,Nick Miller,nick.miller@icloud.com,Milwaukee,2023-10-04,7996.22,Toys,pending,HR,42
+244,Hank Rodriguez,hank.rodriguez@zoho.com,San Francisco,2025-10-13,6115.41,Auto,completed,HR,46
+245,Oscar Garcia,oscar.garcia@icloud.com,Nashville,2023-11-05,3135.97,Books,shipped,Marketing,24
+246,Jack Jackson,jack.jackson@fastmail.com,Columbus,2024-10-13,4233.84,Beauty,processing,Product,89
+247,Leo Thompson,leo.thompson@outlook.com,Indianapolis,2025-03-06,3149.90,Beauty,cancelled,Engineering,46
+248,George Jones,george.jones@hotmail.com,Fort Worth,2026-07-22,4920.30,Beauty,returned,Sales,11
+249,Olivia Martinez,olivia.martinez@gmail.com,Dallas,2024-09-10,1687.07,Beauty,cancelled,Operations,71
+250,Luna Brown,luna.brown@icloud.com,Milwaukee,2025-09-27,7569.31,Beauty,cancelled,Support,55
+251,Pete Martinez,pete.martinez@gmail.com,Charlotte,2025-06-28,8168.38,Beauty,completed,Support,27
+252,Marco Harris,marco.harris@protonmail.com,Louisville,2026-03-20,1397.50,Books,pending,Engineering,73
+253,Rachel Lopez,rachel.lopez@aol.com,Philadelphia,2025-12-10,2897.59,Home,cancelled,Marketing,18
+254,Bella Young,bella.young@gmail.com,Dallas,2024-12-28,1332.10,Food,processing,HR,32
+255,Zach Martin,zach.martin@outlook.com,Denver,2025-11-14,3755.46,Clothing,processing,Marketing,52
+256,Rachel Harris,rachel.harris@protonmail.com,Charlotte,2026-06-19,30.71,Clothing,processing,Operations,82
+257,Wendy Perez,wendy.perez@yahoo.com,Seattle,2026-04-14,8249.52,Beauty,shipped,HR,37
+258,Luna Jones,luna.jones@mail.com,Indianapolis,2025-11-25,489.79,Clothing,processing,Operations,3
+259,Karen Moore,karen.moore@zoho.com,New York,2026-04-23,9094.61,Home,pending,Finance,12
+260,Quinn Williams,quinn.williams@protonmail.com,Memphis,2024-01-13,6258.28,Books,returned,Marketing,91
+261,Nick Martin,nick.martin@yahoo.com,Phoenix,2024-09-22,4453.99,Electronics,processing,HR,16
+262,Caleb Harris,caleb.harris@outlook.com,Indianapolis,2023-04-13,898.76,Clothing,completed,HR,48
+263,Iris Thomas,iris.thomas@outlook.com,Portland,2024-02-17,5635.52,Auto,processing,Sales,57
+264,Nick Lee,nick.lee@outlook.com,Columbus,2026-04-03,8966.54,Food,completed,Design,94
+265,Caleb Anderson,caleb.anderson@outlook.com,San Diego,2025-11-03,2486.17,Auto,cancelled,Design,37
+266,Bob Perez,bob.perez@icloud.com,San Antonio,2024-12-13,2959.64,Electronics,pending,Operations,50
+267,George Lee,george.lee@mail.com,Chicago,2023-06-11,1325.03,Auto,returned,HR,70
+268,Fiona Lewis,fiona.lewis@yahoo.com,New York,2023-01-09,2162.12,Electronics,returned,Product,37
+269,Hannah Lewis,hannah.lewis@fastmail.com,Columbus,2026-02-21,5368.42,Auto,pending,Finance,11
+270,Hannah Young,hannah.young@hotmail.com,Phoenix,2025-07-19,6345.13,Clothing,shipped,Legal,94
+271,Pete Johnson,pete.johnson@hotmail.com,"Chicago, Metro Area",2026-02-15,6125.28,Electronics,shipped,Sales,16
+272,Iris Harris,iris.harris@gmail.com,Philadelphia,2026-06-17,5175.12,Home,pending,HR,17
+273,Rachel Clark,rachel.clark@yahoo.com,Milwaukee,2023-06-26,4296.66,Toys,completed,Finance,92
+274,Eve Martin,eve.martin@zoho.com,San Francisco,2025-01-16,8594.43,Food,shipped,Sales,33
+275,Luna Gonzalez,luna.gonzalez@yahoo.com,San Diego,2023-01-28,8630.10,Books,completed,Operations,47
+276,Jack Garcia,jack.garcia@gmail.com,Seattle,2026-04-11,2487.13,Sports,shipped,Marketing,74
+277,Hannah Gonzalez,hannah.gonzalez@gmail.com,Philadelphia,2024-09-02,9541.06,Clothing,returned,Finance,100
+278,Uma Williams,uma.williams@aol.com,Charlotte,2023-06-07,2920.19,Home,processing,Design,32
+279,Marco Martin,marco.martin@hotmail.com,Baltimore,2024-03-01,9324.37,Electronics,pending,Product,45
+280,Alice Anderson,alice.anderson@gmail.com,Milwaukee,2026-12-24,3079.25,Books,cancelled,Support,54
+281,Dave Jones,dave.jones@icloud.com,Chicago,2023-04-28,5200.46,Sports,returned,Marketing,75
+282,Iris Lee,iris.lee@fastmail.com,Chicago,2023-07-22,9642.39,Books,shipped,Finance,41
+283,Zach Harris,zach.harris@protonmail.com,Austin,2026-05-08,752.42,Books,pending,Design,14
+284,Karen Moore,karen.moore@zoho.com,Austin,2026-02-18,3586.71,Books,returned,Finance,60
+285,Hank Williams,hank.williams@outlook.com,Memphis,2025-12-23,6035.40,Books,shipped,Sales,12
+286,Wendy Thomas,wendy.thomas@aol.com,Los Angeles,2025-05-27,9906.81,Electronics,returned,Operations,72
+287,Pete Brown,pete.brown@zoho.com,Houston,2024-02-01,622.31,Books,pending,Support,52
+288,Frank White,frank.white@mail.com,Dallas,2023-01-03,1982.31,Beauty,pending,Marketing,43
+289,Ethan Johnson,ethan.johnson@outlook.com,Denver,2026-12-13,4964.28,Health,processing,Legal,23
+290,Leo Rodriguez,leo.rodriguez@icloud.com,Charlotte,2024-01-20,6194.04,Books,processing,Finance,64
+291,Kyle Martin,kyle.martin@gmail.com,Chicago,2025-07-05,4195.82,Toys,pending,Product,3
+292,Wendy Martin,wendy.martin@aol.com,Indianapolis,2025-10-17,3220.10,Home,pending,Engineering,41
+293,Bob Hall,bob.hall@icloud.com,Los Angeles,2026-09-12,7669.81,Books,pending,Marketing,32
+294,Rachel Thompson,rachel.thompson@gmail.com,Milwaukee,2024-10-28,9826.74,Health,shipped,Sales,23
+295,Uma Robinson,uma.robinson@protonmail.com,Denver,2023-12-23,3520.70,Auto,cancelled,Sales,73
+296,George Thompson,george.thompson@icloud.com,Philadelphia,2026-01-03,567.33,Auto,pending,Engineering,68
+297,Victor Young,victor.young@mail.com,San Antonio,2024-06-23,1779.52,Sports,completed,Engineering,19
+298,Jack Lewis,jack.lewis@yahoo.com,San Francisco,2025-02-12,7047.14,Health,cancelled,Marketing,44
+299,Iris Garcia,iris.garcia@fastmail.com,Portland,2026-11-11,1746.97,Toys,processing,Design,46
+300,Marco Walker,marco.walker@outlook.com,Fort Worth,2025-12-23,2949.40,Food,processing,Engineering,90
+301,Zach Perez,zach.perez@mail.com,Los Angeles,2024-10-11,9210.85,Auto,pending,Design,14
+302,Jack Anderson,jack.anderson@yahoo.com,"San Diego, Metro Area",2025-06-06,6364.04,Clothing,processing,HR,58
+303,Nick Davis,nick.davis@yahoo.com,Jacksonville,2025-02-24,18.79,Health,returned,Legal,22
+304,George Hall,george.hall@fastmail.com,Jacksonville,2026-02-27,4798.01,Auto,processing,Support,21
+305,Carol Martinez,carol.martinez@gmail.com,Austin,2025-02-03,3422.02,Health,pending,Marketing,71
+306,Frank Anderson,frank.anderson@mail.com,Nashville,2026-12-01,4316.64,Food,cancelled,Legal,21
+307,Victor Miller,victor.miller@hotmail.com,Columbus,2025-11-10,2978.21,Clothing,completed,Legal,74
+308,George Jones,george.jones@gmail.com,"Jacksonville, Metro Area",2023-07-03,2949.72,Auto,returned,Support,13
+309,Karen Lee,karen.lee@icloud.com,Chicago,2026-02-10,7850.05,Beauty,returned,Finance,12
+310,Yvonne Garcia,yvonne.garcia@protonmail.com,Fort Worth,2025-03-15,451.89,Beauty,returned,Finance,29
+311,Luna Johnson,luna.johnson@outlook.com,Milwaukee,2023-02-22,3441.84,Toys,returned,Design,30
+312,Yvonne Walker,yvonne.walker@aol.com,Columbus,2026-10-08,4765.76,Clothing,returned,Engineering,65
+313,Ivan Robinson,ivan.robinson@mail.com,"Memphis, Metro Area",2024-02-25,4493.69,Food,pending,Support,17
+314,Frank Gonzalez,frank.gonzalez@fastmail.com,San Antonio,2024-10-09,3201.57,Clothing,completed,Legal,72
+315,Uma Perez,uma.perez@icloud.com,San Francisco,2026-01-26,7005.91,Auto,cancelled,Legal,15
+316,Jack White,jack.white@mail.com,Denver,2023-02-19,7796.76,Home,cancelled,HR,53
+317,George White,george.white@mail.com,Indianapolis,2023-03-09,4033.31,Auto,cancelled,Legal,5
+318,Victor Harris,victor.harris@hotmail.com,Los Angeles,2026-05-12,208.20,Home,shipped,Finance,63
+319,Grace Perez,grace.perez@hotmail.com,Phoenix,2025-12-15,7741.65,Sports,shipped,Legal,78
+320,Mia Moore,mia.moore@hotmail.com,Columbus,2026-09-28,3742.85,Electronics,cancelled,Sales,9
+321,Hannah Thomas,hannah.thomas@outlook.com,Milwaukee,2023-03-07,8752.54,Books,completed,Support,5
+322,Xavier Harris,xavier.harris@hotmail.com,Dallas,2025-08-17,3973.03,Clothing,processing,Engineering,31
+323,Nina Moore,nina.moore@outlook.com,"Indianapolis, Metro Area",2025-06-06,8377.50,Home,processing,Marketing,37
+324,Dave Garcia,dave.garcia@mail.com,"Milwaukee, Metro Area",2024-04-21,2255.76,Books,shipped,Legal,66
+325,Alice Martin,alice.martin@outlook.com,Portland,2024-10-26,90.58,Home,cancelled,Finance,92
+326,Rachel Hernandez,rachel.hernandez@fastmail.com,Jacksonville,2026-05-07,4670.17,Toys,cancelled,Legal,75
+327,Hannah Gonzalez,hannah.gonzalez@protonmail.com,Seattle,2025-05-22,1086.39,Clothing,shipped,Finance,82
+328,Rachel Rodriguez,rachel.rodriguez@icloud.com,San Antonio,2024-09-25,2407.57,Electronics,cancelled,Legal,85
+329,Iris Clark,iris.clark@gmail.com,Portland,2026-05-09,9069.66,Health,returned,Engineering,75
+330,Luna Walker,luna.walker@hotmail.com,Austin,2024-11-18,6385.30,Beauty,processing,HR,65
+331,Karen Walker,karen.walker@aol.com,Philadelphia,2025-02-16,1284.66,Home,processing,Product,98
+332,Victor Lee,victor.lee@yahoo.com,San Diego,2025-04-24,8715.08,Health,shipped,HR,34
+333,Ethan Perez,ethan.perez@yahoo.com,Indianapolis,2023-11-19,5805.64,Auto,completed,Operations,25
+334,Yvonne Jackson,yvonne.jackson@icloud.com,Columbus,2023-03-05,9923.51,Sports,returned,Design,59
+335,Leo Lewis,leo.lewis@yahoo.com,Indianapolis,2025-11-06,3138.25,Electronics,completed,Operations,36
+336,Karen White,karen.white@outlook.com,Indianapolis,2023-03-20,4340.50,Health,returned,Legal,62
+337,Carol Thompson,carol.thompson@hotmail.com,"Baltimore, Metro Area",2025-01-11,7569.93,Toys,pending,Engineering,87
+338,Pete Davis,pete.davis@protonmail.com,San Jose,2024-02-13,5036.33,Home,pending,Marketing,6
+339,Steve Moore,steve.moore@aol.com,Nashville,2025-07-22,9954.74,Sports,returned,HR,97
+340,Zach Smith,zach.smith@hotmail.com,San Diego,2024-04-24,224.99,Toys,pending,Marketing,47
+341,Carol Thomas,carol.thomas@icloud.com,Milwaukee,2023-10-02,6621.72,Electronics,completed,Marketing,54
+342,Hank Thompson,hank.thompson@icloud.com,Indianapolis,2024-04-23,6859.28,Electronics,shipped,Legal,85
+343,Ivan Rodriguez,ivan.rodriguez@mail.com,Nashville,2024-07-27,8986.82,Toys,processing,Design,16
+344,Grace Martin,grace.martin@hotmail.com,Nashville,2024-05-27,5234.31,Books,shipped,Legal,38
+345,Kyle Martin,kyle.martin@hotmail.com,Louisville,2026-06-08,33.35,Clothing,completed,Design,86
+346,Frank Lewis,frank.lewis@aol.com,Chicago,2023-05-21,2316.21,Home,shipped,Operations,7
+347,Leo Perez,leo.perez@gmail.com,San Jose,2025-11-11,4263.39,Clothing,completed,Engineering,2
+348,Karen Anderson,karen.anderson@protonmail.com,Charlotte,2025-12-03,3729.98,Sports,pending,Marketing,52
+349,Ethan Rodriguez,ethan.rodriguez@fastmail.com,Louisville,2026-07-21,8861.91,Food,completed,Sales,90
+350,Karen Brown,karen.brown@fastmail.com,"Denver, Metro Area",2026-10-22,4384.99,Auto,returned,HR,79
+351,Iris Martin,iris.martin@zoho.com,Houston,2026-08-02,638.97,Sports,completed,Product,99
+352,Luna Davis,luna.davis@protonmail.com,San Francisco,2023-07-22,7268.15,Beauty,shipped,Legal,20
+353,Kyle Hall,kyle.hall@mail.com,Los Angeles,2023-11-06,5058.63,Beauty,returned,Sales,10
+354,Uma Davis,uma.davis@protonmail.com,Dallas,2023-09-08,5507.64,Health,returned,Support,11
+355,Luna Moore,luna.moore@yahoo.com,"Indianapolis, Metro Area",2026-06-04,9806.81,Electronics,completed,Legal,53
+356,Kyle Smith,kyle.smith@yahoo.com,Nashville,2025-09-18,2073.26,Beauty,shipped,HR,7
+357,Ethan Anderson,ethan.anderson@aol.com,Milwaukee,2026-12-22,3636.76,Beauty,completed,Marketing,98
+358,Alice Anderson,alice.anderson@protonmail.com,Portland,2025-09-17,3742.65,Clothing,completed,Sales,64
+359,Bella Brown,bella.brown@icloud.com,Nashville,2024-04-04,9302.57,Health,pending,Operations,25
+360,Grace Lewis,grace.lewis@fastmail.com,Los Angeles,2023-08-15,6586.61,Toys,pending,Operations,1
+361,Dave Thompson,dave.thompson@fastmail.com,Denver,2026-09-25,9212.09,Food,processing,Design,23
+362,Iris Brown,iris.brown@fastmail.com,Memphis,2025-09-13,4190.13,Auto,processing,Support,36
+363,Victor Martinez,victor.martinez@zoho.com,Phoenix,2024-07-20,7001.93,Toys,shipped,Product,41
+364,Kyle Lee,kyle.lee@hotmail.com,San Antonio,2024-10-23,2910.04,Sports,processing,Sales,91
+365,Leo Jackson,leo.jackson@aol.com,Louisville,2025-12-04,7609.18,Toys,returned,Design,74
+366,Bella Gonzalez,bella.gonzalez@aol.com,San Jose,2026-01-17,1070.06,Health,pending,Engineering,86
+367,Rachel Lewis,rachel.lewis@outlook.com,San Jose,2025-03-27,625.95,Home,pending,Product,5
+368,Diana Brown,diana.brown@mail.com,Memphis,2024-12-21,5615.33,Books,cancelled,Finance,89
+369,Yvonne Thomas,yvonne.thomas@fastmail.com,Memphis,2025-09-02,135.56,Home,pending,Design,100
+370,Diana Walker,diana.walker@hotmail.com,Portland,2025-10-18,7386.06,Books,processing,Support,38
+371,Eve Garcia,eve.garcia@outlook.com,Baltimore,2023-07-02,4288.50,Toys,shipped,Sales,21
+372,Quinn Smith,quinn.smith@protonmail.com,Charlotte,2024-01-05,9286.70,Auto,completed,Design,85
+373,Luna Thompson,luna.thompson@protonmail.com,Chicago,2025-09-08,9570.13,Toys,completed,Product,21
+374,Julia Thomas,julia.thomas@yahoo.com,Jacksonville,2024-04-22,3322.83,Sports,shipped,Support,97
+375,Fiona Thompson,fiona.thompson@gmail.com,Houston,2025-08-08,9045.53,Auto,cancelled,Support,6
+376,Uma Thomas,uma.thomas@yahoo.com,Fort Worth,2025-09-24,2832.58,Toys,shipped,Product,66
+377,Carol Martinez,carol.martinez@hotmail.com,Austin,2023-02-06,9716.45,Toys,cancelled,Engineering,81
+378,Nick Perez,nick.perez@fastmail.com,Houston,2024-09-27,7029.20,Health,processing,Marketing,96
+379,Bob Moore,bob.moore@protonmail.com,Los Angeles,2023-02-02,1784.84,Home,cancelled,Marketing,74
+380,Quinn Hernandez,quinn.hernandez@fastmail.com,Charlotte,2026-07-11,174.80,Clothing,cancelled,Engineering,83
+381,Eve Lewis,eve.lewis@mail.com,Los Angeles,2023-06-17,1066.71,Home,cancelled,Marketing,37
+382,Diana Thomas,diana.thomas@fastmail.com,Memphis,2023-08-06,5337.47,Food,processing,Legal,70
+383,Jack Martinez,jack.martinez@protonmail.com,New York,2024-02-02,56.26,Auto,returned,Product,71
+384,Tina Miller,tina.miller@protonmail.com,San Antonio,2026-11-28,5128.44,Food,pending,Support,79
+385,Mia Brown,mia.brown@outlook.com,Memphis,2023-09-15,6448.87,Clothing,shipped,Marketing,33
+386,Marco Martin,marco.martin@protonmail.com,Jacksonville,2024-11-21,2349.91,Home,cancelled,Marketing,25
+387,Diana Anderson,diana.anderson@mail.com,Memphis,2025-12-19,1529.03,Auto,shipped,HR,55
+388,Uma Davis,uma.davis@hotmail.com,Louisville,2026-05-27,3598.69,Sports,returned,Operations,58
+389,Tina Martin,tina.martin@aol.com,Houston,2024-11-20,825.24,Home,pending,Product,26
+390,Eve Clark,eve.clark@yahoo.com,New York,2023-10-19,4054.90,Auto,pending,Engineering,71
+391,Julia Martin,julia.martin@outlook.com,Jacksonville,2026-04-25,5898.46,Home,pending,Operations,65
+392,Zach Taylor,zach.taylor@aol.com,New York,2024-10-22,1663.43,Toys,pending,Operations,21
+393,Luna Gonzalez,luna.gonzalez@outlook.com,Baltimore,2026-06-02,2192.87,Beauty,pending,Marketing,34
+394,Carol Gonzalez,carol.gonzalez@hotmail.com,San Francisco,2025-07-16,9179.50,Electronics,completed,HR,14
+395,Ivan Lee,ivan.lee@icloud.com,Baltimore,2025-10-18,5704.17,Health,processing,Legal,47
+396,Eve Jackson,eve.jackson@icloud.com,"Fort Worth, Metro Area",2024-09-13,3532.85,Sports,returned,Operations,78
+397,Iris Moore,iris.moore@outlook.com,San Diego,2023-09-21,2812.40,Food,pending,Sales,47
+398,Hank Gonzalez,hank.gonzalez@hotmail.com,Columbus,2025-12-04,4818.27,Beauty,returned,Support,76
+399,Bella Smith,bella.smith@hotmail.com,Los Angeles,2024-10-19,1616.31,Toys,completed,Design,19
+400,Quinn Young,quinn.young@outlook.com,San Francisco,2026-10-19,6378.39,Home,completed,Support,58
+401,Fiona Perez,fiona.perez@zoho.com,Philadelphia,2024-07-20,1432.26,Auto,pending,Design,85
+402,Karen Clark,karen.clark@protonmail.com,Charlotte,2023-04-13,3858.30,Clothing,completed,Support,67
+403,Hannah Gonzalez,hannah.gonzalez@fastmail.com,Phoenix,2023-03-16,9016.66,Auto,completed,Product,65
+404,Frank Martin,frank.martin@outlook.com,Nashville,2023-11-21,4318.37,Health,shipped,Engineering,90
+405,Olivia Robinson,olivia.robinson@zoho.com,Milwaukee,2026-06-19,8047.37,Auto,completed,Legal,18
+406,Olivia Young,olivia.young@yahoo.com,San Jose,2026-05-07,60.65,Electronics,cancelled,Product,16
+407,Yvonne Lee,yvonne.lee@hotmail.com,Louisville,2025-07-12,1071.18,Health,processing,Design,33
+408,Julia Hernandez,julia.hernandez@mail.com,Jacksonville,2025-11-13,7551.18,Health,cancelled,Product,62
+409,Kyle Thompson,kyle.thompson@zoho.com,Dallas,2025-10-12,7743.29,Health,processing,Sales,85
+410,Olivia Moore,olivia.moore@outlook.com,Houston,2024-09-13,7862.08,Toys,cancelled,Engineering,21
+411,Alice Robinson,alice.robinson@yahoo.com,Phoenix,2026-10-14,886.87,Home,pending,HR,11
+412,Yvonne Young,yvonne.young@fastmail.com,"Nashville, Metro Area",2025-12-20,580.28,Food,processing,Operations,57
+413,Ivan Martinez,ivan.martinez@hotmail.com,Los Angeles,2024-10-06,6742.19,Sports,pending,Engineering,21
+414,Rachel Lewis,rachel.lewis@fastmail.com,Jacksonville,2026-07-19,2007.89,Electronics,processing,Marketing,12
+415,Kyle Young,kyle.young@mail.com,"Jacksonville, Metro Area",2025-05-08,6065.99,Books,returned,Legal,74
+416,Leo Hernandez,leo.hernandez@aol.com,Houston,2023-09-10,3403.61,Clothing,cancelled,Finance,69
+417,Luna Rodriguez,luna.rodriguez@zoho.com,Fort Worth,2026-04-25,3400.56,Beauty,processing,Operations,76
+418,Fiona Brown,fiona.brown@icloud.com,Chicago,2026-11-26,9942.01,Books,shipped,Legal,46
+419,Alice Harris,alice.harris@icloud.com,San Diego,2025-02-13,6738.93,Sports,completed,Product,23
+420,Wendy Miller,wendy.miller@mail.com,Dallas,2024-12-22,9302.96,Books,returned,Support,31
+421,Quinn Miller,quinn.miller@hotmail.com,San Antonio,2024-10-12,1565.01,Clothing,completed,Marketing,87
+422,George Lopez,george.lopez@gmail.com,Milwaukee,2023-08-12,6208.94,Beauty,cancelled,Finance,63
+423,Hannah Rodriguez,hannah.rodriguez@fastmail.com,San Diego,2024-01-17,7993.89,Beauty,cancelled,Engineering,65
+424,Leo Moore,leo.moore@yahoo.com,Louisville,2026-06-23,90.13,Books,returned,Design,13
+425,Oscar Perez,oscar.perez@icloud.com,Philadelphia,2025-04-09,4716.62,Auto,shipped,HR,24
+426,Nick Hernandez,nick.hernandez@protonmail.com,Jacksonville,2026-05-15,1803.80,Food,cancelled,Support,13
+427,Pete Thompson,pete.thompson@fastmail.com,Fort Worth,2024-03-26,9591.71,Food,returned,Engineering,23
+428,Iris Hall,iris.hall@aol.com,Seattle,2025-08-10,2514.22,Auto,completed,Legal,13
+429,Dave Miller,dave.miller@icloud.com,Indianapolis,2023-08-24,3350.55,Sports,shipped,Product,72
+430,Quinn Taylor,quinn.taylor@gmail.com,Columbus,2023-06-28,6797.77,Auto,pending,Design,74
+431,Julia Garcia,julia.garcia@icloud.com,Jacksonville,2025-11-17,4878.00,Beauty,completed,Legal,79
+432,Jack Perez,jack.perez@outlook.com,Portland,2025-07-21,6125.42,Health,completed,Marketing,21
+433,Uma Anderson,uma.anderson@icloud.com,Louisville,2025-10-21,3958.17,Beauty,shipped,Design,67
+434,Bella Garcia,bella.garcia@outlook.com,New York,2024-12-08,6622.24,Clothing,pending,Sales,51
+435,Eve Young,eve.young@zoho.com,Seattle,2023-01-25,3973.73,Clothing,completed,Finance,80
+436,Yvonne Martinez,yvonne.martinez@hotmail.com,San Diego,2025-08-21,1269.35,Toys,pending,Engineering,5
+437,Uma Perez,uma.perez@zoho.com,Charlotte,2025-09-15,1356.33,Toys,pending,Design,77
+438,Luna Hernandez,luna.hernandez@aol.com,Portland,2025-06-16,5399.43,Clothing,returned,Finance,47
+439,Jack Martinez,jack.martinez@gmail.com,New York,2024-06-10,4695.15,Electronics,processing,Operations,97
+440,Alice Lewis,alice.lewis@fastmail.com,San Jose,2024-01-18,3740.19,Health,cancelled,Legal,51
+441,Yvonne Walker,yvonne.walker@fastmail.com,San Diego,2025-02-14,6255.47,Toys,cancelled,Finance,37
+442,Julia Robinson,julia.robinson@icloud.com,Columbus,2024-02-06,1371.41,Clothing,processing,Operations,80
+443,Oscar Martin,oscar.martin@hotmail.com,Austin,2023-03-02,9697.33,Electronics,pending,Marketing,37
+444,Diana Clark,diana.clark@gmail.com,San Diego,2023-03-01,4938.82,Sports,returned,Finance,64
+445,Ethan Harris,ethan.harris@gmail.com,Austin,2023-03-02,2669.43,Health,completed,Product,61
+446,Quinn Walker,quinn.walker@fastmail.com,New York,2023-12-08,3851.66,Beauty,pending,Engineering,26
+447,Grace Jackson,grace.jackson@hotmail.com,Indianapolis,2026-11-10,9362.53,Food,processing,Engineering,96
+448,Ivan Brown,ivan.brown@icloud.com,Indianapolis,2025-04-12,8875.86,Books,completed,Support,82
+449,Alice Garcia,alice.garcia@icloud.com,Denver,2023-07-26,2435.42,Electronics,cancelled,Operations,89
+450,Xavier Lewis,xavier.lewis@yahoo.com,San Diego,2024-08-03,6861.32,Sports,processing,Engineering,8
+451,Jack Harris,jack.harris@aol.com,Houston,2024-08-08,3171.49,Toys,processing,HR,57
+452,Bob Harris,bob.harris@fastmail.com,Jacksonville,2024-05-02,4856.10,Beauty,cancelled,Finance,70
+453,Mia White,mia.white@outlook.com,Seattle,2025-06-24,4687.13,Auto,cancelled,Sales,9
+454,Diana Martinez,diana.martinez@icloud.com,Seattle,2025-08-01,7760.51,Toys,returned,Sales,3
+455,Xavier Lewis,xavier.lewis@mail.com,San Diego,2025-12-03,6584.93,Toys,returned,Support,68
+456,Kyle Jones,kyle.jones@mail.com,San Jose,2025-07-21,3224.30,Clothing,cancelled,Marketing,6
+457,Iris Garcia,iris.garcia@gmail.com,San Antonio,2023-08-07,992.93,Auto,processing,Legal,85
+458,Oscar Harris,oscar.harris@mail.com,Dallas,2023-06-08,6061.89,Clothing,completed,Support,84
+459,Frank Moore,frank.moore@gmail.com,Jacksonville,2026-06-26,7086.08,Auto,shipped,Product,6
+460,Tina Williams,tina.williams@hotmail.com,San Francisco,2023-02-24,2314.78,Health,pending,Support,68
+461,Luna Lee,luna.lee@outlook.com,Seattle,2026-12-04,7664.23,Auto,shipped,Operations,90
+462,Grace Garcia,grace.garcia@outlook.com,Seattle,2026-09-11,6577.36,Toys,cancelled,Operations,46
+463,Kyle Anderson,kyle.anderson@protonmail.com,Columbus,2026-12-11,6086.47,Auto,cancelled,Support,49
+464,Quinn Taylor,quinn.taylor@zoho.com,Charlotte,2026-01-24,352.41,Home,cancelled,Engineering,67
+465,Tina Smith,tina.smith@icloud.com,San Diego,2024-06-01,7716.59,Home,cancelled,Product,72
+466,Luna Jones,luna.jones@yahoo.com,Los Angeles,2026-06-05,1389.24,Sports,cancelled,Support,30
+467,Tina Williams,tina.williams@mail.com,Fort Worth,2024-12-03,7237.45,Beauty,pending,Operations,89
+468,Grace Lopez,grace.lopez@icloud.com,Los Angeles,2026-02-25,564.88,Sports,shipped,Legal,54
+469,Hank Perez,hank.perez@hotmail.com,Baltimore,2023-11-25,6324.13,Electronics,shipped,Product,6
+470,Luna Jones,luna.jones@protonmail.com,San Francisco,2024-03-02,6738.30,Health,returned,Design,74
+471,Olivia Hernandez,olivia.hernandez@icloud.com,Fort Worth,2024-03-11,830.95,Auto,processing,Engineering,71
+472,Frank Thomas,frank.thomas@aol.com,Columbus,2024-03-16,5595.60,Beauty,returned,Design,26
+473,Ivan Davis,ivan.davis@hotmail.com,Chicago,2025-07-11,6849.26,Auto,completed,Marketing,86
+474,Xavier Taylor,xavier.taylor@hotmail.com,Austin,2025-10-21,247.91,Home,pending,HR,79
+475,Diana Lopez,diana.lopez@outlook.com,Charlotte,2023-04-07,6855.47,Food,processing,Marketing,15
+476,Pete Lopez,pete.lopez@outlook.com,San Jose,2023-06-23,8043.97,Home,returned,Operations,3
+477,Julia Miller,julia.miller@hotmail.com,Seattle,2025-09-16,6232.67,Food,processing,Engineering,49
+478,Ivan Johnson,ivan.johnson@icloud.com,Philadelphia,2023-05-07,7893.14,Auto,shipped,Engineering,60
+479,Alice Williams,alice.williams@fastmail.com,Memphis,2025-11-28,9129.20,Sports,completed,Engineering,38
+480,Yvonne Davis,yvonne.davis@fastmail.com,San Francisco,2023-06-16,8668.52,Toys,completed,Sales,26
+481,Ethan Thompson,ethan.thompson@gmail.com,Los Angeles,2024-09-10,3339.68,Health,processing,Sales,3
+482,Wendy Taylor,wendy.taylor@icloud.com,San Diego,2025-01-21,2581.24,Health,completed,Product,36
+483,Victor Hall,victor.hall@fastmail.com,Memphis,2024-02-24,3825.77,Auto,processing,Support,54
+484,Jack Hernandez,jack.hernandez@icloud.com,Nashville,2025-08-18,1322.92,Food,cancelled,Product,88
+485,Iris Martinez,iris.martinez@aol.com,Phoenix,2026-03-21,9330.69,Food,shipped,Marketing,72
+486,Hank Garcia,hank.garcia@protonmail.com,Phoenix,2023-06-14,9612.18,Home,returned,Finance,20
+487,Grace Jones,grace.jones@outlook.com,"New York, Metro Area",2025-10-19,6125.94,Auto,pending,Support,88
+488,Frank Harris,frank.harris@zoho.com,Phoenix,2026-12-21,3743.34,Health,returned,Operations,18
+489,Olivia Johnson,olivia.johnson@fastmail.com,Milwaukee,2023-05-14,2230.20,Books,pending,Marketing,23
+490,Diana Perez,diana.perez@mail.com,Indianapolis,2025-08-08,4278.98,Electronics,cancelled,Legal,93
+491,Oscar Clark,oscar.clark@mail.com,Nashville,2023-09-04,4519.38,Electronics,pending,Product,69
+492,Carol Thompson,carol.thompson@fastmail.com,San Francisco,2023-04-10,4398.89,Home,shipped,Operations,22
+493,Oscar Young,oscar.young@gmail.com,Louisville,2024-08-27,6463.13,Clothing,processing,Product,15
+494,Marco Hall,marco.hall@aol.com,Phoenix,2026-07-11,4512.14,Food,returned,Design,92
+495,Ethan Williams,ethan.williams@icloud.com,Austin,2024-12-24,1240.69,Clothing,processing,Operations,82
+496,Ivan Harris,ivan.harris@fastmail.com,Baltimore,2024-07-18,3809.78,Food,shipped,Design,85
+497,Karen Perez,karen.perez@outlook.com,Philadelphia,2023-07-10,3099.32,Beauty,shipped,Sales,16
+498,Mia Smith,mia.smith@mail.com,Milwaukee,2025-01-15,4979.28,Beauty,cancelled,Engineering,78
+499,Pete Miller,pete.miller@mail.com,Memphis,2026-08-14,4422.09,Auto,cancelled,Engineering,32
+500,Rachel Lopez,rachel.lopez@aol.com,San Antonio,2023-03-05,556.30,Sports,completed,Sales,5
+501,Nina Martinez,nina.martinez@protonmail.com,Chicago,2023-02-14,9937.38,Food,processing,Finance,79
+502,Nina White,nina.white@aol.com,Philadelphia,2026-12-19,3605.72,Electronics,completed,Finance,42
+503,Yvonne Walker,yvonne.walker@yahoo.com,Milwaukee,2026-09-03,2932.56,Food,completed,Finance,43
+504,Ivan Miller,ivan.miller@hotmail.com,Nashville,2023-02-19,7298.90,Toys,completed,Operations,93
+505,Steve Hernandez,steve.hernandez@mail.com,Austin,2025-09-19,9950.26,Sports,pending,Design,73
+506,George Martin,george.martin@outlook.com,Nashville,2024-12-10,9792.69,Electronics,completed,Engineering,60
+507,Hank Clark,hank.clark@hotmail.com,Nashville,2026-07-02,3341.91,Toys,processing,Support,2
+508,Steve Rodriguez,steve.rodriguez@yahoo.com,San Jose,2025-09-18,3243.28,Electronics,completed,HR,44
+509,Luna Lopez,luna.lopez@gmail.com,Philadelphia,2024-06-27,3383.33,Beauty,returned,Engineering,83
+510,Jack Lee,jack.lee@zoho.com,Seattle,2025-08-26,8142.77,Electronics,cancelled,Finance,73
+511,Uma Thompson,uma.thompson@aol.com,New York,2024-10-22,3321.19,Sports,completed,Sales,36
+512,Victor Thomas,victor.thomas@aol.com,"Philadelphia, Metro Area",2026-03-20,1173.74,Home,processing,HR,91
+513,Bella Williams,bella.williams@zoho.com,San Diego,2025-08-27,9507.55,Books,cancelled,Finance,23
+514,Carol Lewis,carol.lewis@hotmail.com,Chicago,2026-09-01,7991.45,Toys,pending,Support,44
+515,Ivan Martinez,ivan.martinez@protonmail.com,Phoenix,2023-09-22,9927.24,Books,processing,Engineering,59
+516,Ivan Brown,ivan.brown@gmail.com,San Jose,2023-11-28,5945.30,Clothing,shipped,Operations,6
+517,Tina Smith,tina.smith@mail.com,Milwaukee,2025-11-07,3212.87,Books,shipped,Finance,69
+518,Diana Gonzalez,diana.gonzalez@yahoo.com,Dallas,2024-03-09,1149.91,Auto,cancelled,Product,14
+519,Wendy Thompson,wendy.thompson@protonmail.com,Dallas,2024-12-26,2836.97,Books,pending,Marketing,40
+520,Victor Thompson,victor.thompson@zoho.com,Los Angeles,2024-01-16,9033.49,Electronics,completed,Legal,7
+521,Zach Garcia,zach.garcia@mail.com,Denver,2026-10-12,3128.52,Books,processing,Product,11
+522,Ethan White,ethan.white@outlook.com,Chicago,2026-02-15,3108.04,Beauty,returned,Support,29
+523,Oscar Rodriguez,oscar.rodriguez@protonmail.com,Fort Worth,2024-12-22,3307.29,Sports,returned,Operations,4
+524,Hank Taylor,hank.taylor@zoho.com,Charlotte,2024-05-25,3490.05,Auto,pending,Product,14
+525,Grace Anderson,grace.anderson@aol.com,Portland,2023-05-18,4612.97,Auto,returned,Support,80
+526,Karen Martin,karen.martin@fastmail.com,Chicago,2025-04-27,6942.42,Health,returned,Design,44
+527,Pete Garcia,pete.garcia@yahoo.com,Baltimore,2026-02-19,5963.17,Sports,cancelled,Marketing,57
+528,Zach Williams,zach.williams@mail.com,Houston,2026-06-16,6452.01,Electronics,completed,Support,18
+529,Alice Lewis,alice.lewis@outlook.com,Memphis,2024-08-18,2919.27,Auto,cancelled,Operations,26
+530,Uma Martinez,uma.martinez@mail.com,Memphis,2025-07-23,9825.90,Sports,completed,Design,2
+531,Hannah Thomas,hannah.thomas@outlook.com,San Jose,2023-06-18,9679.18,Electronics,processing,Product,46
+532,Steve Perez,steve.perez@gmail.com,San Diego,2026-12-19,3946.31,Sports,processing,Legal,52
+533,Julia Miller,julia.miller@outlook.com,Indianapolis,2024-04-18,3849.63,Sports,returned,Sales,37
+534,Iris Jones,iris.jones@gmail.com,Chicago,2023-03-24,8849.57,Health,pending,Marketing,18
+535,Bella Perez,bella.perez@zoho.com,Louisville,2026-10-06,4547.21,Health,cancelled,Operations,50
+536,Leo Hernandez,leo.hernandez@mail.com,New York,2026-12-08,7123.02,Home,returned,Product,74
+537,Carol White,carol.white@zoho.com,Louisville,2025-02-19,4818.43,Clothing,pending,Product,97
+538,Ethan Jackson,ethan.jackson@yahoo.com,San Francisco,2023-04-16,6308.83,Clothing,processing,Product,75
+539,Dave Hall,dave.hall@protonmail.com,Seattle,2023-08-15,5129.55,Beauty,cancelled,HR,54
+540,Steve Martinez,steve.martinez@outlook.com,Los Angeles,2025-12-26,5639.67,Electronics,processing,Operations,75
+541,Dave Gonzalez,dave.gonzalez@icloud.com,Baltimore,2023-05-16,830.60,Toys,completed,Finance,33
+542,Rachel Rodriguez,rachel.rodriguez@icloud.com,New York,2023-10-06,9101.84,Food,processing,Operations,48
+543,Quinn Robinson,quinn.robinson@hotmail.com,Indianapolis,2024-09-28,336.70,Clothing,pending,Design,20
+544,Bella Lewis,bella.lewis@fastmail.com,San Diego,2026-12-21,1677.82,Auto,processing,HR,7
+545,Hank Johnson,hank.johnson@outlook.com,Charlotte,2026-08-10,4765.79,Toys,pending,Legal,88
+546,Fiona Rodriguez,fiona.rodriguez@outlook.com,San Francisco,2026-01-10,9272.65,Beauty,returned,HR,68
+547,Carol Brown,carol.brown@aol.com,Portland,2025-07-20,9180.90,Home,shipped,Finance,35
+548,Quinn Lee,quinn.lee@mail.com,Fort Worth,2026-11-24,2422.51,Auto,pending,Product,44
+549,Leo Anderson,leo.anderson@aol.com,New York,2023-02-01,4116.01,Toys,completed,Operations,45
+550,Steve Rodriguez,steve.rodriguez@hotmail.com,Los Angeles,2023-10-03,574.47,Auto,processing,Support,77
+551,Hank Williams,hank.williams@mail.com,Phoenix,2026-11-25,8999.56,Auto,pending,Marketing,90
+552,Steve Moore,steve.moore@yahoo.com,Portland,2026-05-25,4273.26,Sports,shipped,Sales,100
+553,Dave Thomas,dave.thomas@fastmail.com,Austin,2023-05-27,2651.05,Beauty,completed,Operations,26
+554,Leo Lee,leo.lee@zoho.com,Houston,2024-09-25,4315.94,Auto,processing,Marketing,57
+555,Grace Johnson,grace.johnson@yahoo.com,Chicago,2025-08-01,8965.73,Food,processing,Engineering,5
+556,Rachel Jones,rachel.jones@protonmail.com,Fort Worth,2023-09-23,9399.46,Beauty,returned,Legal,52
+557,Eve Thompson,eve.thompson@hotmail.com,New York,2026-12-27,7799.61,Clothing,cancelled,Product,46
+558,Tina Thomas,tina.thomas@gmail.com,Portland,2023-06-18,8534.29,Sports,completed,Operations,98
+559,Mia Garcia,mia.garcia@aol.com,Los Angeles,2026-11-07,2992.90,Health,completed,HR,63
+560,Diana Clark,diana.clark@hotmail.com,Phoenix,2023-04-01,7199.06,Auto,pending,Operations,50
+561,Julia Lee,julia.lee@icloud.com,Indianapolis,2026-01-02,3396.81,Sports,processing,Engineering,52
+562,Ivan Moore,ivan.moore@aol.com,Phoenix,2024-02-02,7356.17,Beauty,processing,Engineering,61
+563,Oscar Johnson,oscar.johnson@hotmail.com,Louisville,2024-01-06,6328.81,Home,completed,Operations,79
+564,Marco Williams,marco.williams@yahoo.com,Houston,2026-10-26,6158.58,Clothing,pending,Legal,44
+565,Zach Anderson,zach.anderson@yahoo.com,Memphis,2024-06-27,9647.13,Books,completed,Design,23
+566,Hank Rodriguez,hank.rodriguez@outlook.com,"Milwaukee, Metro Area",2026-03-23,3703.04,Food,returned,Support,75
+567,Grace Robinson,grace.robinson@mail.com,Fort Worth,2024-01-16,812.73,Electronics,pending,Marketing,91
+568,Steve Hernandez,steve.hernandez@zoho.com,Louisville,2024-04-05,6400.41,Toys,returned,Legal,31
+569,Oscar Harris,oscar.harris@gmail.com,Nashville,2024-12-16,6122.82,Clothing,processing,Finance,45
+570,Kyle Davis,kyle.davis@hotmail.com,Houston,2023-10-12,8628.12,Toys,cancelled,Support,60
+571,Nick Rodriguez,nick.rodriguez@gmail.com,San Antonio,2023-03-22,8438.74,Beauty,returned,Sales,21
+572,Carol Johnson,carol.johnson@protonmail.com,San Jose,2024-07-09,3346.93,Beauty,completed,Marketing,95
+573,Julia Garcia,julia.garcia@outlook.com,New York,2026-09-04,714.16,Books,processing,Operations,76
+574,Bella Miller,bella.miller@protonmail.com,San Diego,2023-06-08,986.04,Health,pending,Legal,29
+575,Marco Martin,marco.martin@gmail.com,Columbus,2024-04-20,4553.17,Health,shipped,Sales,59
+576,Wendy Rodriguez,wendy.rodriguez@hotmail.com,Austin,2024-01-23,5689.24,Home,pending,Marketing,60
+577,Karen Lewis,karen.lewis@protonmail.com,San Diego,2025-10-06,7896.72,Auto,pending,Design,71
+578,Frank Hernandez,frank.hernandez@aol.com,Indianapolis,2024-10-16,8370.86,Home,completed,Legal,95
+579,Pete Anderson,pete.anderson@fastmail.com,Denver,2024-10-05,9138.05,Electronics,returned,Engineering,6
+580,Hannah Johnson,hannah.johnson@fastmail.com,San Francisco,2026-08-26,7981.38,Clothing,returned,Operations,31
+581,Alice Harris,alice.harris@fastmail.com,San Antonio,2024-06-10,2395.18,Clothing,completed,Operations,86
+582,Ethan Perez,ethan.perez@mail.com,Baltimore,2023-08-15,7719.71,Health,pending,HR,81
+583,Alice Perez,alice.perez@yahoo.com,Fort Worth,2025-09-02,2970.11,Home,processing,Design,70
+584,Nick Robinson,nick.robinson@yahoo.com,Nashville,2025-12-02,5150.27,Sports,completed,Marketing,50
+585,Oscar Johnson,oscar.johnson@protonmail.com,Jacksonville,2024-11-18,7050.50,Toys,processing,Support,18
+586,Pete Thompson,pete.thompson@yahoo.com,Portland,2026-12-25,5803.70,Books,processing,Support,42
+587,Rachel Jackson,rachel.jackson@fastmail.com,Dallas,2023-02-12,3456.18,Beauty,cancelled,Product,16
+588,Julia Gonzalez,julia.gonzalez@aol.com,San Jose,2026-10-12,8000.23,Clothing,pending,Operations,12
+589,Leo Martinez,leo.martinez@yahoo.com,Houston,2024-05-04,6972.63,Beauty,pending,Support,67
+590,Bob Martinez,bob.martinez@fastmail.com,"Memphis, Metro Area",2024-08-12,4204.77,Electronics,shipped,Support,9
+591,Olivia Walker,olivia.walker@aol.com,Portland,2025-07-19,3431.86,Sports,returned,Design,86
+592,Kyle Moore,kyle.moore@zoho.com,San Jose,2024-05-06,7893.93,Books,returned,HR,37
+593,Dave Jones,dave.jones@protonmail.com,San Jose,2026-03-20,9241.76,Toys,shipped,Sales,23
+594,Jack Garcia,jack.garcia@hotmail.com,Houston,2023-06-19,1269.97,Home,shipped,Sales,27
+595,Carol Gonzalez,carol.gonzalez@protonmail.com,Jacksonville,2024-06-15,5401.42,Food,cancelled,Finance,16
+596,Zach Young,zach.young@zoho.com,Milwaukee,2024-08-11,1565.59,Toys,cancelled,HR,83
+597,Fiona Hall,fiona.hall@icloud.com,Milwaukee,2024-10-24,9069.36,Beauty,shipped,Marketing,94
+598,Carol Jones,carol.jones@aol.com,Houston,2025-01-13,6177.50,Books,returned,HR,12
+599,Nina Lee,nina.lee@hotmail.com,Denver,2024-05-07,231.34,Toys,returned,Marketing,66
+600,George Anderson,george.anderson@mail.com,"Nashville, Metro Area",2023-11-12,3979.18,Health,shipped,Legal,48
+
