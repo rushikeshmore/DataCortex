@@ -1,0 +1,800 @@
+ts=2026-03-15T10:30:00.000Z level=debug msg="Cache hit" key=config:main ttl=600 host=worker-02
+ts=2026-03-15T10:30:00.047Z level=info msg="Health check passed" uptime_s=58881 host=worker-02
+ts=2026-03-15T10:30:00.088Z level=debug msg="Query executed" table=users rows=207 duration_ms=467 host=web-02
+ts=2026-03-15T10:30:00.006Z level=warn msg="High memory usage" used_mb=3084 limit_mb=4096 host=web-01
+ts=2026-03-15T10:30:00.072Z level=debug msg="Cache hit" key=session:def ttl=600 host=api-01
+ts=2026-03-15T10:30:00.065Z level=warn msg="High memory usage" used_mb=1843 limit_mb=4096 host=web-02
+ts=2026-03-15T10:30:00.270Z level=warn msg="High memory usage" used_mb=1203 limit_mb=4096 host=worker-02
+ts=2026-03-15T10:30:00.028Z level=info msg="Health check passed" uptime_s=44153 host=web-03
+ts=2026-03-15T10:30:00.288Z level=info msg="Response sent" method=DELETE path=/api/v2/users status=503 bytes=30430 host=api-01
+ts=2026-03-15T10:30:00.450Z level=info msg="Health check passed" uptime_s=65133 host=worker-02
+ts=2026-03-15T10:30:00.020Z level=debug msg="Middleware applied" name=auth duration_ms=146 host=web-01
+ts=2026-03-15T10:30:00.154Z level=debug msg="Cache miss" key=product:100 host=api-02
+ts=2026-03-15T10:30:00.072Z level=debug msg="Cache miss" key=product:200 host=web-02
+ts=2026-03-15T10:30:00.429Z level=warn msg="Rate limit approaching" client=10.0.0.216 remaining=16 host=web-02
+ts=2026-03-15T10:30:00.154Z level=debug msg="Cache miss" key=config:main host=worker-01
+ts=2026-03-15T10:30:00.405Z level=info msg="Response sent" method=GET path=/api/v1/users status=301 bytes=19944 host=worker-02
+ts=2026-03-15T10:30:00.720Z level=warn msg="Rate limit approaching" client=10.0.2.12 remaining=76 host=web-03
+ts=2026-03-15T10:30:00.357Z level=debug msg="Cache miss" key=user:789 host=web-01
+ts=2026-03-15T10:30:00.558Z level=error msg="Connection refused" remote_addr=10.0.3.34:65181 error="connection refused" host=worker-01
+ts=2026-03-15T10:30:00.494Z level=info msg="Health check passed" uptime_s=94170 host=worker-01
+ts=2026-03-15T10:30:00.140Z level=info msg="Response sent" method=DELETE path=/api/v1/orders status=500 bytes=36546 host=api-01
+ts=2026-03-15T10:30:00.042Z level=debug msg="Template rendered" name=dashboard duration_ms=322 host=worker-01
+ts=2026-03-15T10:30:00.088Z level=info msg="Request received" method=POST path=/api/v1/products status=200 duration_ms=491 host=web-01
+ts=2026-03-15T10:30:00.598Z level=error msg="Internal error" request_id=req_295980 error="null pointer" host=web-02
+ts=2026-03-15T10:30:00.240Z level=info msg="Response sent" method=PUT path=/api/v1/products status=403 bytes=34766 host=worker-01
+ts=2026-03-15T10:30:00.875Z level=warn msg="Deprecated API used" path=/api/v1/products client=10.0.0.103 host=web-01
+ts=2026-03-15T10:30:01.248Z level=info msg="Health check passed" uptime_s=19100 host=web-01
+ts=2026-03-15T10:30:01.296Z level=info msg="Health check passed" uptime_s=70555 host=api-02
+ts=2026-03-15T10:30:00.196Z level=info msg="Health check passed" uptime_s=61282 host=worker-01
+ts=2026-03-15T10:30:00.203Z level=error msg="Request timeout" method=PATCH path=/api/v1/products timeout_ms=30000 host=web-03
+ts=2026-03-15T10:30:00.660Z level=info msg="Server started" port=3000 pid=3694 host=web-02
+ts=2026-03-15T10:30:00.279Z level=info msg="Response sent" method=GET path=/api/v1/health status=503 bytes=35138 host=api-02
+ts=2026-03-15T10:30:01.472Z level=debug msg="Template rendered" name=dashboard duration_ms=500 host=web-01
+ts=2026-03-15T10:30:00.363Z level=warn msg="High memory usage" used_mb=1709 limit_mb=4096 host=worker-02
+ts=2026-03-15T10:30:01.564Z level=debug msg="Cache hit" key=user:123 ttl=3600 host=web-02
+ts=2026-03-15T10:30:01.715Z level=info msg="Response sent" method=GET path=/api/v1/auth status=502 bytes=18310 host=web-01
+ts=2026-03-15T10:30:00.108Z level=debug msg="Cache hit" key=config:main ttl=600 host=web-03
+ts=2026-03-15T10:30:01.221Z level=info msg="Metric recorded" name=http_request_total value=18910 host=api-02
+ts=2026-03-15T10:30:01.178Z level=debug msg="Cache miss" key=user:789 host=web-03
+ts=2026-03-15T10:30:01.404Z level=error msg="Internal error" request_id=req_293352 error="null pointer" host=web-01
+ts=2026-03-15T10:30:00.200Z level=warn msg="Slow query" table=orders duration_ms=135 threshold_ms=100 host=worker-02
+ts=2026-03-15T10:30:01.148Z level=info msg="Connection established" remote_addr=10.0.1.33:33247 host=web-02
+ts=2026-03-15T10:30:02.058Z level=debug msg="Cache hit" key=product:100 ttl=300 host=web-02
+ts=2026-03-15T10:30:01.978Z level=error msg="Query failed" table=users error="deadlock detected" retries=2 host=api-01
+ts=2026-03-15T10:30:01.628Z level=error msg="Request timeout" method=DELETE path=/api/v1/health timeout_ms=30000 host=web-01
+ts=2026-03-15T10:30:00.090Z level=info msg="Health check passed" uptime_s=51835 host=web-02
+ts=2026-03-15T10:30:01.426Z level=debug msg="Cache hit" key=product:200 ttl=300 host=api-01
+ts=2026-03-15T10:30:01.457Z level=debug msg="Cache hit" key=session:def ttl=1800 host=api-01
+ts=2026-03-15T10:30:01.392Z level=info msg="Request received" method=GET path=/api/v1/health status=503 duration_ms=62 host=worker-02
+ts=2026-03-15T10:30:02.205Z level=debug msg="Cache miss" key=product:100 host=web-02
+ts=2026-03-15T10:30:01.400Z level=warn msg="Slow query" table=orders duration_ms=213 threshold_ms=100 host=web-02
+ts=2026-03-15T10:30:00.408Z level=warn msg="Slow query" table=orders duration_ms=78 threshold_ms=100 host=web-03
+ts=2026-03-15T10:30:02.028Z level=info msg="Server started" port=8081 pid=7543 host=api-01
+ts=2026-03-15T10:30:01.113Z level=info msg="Server started" port=8080 pid=6932 host=worker-01
+ts=2026-03-15T10:30:02.646Z level=info msg="Connection established" remote_addr=10.0.0.254:57561 host=web-01
+ts=2026-03-15T10:30:01.210Z level=info msg="Metric recorded" name=http_request_total value=53518 host=api-02
+ts=2026-03-15T10:30:01.288Z level=error msg="Request timeout" method=POST path=/api/v1/users timeout_ms=30000 host=worker-01
+ts=2026-03-15T10:30:01.938Z level=info msg="Health check passed" uptime_s=58259 host=api-01
+ts=2026-03-15T10:30:02.552Z level=debug msg="Cache hit" key=product:100 ttl=3600 host=web-02
+ts=2026-03-15T10:30:02.596Z level=info msg="Request received" method=POST path=/api/v1/orders status=502 duration_ms=443 host=web-02
+ts=2026-03-15T10:30:02.760Z level=info msg="Metric recorded" name=http_request_total value=76218 host=web-03
+ts=2026-03-15T10:30:01.647Z level=info msg="Metric recorded" name=http_request_total value=71981 host=worker-02
+ts=2026-03-15T10:30:02.418Z level=info msg="Health check passed" uptime_s=40943 host=api-01
+ts=2026-03-15T10:30:03.087Z level=error msg="Query failed" table=users error="deadlock detected" retries=0 host=web-01
+ts=2026-03-15T10:30:01.024Z level=warn msg="Deprecated API used" path=/api/v1/health client=10.0.3.81 host=worker-02
+ts=2026-03-15T10:30:02.795Z level=warn msg="Rate limit approaching" client=10.0.0.92 remaining=11 host=web-02
+ts=2026-03-15T10:30:01.452Z level=error msg="Connection refused" remote_addr=10.0.2.233:34918 error="connection refused" host=worker-02
+ts=2026-03-15T10:30:00.603Z level=debug msg="Middleware applied" name=auth duration_ms=375 host=web-01
+ts=2026-03-15T10:30:01.020Z level=info msg="Health check passed" uptime_s=67509 host=api-01
+ts=2026-03-15T10:30:02.001Z level=info msg="Connection established" remote_addr=10.0.1.156:37367 host=api-02
+ts=2026-03-15T10:30:01.960Z level=info msg="Metric recorded" name=http_request_total value=28852 host=web-02
+ts=2026-03-15T10:30:02.485Z level=info msg="Health check passed" uptime_s=96329 host=api-02
+ts=2026-03-15T10:30:00.432Z level=info msg="Server started" port=9090 pid=2259 host=web-03
+ts=2026-03-15T10:30:01.971Z level=info msg="Connection established" remote_addr=10.0.3.18:64170 host=api-01
+ts=2026-03-15T10:30:03.552Z level=warn msg="Slow query" table=orders duration_ms=9 threshold_ms=100 host=api-02
+ts=2026-03-15T10:30:00.225Z level=error msg="Query failed" table=users error="deadlock detected" retries=1 host=web-02
+ts=2026-03-15T10:30:02.280Z level=info msg="Connection established" remote_addr=10.0.1.183:37656 host=web-02
+ts=2026-03-15T10:30:02.926Z level=debug msg="Cache hit" key=session:def ttl=60 host=worker-02
+ts=2026-03-15T10:30:02.418Z level=debug msg="Query executed" table=users rows=674 duration_ms=245 host=web-03
+ts=2026-03-15T10:30:03.555Z level=error msg="Request timeout" method=PATCH path=/api/v1/users timeout_ms=30000 host=worker-01
+ts=2026-03-15T10:30:00.560Z level=info msg="Response sent" method=GET path=/api/v1/metrics status=401 bytes=44964 host=api-02
+ts=2026-03-15T10:30:02.592Z level=warn msg="Slow query" table=orders duration_ms=28 threshold_ms=100 host=worker-02
+ts=2026-03-15T10:30:02.870Z level=info msg="Request received" method=GET path=/api/v2/orders status=301 duration_ms=450 host=api-01
+ts=2026-03-15T10:30:02.241Z level=info msg="Metric recorded" name=http_request_total value=31189 host=web-01
+ts=2026-03-15T10:30:01.176Z level=info msg="Server started" port=8080 pid=5996 host=worker-01
+ts=2026-03-15T10:30:02.040Z level=debug msg="Middleware applied" name=auth duration_ms=129 host=web-01
+ts=2026-03-15T10:30:03.440Z level=debug msg="Middleware applied" name=auth duration_ms=40 host=api-01
+ts=2026-03-15T10:30:02.697Z level=warn msg="High memory usage" used_mb=1128 limit_mb=4096 host=api-01
+ts=2026-03-15T10:30:00.616Z level=info msg="Server started" port=8081 pid=6108 host=web-01
+ts=2026-03-15T10:30:01.068Z level=info msg="Health check passed" uptime_s=19592 host=web-01
+ts=2026-03-15T10:30:01.620Z level=info msg="Connection established" remote_addr=10.0.2.204:44382 host=api-02
+ts=2026-03-15T10:30:02.730Z level=info msg="Server started" port=9090 pid=1676 host=worker-01
+ts=2026-03-15T10:30:02.944Z level=warn msg="High memory usage" used_mb=3603 limit_mb=4096 host=web-01
+ts=2026-03-15T10:30:02.046Z level=warn msg="Rate limit approaching" client=10.0.3.157 remaining=30 host=web-02
+ts=2026-03-15T10:30:03.948Z level=info msg="Response sent" method=PATCH path=/api/v1/metrics status=403 bytes=2547 host=web-03
+ts=2026-03-15T10:30:04.750Z level=warn msg="Rate limit approaching" client=10.0.3.82 remaining=52 host=worker-02
+ts=2026-03-15T10:30:01.248Z level=info msg="Metric recorded" name=http_request_total value=92950 host=web-03
+ts=2026-03-15T10:30:02.522Z level=info msg="Request received" method=GET path=/api/v1/auth status=401 duration_ms=171 host=web-01
+ts=2026-03-15T10:30:03.430Z level=info msg="Server started" port=9090 pid=8161 host=api-02
+ts=2026-03-15T10:30:00.792Z level=error msg="Connection refused" remote_addr=10.0.3.132:43421 error="connection refused" host=worker-02
+ts=2026-03-15T10:30:03.800Z level=debug msg="Middleware applied" name=auth duration_ms=387 host=worker-01
+ts=2026-03-15T10:30:04.848Z level=info msg="Health check passed" uptime_s=99243 host=api-02
+ts=2026-03-15T10:30:02.142Z level=debug msg="Cache hit" key=product:100 ttl=3600 host=web-01
+ts=2026-03-15T10:30:01.133Z level=info msg="Connection established" remote_addr=10.0.3.50:57503 host=api-01
+ts=2026-03-15T10:30:01.352Z level=debug msg="Query executed" table=users rows=692 duration_ms=363 host=worker-01
+ts=2026-03-15T10:30:05.040Z level=warn msg="High memory usage" used_mb=3109 limit_mb=4096 host=api-01
+ts=2026-03-15T10:30:01.802Z level=info msg="Metric recorded" name=http_request_total value=83755 host=web-01
+ts=2026-03-15T10:30:04.601Z level=info msg="Response sent" method=GET path=/api/v1/users status=404 bytes=36151 host=web-03
+ts=2026-03-15T10:30:00.432Z level=debug msg="Cache miss" key=product:200 host=web-02
+ts=2026-03-15T10:30:02.943Z level=warn msg="Deprecated API used" path=/api/v1/products client=10.0.3.161 host=web-03
+ts=2026-03-15T10:30:03.520Z level=info msg="Server started" port=3000 pid=5538 host=web-03
+ts=2026-03-15T10:30:00.444Z level=info msg="Request received" method=GET path=/api/v1/auth status=401 duration_ms=378 host=api-01
+ts=2026-03-15T10:30:02.464Z level=info msg="Metric recorded" name=http_request_total value=83625 host=web-02
+ts=2026-03-15T10:30:02.599Z level=info msg="Metric recorded" name=http_request_total value=60417 host=api-01
+ts=2026-03-15T10:30:03.534Z level=error msg="Request timeout" method=PUT path=/api/v2/users timeout_ms=30000 host=api-02
+ts=2026-03-15T10:30:00.690Z level=debug msg="Template rendered" name=dashboard duration_ms=53 host=web-03
+ts=2026-03-15T10:30:03.596Z level=info msg="Request received" method=POST path=/api/v1/auth status=400 duration_ms=51 host=web-03
+ts=2026-03-15T10:30:04.914Z level=error msg="Internal error" request_id=req_255564 error="null pointer" host=api-01
+ts=2026-03-15T10:30:04.956Z level=debug msg="Cache hit" key=user:123 ttl=1800 host=worker-02
+ts=2026-03-15T10:30:00.476Z level=info msg="Connection established" remote_addr=10.0.0.123:61340 host=web-03
+ts=2026-03-15T10:30:04.440Z level=debug msg="Cache hit" key=user:456 ttl=600 host=worker-01
+ts=2026-03-15T10:30:02.662Z level=info msg="Response sent" method=DELETE path=/api/v1/products status=200 bytes=24533 host=web-03
+ts=2026-03-15T10:30:03.294Z level=info msg="Connection established" remote_addr=10.0.2.197:41639 host=api-01
+ts=2026-03-15T10:30:02.337Z level=info msg="Request received" method=GET path=/api/v1/health status=200 duration_ms=61 host=api-01
+ts=2026-03-15T10:30:04.216Z level=info msg="Response sent" method=GET path=/api/v2/orders status=200 bytes=23603 host=api-01
+ts=2026-03-15T10:30:01.250Z level=debug msg="Cache miss" key=product:200 host=worker-02
+ts=2026-03-15T10:30:05.040Z level=debug msg="Template rendered" name=dashboard duration_ms=43 host=worker-02
+ts=2026-03-15T10:30:01.651Z level=debug msg="Template rendered" name=dashboard duration_ms=153 host=worker-02
+ts=2026-03-15T10:30:04.352Z level=debug msg="Query executed" table=users rows=253 duration_ms=347 host=api-01
+ts=2026-03-15T10:30:05.289Z level=info msg="Request received" method=PATCH path=/api/v2/users status=500 duration_ms=221 host=web-01
+ts=2026-03-15T10:30:04.030Z level=info msg="Response sent" method=GET path=/api/v2/users status=200 bytes=11685 host=web-02
+ts=2026-03-15T10:30:06.419Z level=info msg="Response sent" method=PATCH path=/api/v1/users status=200 bytes=30778 host=api-01
+ts=2026-03-15T10:30:01.188Z level=error msg="Connection refused" remote_addr=10.0.1.183:54676 error="connection refused" host=web-01
+ts=2026-03-15T10:30:05.453Z level=error msg="Query failed" table=users error="deadlock detected" retries=3 host=api-01
+ts=2026-03-15T10:30:04.422Z level=info msg="Server started" port=3000 pid=4190 host=api-02
+ts=2026-03-15T10:30:05.130Z level=debug msg="Middleware applied" name=auth duration_ms=380 host=api-01
+ts=2026-03-15T10:30:04.760Z level=info msg="Health check passed" uptime_s=33227 host=web-03
+ts=2026-03-15T10:30:03.973Z level=info msg="Metric recorded" name=http_request_total value=49517 host=worker-01
+ts=2026-03-15T10:30:03.450Z level=debug msg="Template rendered" name=dashboard duration_ms=355 host=api-01
+ts=2026-03-15T10:30:00.556Z level=debug msg="Query executed" table=users rows=182 duration_ms=285 host=worker-01
+ts=2026-03-15T10:30:00.140Z level=debug msg="Template rendered" name=dashboard duration_ms=36 host=web-01
+ts=2026-03-15T10:30:06.909Z level=debug msg="Template rendered" name=dashboard duration_ms=470 host=web-01
+ts=2026-03-15T10:30:00.426Z level=warn msg="High memory usage" used_mb=3236 limit_mb=4096 host=worker-02
+ts=2026-03-15T10:30:05.577Z level=error msg="Internal error" request_id=req_293784 error="null pointer" host=api-01
+ts=2026-03-15T10:30:00.576Z level=error msg="Query failed" table=users error="deadlock detected" retries=3 host=worker-02
+ts=2026-03-15T10:30:06.670Z level=info msg="Response sent" method=GET path=/api/v1/orders status=200 bytes=11516 host=web-02
+ts=2026-03-15T10:30:07.008Z level=debug msg="Middleware applied" name=auth duration_ms=330 host=api-01
+ts=2026-03-15T10:30:04.998Z level=debug msg="Middleware applied" name=auth duration_ms=290 host=web-03
+ts=2026-03-15T10:30:04.736Z level=info msg="Server started" port=3000 pid=5920 host=web-01
+ts=2026-03-15T10:30:06.705Z level=debug msg="Template rendered" name=dashboard duration_ms=7 host=api-01
+ts=2026-03-15T10:30:03.450Z level=info msg="Metric recorded" name=http_request_total value=23862 host=web-02
+ts=2026-03-15T10:30:04.681Z level=error msg="Request timeout" method=PATCH path=/api/v1/orders timeout_ms=30000 host=web-02
+ts=2026-03-15T10:30:00.760Z level=debug msg="Query executed" table=users rows=769 duration_ms=247 host=web-01
+ts=2026-03-15T10:30:06.273Z level=debug msg="Cache miss" key=session:abc host=api-01
+ts=2026-03-15T10:30:05.236Z level=error msg="Internal error" request_id=req_836818 error="null pointer" host=web-03
+ts=2026-03-15T10:30:05.735Z level=error msg="Connection refused" remote_addr=10.0.2.254:35805 error="connection refused" host=web-01
+ts=2026-03-15T10:30:03.744Z level=info msg="Server started" port=8080 pid=9466 host=api-02
+ts=2026-03-15T10:30:07.379Z level=info msg="Connection established" remote_addr=10.0.3.246:43352 host=api-02
+ts=2026-03-15T10:30:03.792Z level=info msg="Server started" port=8081 pid=8015 host=worker-01
+ts=2026-03-15T10:30:03.180Z level=info msg="Response sent" method=GET path=/api/v1/metrics status=204 bytes=21142 host=worker-01
+ts=2026-03-15T10:30:07.520Z level=info msg="Metric recorded" name=http_request_total value=11646 host=web-02
+ts=2026-03-15T10:30:06.762Z level=info msg="Response sent" method=GET path=/api/v1/health status=403 bytes=46188 host=api-02
+ts=2026-03-15T10:30:04.050Z level=info msg="Server started" port=8081 pid=6812 host=worker-02
+ts=2026-03-15T10:30:06.031Z level=info msg="Server started" port=9090 pid=2182 host=web-01
+ts=2026-03-15T10:30:05.084Z level=warn msg="High memory usage" used_mb=3153 limit_mb=4096 host=web-01
+ts=2026-03-15T10:30:05.115Z level=info msg="Server started" port=3000 pid=4218 host=web-02
+ts=2026-03-15T10:30:07.470Z level=info msg="Health check passed" uptime_s=78477 host=web-01
+ts=2026-03-15T10:30:02.171Z level=debug msg="Cache miss" key=session:abc host=api-02
+ts=2026-03-15T10:30:03.864Z level=warn msg="Rate limit approaching" client=10.0.3.143 remaining=56 host=web-02
+ts=2026-03-15T10:30:04.563Z level=warn msg="High memory usage" used_mb=1399 limit_mb=4096 host=worker-01
+ts=2026-03-15T10:30:06.120Z level=info msg="Health check passed" uptime_s=54294 host=worker-02
+ts=2026-03-15T10:30:02.736Z level=info msg="Response sent" method=GET path=/api/v2/orders status=200 bytes=992 host=worker-01
+ts=2026-03-15T10:30:00.860Z level=info msg="Server started" port=8080 pid=9627 host=web-02
+ts=2026-03-15T10:30:05.017Z level=debug msg="Middleware applied" name=auth duration_ms=266 host=web-02
+ts=2026-03-15T10:30:06.612Z level=info msg="Connection established" remote_addr=10.0.0.150:62615 host=web-01
+ts=2026-03-15T10:30:04.200Z level=info msg="Connection established" remote_addr=10.0.1.61:41086 host=worker-01
+ts=2026-03-15T10:30:06.512Z level=info msg="Response sent" method=DELETE path=/api/v1/metrics status=200 bytes=42694 host=api-01
+ts=2026-03-15T10:30:03.009Z level=debug msg="Query executed" table=users rows=179 duration_ms=173 host=web-01
+ts=2026-03-15T10:30:00.534Z level=info msg="Metric recorded" name=http_request_total value=87816 host=web-02
+ts=2026-03-15T10:30:00.358Z level=error msg="Query failed" table=users error="deadlock detected" retries=1 host=api-02
+ts=2026-03-15T10:30:07.920Z level=debug msg="Cache hit" key=user:123 ttl=3600 host=web-02
+ts=2026-03-15T10:30:03.258Z level=debug msg="Cache hit" key=user:456 ttl=300 host=web-03
+ts=2026-03-15T10:30:06.188Z level=info msg="Server started" port=8080 pid=6654 host=api-01
+ts=2026-03-15T10:30:04.575Z level=info msg="Health check passed" uptime_s=77337 host=worker-02
+ts=2026-03-15T10:30:03.128Z level=info msg="Metric recorded" name=http_request_total value=80256 host=worker-02
+ts=2026-03-15T10:30:00.925Z level=warn msg="Slow query" table=orders duration_ms=398 threshold_ms=100 host=api-01
+ts=2026-03-15T10:30:08.742Z level=info msg="Server started" port=9090 pid=6135 host=api-01
+ts=2026-03-15T10:30:02.992Z level=info msg="Health check passed" uptime_s=56770 host=worker-01
+ts=2026-03-15T10:30:07.520Z level=info msg="Response sent" method=GET path=/api/v2/orders status=200 bytes=29835 host=api-01
+ts=2026-03-15T10:30:09.450Z level=warn msg="High memory usage" used_mb=2264 limit_mb=4096 host=api-01
+ts=2026-03-15T10:30:03.040Z level=debug msg="Middleware applied" name=auth duration_ms=202 host=api-02
+ts=2026-03-15T10:30:03.629Z level=info msg="Request received" method=GET path=/api/v1/users status=200 duration_ms=427 host=web-01
+ts=2026-03-15T10:30:00.192Z level=error msg="Internal error" request_id=req_107363 error="null pointer" host=web-03
+ts=2026-03-15T10:30:02.123Z level=info msg="Response sent" method=GET path=/api/v2/orders status=200 bytes=18980 host=web-02
+ts=2026-03-15T10:30:02.522Z level=warn msg="Slow query" table=orders duration_ms=96 threshold_ms=100 host=api-02
+ts=2026-03-15T10:30:05.265Z level=info msg="Connection established" remote_addr=10.0.1.29:51800 host=web-01
+ts=2026-03-15T10:30:02.156Z level=info msg="Metric recorded" name=http_request_total value=9109 host=worker-02
+ts=2026-03-15T10:30:04.728Z level=debug msg="Middleware applied" name=auth duration_ms=406 host=worker-01
+ts=2026-03-15T10:30:00.594Z level=warn msg="Slow query" table=orders duration_ms=84 threshold_ms=100 host=worker-02
+ts=2026-03-15T10:30:05.771Z level=info msg="Metric recorded" name=http_request_total value=49584 host=api-01
+ts=2026-03-15T10:30:01.200Z level=debug msg="Cache hit" key=session:abc ttl=600 host=worker-01
+ts=2026-03-15T10:30:05.427Z level=debug msg="Cache miss" key=user:456 host=worker-01
+ts=2026-03-15T10:30:02.828Z level=warn msg="High memory usage" used_mb=3690 limit_mb=4096 host=web-01
+ts=2026-03-15T10:30:08.526Z level=info msg="Metric recorded" name=http_request_total value=23115 host=api-01
+ts=2026-03-15T10:30:05.304Z level=debug msg="Cache hit" key=session:abc ttl=1800 host=web-03
+ts=2026-03-15T10:30:05.740Z level=info msg="Response sent" method=GET path=/api/v1/users status=301 bytes=35987 host=worker-02
+ts=2026-03-15T10:30:01.442Z level=debug msg="Middleware applied" name=auth duration_ms=277 host=web-02
+ts=2026-03-15T10:30:00.828Z level=error msg="Internal error" request_id=req_992680 error="null pointer" host=api-01
+ts=2026-03-15T10:30:09.360Z level=info msg="Connection established" remote_addr=10.0.3.239:60220 host=worker-02
+ts=2026-03-15T10:30:09.823Z level=info msg="Metric recorded" name=http_request_total value=18951 host=api-01
+ts=2026-03-15T10:30:02.100Z level=warn msg="High memory usage" used_mb=3404 limit_mb=4096 host=web-02
+ts=2026-03-15T10:30:05.064Z level=info msg="Response sent" method=GET path=/api/v1/auth status=503 bytes=5510 host=api-01
+ts=2026-03-15T10:30:02.544Z level=error msg="Request timeout" method=GET path=/api/v1/orders timeout_ms=30000 host=web-02
+ts=2026-03-15T10:30:04.047Z level=debug msg="Cache hit" key=session:def ttl=1800 host=api-01
+ts=2026-03-15T10:30:05.992Z level=warn msg="Deprecated API used" path=/api/v1/orders client=10.0.2.195 host=web-01
+ts=2026-03-15T10:30:08.385Z level=info msg="Response sent" method=PUT path=/api/v1/metrics status=200 bytes=18843 host=api-01
+ts=2026-03-15T10:30:04.104Z level=info msg="Connection established" remote_addr=10.0.2.14:48646 host=api-02
+ts=2026-03-15T10:30:01.736Z level=debug msg="Template rendered" name=dashboard duration_ms=349 host=api-02
+ts=2026-03-15T10:30:06.322Z level=info msg="Server started" port=8081 pid=4849 host=web-02
+ts=2026-03-15T10:30:02.847Z level=info msg="Health check passed" uptime_s=11491 host=worker-02
+ts=2026-03-15T10:30:08.800Z level=error msg="Query failed" table=users error="deadlock detected" retries=2 host=web-01
+ts=2026-03-15T10:30:09.282Z level=error msg="Connection refused" remote_addr=10.0.0.216:33504 error="connection refused" host=web-03
+ts=2026-03-15T10:30:05.994Z level=debug msg="Cache miss" key=session:def host=web-02
+ts=2026-03-15T10:30:10.035Z level=debug msg="Cache miss" key=user:456 host=worker-02
+ts=2026-03-15T10:30:10.976Z level=error msg="Connection refused" remote_addr=10.0.1.34:36243 error="connection refused" host=worker-02
+ts=2026-03-15T10:30:00.225Z level=info msg="Server started" port=8081 pid=3136 host=worker-02
+ts=2026-03-15T10:30:02.034Z level=debug msg="Cache miss" key=user:123 host=worker-02
+ts=2026-03-15T10:30:01.362Z level=info msg="Response sent" method=POST path=/api/v1/users status=500 bytes=8061 host=web-02
+ts=2026-03-15T10:30:08.208Z level=info msg="Response sent" method=PATCH path=/api/v1/metrics status=502 bytes=16454 host=web-03
+ts=2026-03-15T10:30:08.702Z level=warn msg="Deprecated API used" path=/api/v1/metrics client=10.0.3.35 host=worker-02
+ts=2026-03-15T10:30:05.750Z level=debug msg="Query executed" table=users rows=538 duration_ms=69 host=worker-01
+ts=2026-03-15T10:30:11.319Z level=debug msg="Query executed" table=users rows=900 duration_ms=425 host=api-01
+ts=2026-03-15T10:30:11.600Z level=debug msg="Template rendered" name=dashboard duration_ms=86 host=web-02
+ts=2026-03-15T10:30:01.165Z level=info msg="Metric recorded" name=http_request_total value=23119 host=web-02
+ts=2026-03-15T10:30:10.062Z level=warn msg="High memory usage" used_mb=3690 limit_mb=4096 host=api-01
+ts=2026-03-15T10:30:01.410Z level=error msg="Query failed" table=users error="deadlock detected" retries=2 host=web-02
+ts=2026-03-15T10:30:06.372Z level=error msg="Connection refused" remote_addr=10.0.2.92:46878 error="connection refused" host=worker-02
+ts=2026-03-15T10:30:01.422Z level=info msg="Metric recorded" name=http_request_total value=75594 host=api-02
+ts=2026-03-15T10:30:04.284Z level=debug msg="Cache hit" key=session:abc ttl=3600 host=api-02
+ts=2026-03-15T10:30:02.629Z level=info msg="Connection established" remote_addr=10.0.3.194:65409 host=web-03
+ts=2026-03-15T10:30:02.160Z level=info msg="Server started" port=8080 pid=1121 host=web-01
+ts=2026-03-15T10:30:04.338Z level=error msg="Internal error" request_id=req_861241 error="null pointer" host=web-01
+ts=2026-03-15T10:30:00.726Z level=error msg="Request timeout" method=DELETE path=/api/v1/metrics timeout_ms=30000 host=web-01
+ts=2026-03-15T10:30:10.449Z level=debug msg="Cache miss" key=user:123 host=api-02
+ts=2026-03-15T10:30:08.540Z level=info msg="Health check passed" uptime_s=11267 host=web-01
+ts=2026-03-15T10:30:04.410Z level=info msg="Server started" port=8081 pid=2671 host=web-02
+ts=2026-03-15T10:30:09.102Z level=info msg="Metric recorded" name=http_request_total value=33209 host=worker-02
+ts=2026-03-15T10:30:11.856Z level=warn msg="Slow query" table=orders duration_ms=440 threshold_ms=100 host=web-03
+ts=2026-03-15T10:30:11.656Z level=info msg="Health check passed" uptime_s=76572 host=api-02
+ts=2026-03-15T10:30:01.992Z level=info msg="Health check passed" uptime_s=57919 host=web-03
+ts=2026-03-15T10:30:05.000Z level=info msg="Response sent" method=POST path=/api/v2/users status=204 bytes=43706 host=web-02
+ts=2026-03-15T10:30:01.757Z level=info msg="Server started" port=9090 pid=2208 host=web-01
+ts=2026-03-15T10:30:11.340Z level=error msg="Query failed" table=users error="deadlock detected" retries=3 host=worker-02
+ts=2026-03-15T10:30:01.265Z level=info msg="Metric recorded" name=http_request_total value=24474 host=web-02
+ts=2026-03-15T10:30:00.762Z level=debug msg="Cache miss" key=config:main host=web-01
+ts=2026-03-15T10:30:04.845Z level=info msg="Response sent" method=POST path=/api/v2/users status=301 bytes=40322 host=web-02
+ts=2026-03-15T10:30:07.168Z level=debug msg="Middleware applied" name=auth duration_ms=411 host=worker-01
+ts=2026-03-15T10:30:10.280Z level=info msg="Health check passed" uptime_s=58356 host=worker-01
+ts=2026-03-15T10:30:00.258Z level=debug msg="Template rendered" name=dashboard duration_ms=111 host=web-03
+ts=2026-03-15T10:30:08.029Z level=info msg="Request received" method=GET path=/api/v1/orders status=200 duration_ms=13 host=api-02
+ts=2026-03-15T10:30:05.200Z level=info msg="Connection established" remote_addr=10.0.0.155:51653 host=api-02
+ts=2026-03-15T10:30:02.349Z level=info msg="Metric recorded" name=http_request_total value=40581 host=api-02
+ts=2026-03-15T10:30:12.314Z level=info msg="Health check passed" uptime_s=18973 host=worker-02
+ts=2026-03-15T10:30:03.945Z level=info msg="Metric recorded" name=http_request_total value=8637 host=web-01
+ts=2026-03-15T10:30:05.016Z level=info msg="Request received" method=POST path=/api/v2/orders status=503 duration_ms=207 host=worker-01
+ts=2026-03-15T10:30:05.830Z level=debug msg="Middleware applied" name=auth duration_ms=318 host=worker-01
+ts=2026-03-15T10:30:05.320Z level=info msg="Metric recorded" name=http_request_total value=11493 host=api-02
+ts=2026-03-15T10:30:07.743Z level=warn msg="Rate limit approaching" client=10.0.2.3 remaining=46 host=api-01
+ts=2026-03-15T10:30:01.072Z level=debug msg="Query executed" table=users rows=617 duration_ms=53 host=worker-01
+ts=2026-03-15T10:30:02.690Z level=info msg="Health check passed" uptime_s=70072 host=worker-02
+ts=2026-03-15T10:30:04.860Z level=info msg="Metric recorded" name=http_request_total value=32535 host=web-01
+ts=2026-03-15T10:30:01.626Z level=info msg="Server started" port=9090 pid=3146 host=worker-01
+ts=2026-03-15T10:30:05.440Z level=info msg="Response sent" method=PUT path=/api/v1/products status=502 bytes=10428 host=web-02
+ts=2026-03-15T10:30:09.828Z level=info msg="Request received" method=GET path=/api/v2/users status=204 duration_ms=244 host=worker-02
+ts=2026-03-15T10:30:07.398Z level=info msg="Health check passed" uptime_s=97062 host=web-02
+ts=2026-03-15T10:30:03.575Z level=info msg="Metric recorded" name=http_request_total value=4426 host=worker-02
+ts=2026-03-15T10:30:06.348Z level=debug msg="Query executed" table=users rows=407 duration_ms=322 host=worker-02
+ts=2026-03-15T10:30:01.108Z level=debug msg="Cache hit" key=session:abc ttl=600 host=web-03
+ts=2026-03-15T10:30:12.232Z level=error msg="Internal error" request_id=req_382132 error="null pointer" host=web-01
+ts=2026-03-15T10:30:11.997Z level=debug msg="Cache hit" key=session:abc ttl=300 host=api-02
+ts=2026-03-15T10:30:12.040Z level=debug msg="Cache hit" key=user:123 ttl=60 host=api-02
+ts=2026-03-15T10:30:02.529Z level=debug msg="Cache hit" key=config:main ttl=1800 host=web-03
+ts=2026-03-15T10:30:01.692Z level=warn msg="Deprecated API used" path=/api/v1/users client=10.0.3.6 host=api-01
+ts=2026-03-15T10:30:04.528Z level=info msg="Server started" port=8081 pid=6928 host=api-01
+ts=2026-03-15T10:30:01.136Z level=info msg="Health check passed" uptime_s=85639 host=web-02
+ts=2026-03-15T10:30:04.275Z level=info msg="Metric recorded" name=http_request_total value=62970 host=worker-02
+ts=2026-03-15T10:30:05.148Z level=info msg="Server started" port=8080 pid=3224 host=web-02
+ts=2026-03-15T10:30:02.583Z level=info msg="Request received" method=GET path=/api/v1/auth status=200 duration_ms=390 host=worker-01
+ts=2026-03-15T10:30:02.592Z level=debug msg="Cache hit" key=user:789 ttl=60 host=worker-02
+ts=2026-03-15T10:30:05.780Z level=info msg="Health check passed" uptime_s=78270 host=worker-02
+ts=2026-03-15T10:30:01.450Z level=info msg="Server started" port=3000 pid=6602 host=api-02
+ts=2026-03-15T10:30:10.476Z level=info msg="Metric recorded" name=http_request_total value=2233 host=api-01
+ts=2026-03-15T10:30:10.804Z level=debug msg="Template rendered" name=dashboard duration_ms=476 host=worker-01
+ts=2026-03-15T10:30:01.465Z level=warn msg="High memory usage" used_mb=2061 limit_mb=4096 host=api-02
+ts=2026-03-15T10:30:09.408Z level=error msg="Connection refused" remote_addr=10.0.3.109:64514 error="connection refused" host=web-01
+ts=2026-03-15T10:30:07.670Z level=info msg="Health check passed" uptime_s=2456 host=web-02
+ts=2026-03-15T10:30:09.472Z level=debug msg="Cache hit" key=config:main ttl=60 host=web-03
+ts=2026-03-15T10:30:02.970Z level=debug msg="Cache miss" key=user:456 host=worker-02
+ts=2026-03-15T10:30:00.298Z level=info msg="Request received" method=POST path=/api/v1/products status=503 duration_ms=435 host=api-02
+ts=2026-03-15T10:30:12.857Z level=info msg="Metric recorded" name=http_request_total value=53655 host=api-01
+ts=2026-03-15T10:30:00.900Z level=debug msg="Template rendered" name=dashboard duration_ms=270 host=web-03
+ts=2026-03-15T10:30:13.545Z level=debug msg="Template rendered" name=dashboard duration_ms=157 host=web-02
+ts=2026-03-15T10:30:13.288Z level=info msg="Request received" method=GET path=/api/v2/orders status=404 duration_ms=370 host=web-02
+ts=2026-03-15T10:30:14.847Z level=debug msg="Cache miss" key=user:123 host=web-03
+ts=2026-03-15T10:30:07.296Z level=error msg="Internal error" request_id=req_292433 error="null pointer" host=worker-02
+ts=2026-03-15T10:30:12.505Z level=warn msg="Deprecated API used" path=/api/v1/orders client=10.0.3.195 host=worker-01
+ts=2026-03-15T10:30:14.688Z level=info msg="Connection established" remote_addr=10.0.3.122:65439 host=web-03
+ts=2026-03-15T10:30:04.605Z level=warn msg="Rate limit approaching" client=10.0.0.191 remaining=84 host=api-02
+ts=2026-03-15T10:30:14.476Z level=debug msg="Cache hit" key=product:100 ttl=600 host=web-01
+ts=2026-03-15T10:30:14.832Z level=info msg="Response sent" method=GET path=/api/v1/products status=301 bytes=11412 host=api-02
+ts=2026-03-15T10:30:01.860Z level=info msg="Metric recorded" name=http_request_total value=50633 host=worker-01
+ts=2026-03-15T10:30:07.153Z level=info msg="Metric recorded" name=http_request_total value=68724 host=worker-02
+ts=2026-03-15T10:30:05.928Z level=warn msg="Slow query" table=orders duration_ms=185 threshold_ms=100 host=web-03
+ts=2026-03-15T10:30:06.260Z level=error msg="Request timeout" method=PUT path=/api/v1/auth timeout_ms=30000 host=api-01
+ts=2026-03-15T10:30:02.826Z level=warn msg="High memory usage" used_mb=3472 limit_mb=4096 host=worker-02
+ts=2026-03-15T10:30:00.630Z level=info msg="Server started" port=3000 pid=2026 host=web-02
+ts=2026-03-15T10:30:02.528Z level=warn msg="Deprecated API used" path=/api/v1/orders client=10.0.0.7 host=api-02
+ts=2026-03-15T10:30:05.706Z level=info msg="Response sent" method=PUT path=/api/v1/health status=400 bytes=19812 host=web-01
+ts=2026-03-15T10:30:03.498Z level=error msg="Query failed" table=users error="deadlock detected" retries=0 host=web-01
+ts=2026-03-15T10:30:09.251Z level=info msg="Connection established" remote_addr=10.0.3.213:55792 host=api-02
+ts=2026-03-15T10:30:06.720Z level=debug msg="Query executed" table=users rows=531 duration_ms=65 host=api-02
+ts=2026-03-15T10:30:05.136Z level=info msg="Metric recorded" name=http_request_total value=20622 host=web-03
+ts=2026-03-15T10:30:09.660Z level=error msg="Internal error" request_id=req_504285 error="null pointer" host=worker-01
+ts=2026-03-15T10:30:08.398Z level=info msg="Connection established" remote_addr=10.0.1.184:31890 host=api-02
+ts=2026-03-15T10:30:07.452Z level=error msg="Request timeout" method=GET path=/api/v1/users timeout_ms=30000 host=web-02
+ts=2026-03-15T10:30:12.675Z level=warn msg="Deprecated API used" path=/api/v1/auth client=10.0.2.21 host=worker-01
+ts=2026-03-15T10:30:03.912Z level=info msg="Connection established" remote_addr=10.0.2.244:49755 host=worker-01
+ts=2026-03-15T10:30:05.559Z level=info msg="Request received" method=POST path=/api/v2/orders status=200 duration_ms=127 host=api-01
+ts=2026-03-15T10:30:14.760Z level=debug msg="Template rendered" name=dashboard duration_ms=239 host=web-01
+ts=2026-03-15T10:30:07.896Z level=debug msg="Cache miss" key=config:main host=worker-01
+ts=2026-03-15T10:30:01.320Z level=info msg="Connection established" remote_addr=10.0.2.193:48883 host=worker-02
+ts=2026-03-15T10:30:03.310Z level=info msg="Server started" port=9090 pid=6379 host=web-03
+ts=2026-03-15T10:30:13.612Z level=info msg="Request received" method=GET path=/api/v1/metrics status=500 duration_ms=414 host=worker-01
+ts=2026-03-15T10:30:00.666Z level=info msg="Response sent" method=DELETE path=/api/v1/metrics status=204 bytes=43158 host=api-01
+ts=2026-03-15T10:30:15.364Z level=debug msg="Cache miss" key=user:789 host=worker-01
+ts=2026-03-15T10:30:14.740Z level=warn msg="High memory usage" used_mb=2551 limit_mb=4096 host=worker-02
+ts=2026-03-15T10:30:01.008Z level=info msg="Connection established" remote_addr=10.0.2.237:61001 host=web-03
+ts=2026-03-15T10:30:14.828Z level=debug msg="Cache miss" key=user:456 host=api-01
+ts=2026-03-15T10:30:10.816Z level=info msg="Health check passed" uptime_s=34176 host=web-01
+ts=2026-03-15T10:30:02.712Z level=debug msg="Cache hit" key=product:100 ttl=600 host=web-03
+ts=2026-03-15T10:30:11.900Z level=info msg="Response sent" method=PATCH path=/api/v1/auth status=502 bytes=34023 host=worker-02
+ts=2026-03-15T10:30:04.092Z level=debug msg="Query executed" table=users rows=820 duration_ms=231 host=worker-02
+ts=2026-03-15T10:30:17.100Z level=info msg="Server started" port=8081 pid=6680 host=web-03
+ts=2026-03-15T10:30:02.401Z level=info msg="Request received" method=POST path=/api/v1/auth status=301 duration_ms=19 host=web-02
+ts=2026-03-15T10:30:06.192Z level=info msg="Request received" method=DELETE path=/api/v1/metrics status=503 duration_ms=412 host=api-02
+ts=2026-03-15T10:30:12.420Z level=debug msg="Cache hit" key=user:789 ttl=300 host=worker-01
+ts=2026-03-15T10:30:08.996Z level=debug msg="Middleware applied" name=auth duration_ms=310 host=web-02
+ts=2026-03-15T10:30:10.410Z level=info msg="Connection established" remote_addr=10.0.1.25:56830 host=worker-02
+ts=2026-03-15T10:30:06.612Z level=debug msg="Query executed" table=users rows=812 duration_ms=344 host=api-02
+ts=2026-03-15T10:30:03.839Z level=warn msg="Slow query" table=orders duration_ms=456 threshold_ms=100 host=api-02
+ts=2026-03-15T10:30:01.400Z level=info msg="Server started" port=3000 pid=8648 host=worker-01
+ts=2026-03-15T10:30:16.497Z level=debug msg="Template rendered" name=dashboard duration_ms=455 host=web-02
+ts=2026-03-15T10:30:07.392Z level=debug msg="Middleware applied" name=auth duration_ms=2 host=web-02
+ts=2026-03-15T10:30:11.649Z level=error msg="Request timeout" method=GET path=/api/v1/users timeout_ms=30000 host=web-03
+ts=2026-03-15T10:30:03.186Z level=warn msg="Rate limit approaching" client=10.0.2.46 remaining=2 host=api-02
+ts=2026-03-15T10:30:17.040Z level=debug msg="Cache miss" key=config:main host=web-01
+ts=2026-03-15T10:30:04.984Z level=info msg="Request received" method=DELETE path=/api/v2/orders status=201 duration_ms=155 host=web-01
+ts=2026-03-15T10:30:11.781Z level=info msg="Server started" port=8081 pid=6387 host=api-02
+ts=2026-03-15T10:30:09.308Z level=info msg="Server started" port=9090 pid=7624 host=worker-01
+ts=2026-03-15T10:30:15.078Z level=info msg="Health check passed" uptime_s=25069 host=api-01
+ts=2026-03-15T10:30:09.720Z level=info msg="Response sent" method=GET path=/api/v1/users status=503 bytes=22104 host=web-01
+ts=2026-03-15T10:30:11.913Z level=info msg="Response sent" method=DELETE path=/api/v1/orders status=503 bytes=27990 host=api-02
+ts=2026-03-15T10:30:03.258Z level=error msg="Query failed" table=users error="deadlock detected" retries=2 host=api-02
+ts=2026-03-15T10:30:11.253Z level=warn msg="Slow query" table=orders duration_ms=186 threshold_ms=100 host=web-01
+ts=2026-03-15T10:30:17.836Z level=info msg="Metric recorded" name=http_request_total value=18033 host=worker-01
+ts=2026-03-15T10:30:13.140Z level=debug msg="Middleware applied" name=auth duration_ms=243 host=web-03
+ts=2026-03-15T10:30:08.052Z level=error msg="Connection refused" remote_addr=10.0.0.243:39656 error="connection refused" host=worker-02
+ts=2026-03-15T10:30:03.670Z level=debug msg="Cache miss" key=product:100 host=api-02
+ts=2026-03-15T10:30:14.720Z level=info msg="Health check passed" uptime_s=45663 host=web-02
+ts=2026-03-15T10:30:16.605Z level=info msg="Connection established" remote_addr=10.0.0.92:38110 host=web-02
+ts=2026-03-15T10:30:04.440Z level=warn msg="Rate limit approaching" client=10.0.1.177 remaining=91 host=web-02
+ts=2026-03-15T10:30:05.565Z level=info msg="Health check passed" uptime_s=72382 host=web-02
+ts=2026-03-15T10:30:09.672Z level=info msg="Response sent" method=GET path=/api/v1/metrics status=200 bytes=8561 host=web-01
+ts=2026-03-15T10:30:07.460Z level=debug msg="Middleware applied" name=auth duration_ms=35 host=web-01
+ts=2026-03-15T10:30:10.846Z level=info msg="Response sent" method=POST path=/api/v1/health status=401 bytes=33983 host=api-01
+ts=2026-03-15T10:30:13.125Z level=info msg="Server started" port=3000 pid=8242 host=web-03
+ts=2026-03-15T10:30:07.144Z level=info msg="Request received" method=DELETE path=/api/v1/health status=403 duration_ms=120 host=web-03
+ts=2026-03-15T10:30:14.703Z level=info msg="Connection established" remote_addr=10.0.1.102:37087 host=web-03
+ts=2026-03-15T10:30:02.646Z level=error msg="Internal error" request_id=req_728172 error="null pointer" host=web-01
+ts=2026-03-15T10:30:11.749Z level=info msg="Metric recorded" name=http_request_total value=89130 host=web-03
+ts=2026-03-15T10:30:03.040Z level=info msg="Server started" port=3000 pid=5962 host=worker-01
+ts=2026-03-15T10:30:12.573Z level=info msg="Health check passed" uptime_s=53738 host=web-01
+ts=2026-03-15T10:30:15.280Z level=debug msg="Cache hit" key=user:123 ttl=300 host=api-02
+ts=2026-03-15T10:30:08.426Z level=info msg="Response sent" method=GET path=/api/v2/users status=401 bytes=20788 host=api-01
+ts=2026-03-15T10:30:14.592Z level=info msg="Health check passed" uptime_s=13224 host=api-02
+ts=2026-03-15T10:30:15.015Z level=warn msg="Slow query" table=orders duration_ms=293 threshold_ms=100 host=api-01
+ts=2026-03-15T10:30:10.808Z level=info msg="Health check passed" uptime_s=96902 host=web-01
+ts=2026-03-15T10:30:12.384Z level=warn msg="Rate limit approaching" client=10.0.1.23 remaining=23 host=web-02
+ts=2026-03-15T10:30:01.552Z level=info msg="Health check passed" uptime_s=24056 host=worker-01
+ts=2026-03-15T10:30:06.224Z level=info msg="Connection established" remote_addr=10.0.3.200:38577 host=worker-01
+ts=2026-03-15T10:30:17.550Z level=error msg="Query failed" table=users error="deadlock detected" retries=1 host=api-01
+ts=2026-03-15T10:30:06.647Z level=debug msg="Query executed" table=users rows=209 duration_ms=168 host=web-03
+ts=2026-03-15T10:30:18.032Z level=debug msg="Middleware applied" name=auth duration_ms=140 host=web-02
+ts=2026-03-15T10:30:05.502Z level=info msg="Metric recorded" name=http_request_total value=38941 host=web-02
+ts=2026-03-15T10:30:04.334Z level=info msg="Request received" method=PATCH path=/api/v2/users status=500 duration_ms=327 host=worker-01
+ts=2026-03-15T10:30:15.010Z level=info msg="Connection established" remote_addr=10.0.3.157:49455 host=api-01
+ts=2026-03-15T10:30:09.900Z level=info msg="Metric recorded" name=http_request_total value=69139 host=web-01
+ts=2026-03-15T10:30:01.191Z level=info msg="Response sent" method=GET path=/api/v1/metrics status=200 bytes=43822 host=worker-02
+ts=2026-03-15T10:30:01.194Z level=info msg="Server started" port=8081 pid=2569 host=web-02
+ts=2026-03-15T10:30:09.177Z level=info msg="Response sent" method=POST path=/api/v1/orders status=201 bytes=36661 host=web-02
+ts=2026-03-15T10:30:18.000Z level=info msg="Health check passed" uptime_s=30677 host=api-02
+ts=2026-03-15T10:30:04.411Z level=debug msg="Cache hit" key=session:abc ttl=1800 host=api-02
+ts=2026-03-15T10:30:04.020Z level=info msg="Request received" method=GET path=/api/v1/users status=401 duration_ms=265 host=api-02
+ts=2026-03-15T10:30:08.060Z level=info msg="Metric recorded" name=http_request_total value=73517 host=api-02
+ts=2026-03-15T10:30:09.292Z level=info msg="Metric recorded" name=http_request_total value=82175 host=api-02
+ts=2026-03-15T10:30:19.845Z level=warn msg="Rate limit approaching" client=10.0.2.202 remaining=93 host=web-01
+ts=2026-03-15T10:30:11.368Z level=info msg="Connection established" remote_addr=10.0.3.122:44221 host=web-02
+ts=2026-03-15T10:30:05.291Z level=warn msg="High memory usage" used_mb=3084 limit_mb=4096 host=web-01
+ts=2026-03-15T10:30:05.712Z level=info msg="Request received" method=GET path=/api/v1/health status=201 duration_ms=455 host=api-01
+ts=2026-03-15T10:30:08.998Z level=debug msg="Template rendered" name=dashboard duration_ms=118 host=worker-01
+ts=2026-03-15T10:30:05.330Z level=info msg="Metric recorded" name=http_request_total value=97814 host=api-01
+ts=2026-03-15T10:30:19.728Z level=warn msg="Slow query" table=orders duration_ms=473 threshold_ms=100 host=web-03
+ts=2026-03-15T10:30:07.416Z level=debug msg="Middleware applied" name=auth duration_ms=130 host=worker-02
+ts=2026-03-15T10:30:01.239Z level=warn msg="High memory usage" used_mb=3199 limit_mb=4096 host=worker-02
+ts=2026-03-15T10:30:01.242Z level=info msg="Connection established" remote_addr=10.0.0.97:32025 host=web-02
+ts=2026-03-15T10:30:08.300Z level=debug msg="Template rendered" name=dashboard duration_ms=356 host=web-03
+ts=2026-03-15T10:30:16.640Z level=info msg="Connection established" remote_addr=10.0.1.134:61115 host=api-02
+ts=2026-03-15T10:30:02.502Z level=debug msg="Query executed" table=users rows=219 duration_ms=301 host=api-02
+ts=2026-03-15T10:30:04.180Z level=error msg="Connection refused" remote_addr=10.0.2.72:63912 error="connection refused" host=worker-01
+ts=2026-03-15T10:30:09.637Z level=error msg="Request timeout" method=PATCH path=/api/v1/metrics timeout_ms=30000 host=api-02
+ts=2026-03-15T10:30:01.680Z level=info msg="Server started" port=8080 pid=6144 host=api-01
+ts=2026-03-15T10:30:21.050Z level=info msg="Server started" port=9090 pid=7867 host=web-01
+ts=2026-03-15T10:30:10.128Z level=debug msg="Middleware applied" name=auth duration_ms=151 host=web-03
+ts=2026-03-15T10:30:11.421Z level=warn msg="Deprecated API used" path=/api/v2/orders client=10.0.0.238 host=worker-02
+ts=2026-03-15T10:30:06.784Z level=warn msg="Deprecated API used" path=/api/v1/auth client=10.0.0.82 host=worker-02
+ts=2026-03-15T10:30:20.400Z level=debug msg="Cache miss" key=session:def host=web-01
+ts=2026-03-15T10:30:05.964Z level=info msg="Health check passed" uptime_s=61525 host=web-03
+ts=2026-03-15T10:30:17.507Z level=info msg="Metric recorded" name=http_request_total value=93629 host=worker-01
+ts=2026-03-15T10:30:17.120Z level=info msg="Health check passed" uptime_s=18114 host=web-03
+ts=2026-03-15T10:30:14.586Z level=error msg="Request timeout" method=GET path=/api/v2/orders timeout_ms=30000 host=worker-01
+ts=2026-03-15T10:30:11.610Z level=info msg="Health check passed" uptime_s=39960 host=web-02
+ts=2026-03-15T10:30:04.310Z level=info msg="Metric recorded" name=http_request_total value=12411 host=web-02
+ts=2026-03-15T10:30:13.824Z level=info msg="Server started" port=3000 pid=4412 host=worker-02
+ts=2026-03-15T10:30:13.856Z level=debug msg="Cache miss" key=user:456 host=api-01
+ts=2026-03-15T10:30:16.058Z level=debug msg="Template rendered" name=dashboard duration_ms=199 host=web-03
+ts=2026-03-15T10:30:15.225Z level=error msg="Query failed" table=users error="deadlock detected" retries=3 host=web-01
+ts=2026-03-15T10:30:02.180Z level=debug msg="Template rendered" name=dashboard duration_ms=421 host=api-01
+ts=2026-03-15T10:30:02.622Z level=debug msg="Middleware applied" name=auth duration_ms=477 host=api-01
+ts=2026-03-15T10:30:08.322Z level=info msg="Connection established" remote_addr=10.0.1.151:37420 host=worker-02
+ts=2026-03-15T10:30:04.390Z level=info msg="Response sent" method=POST path=/api/v1/health status=200 bytes=12431 host=worker-01
+ts=2026-03-15T10:30:18.920Z level=warn msg="Slow query" table=orders duration_ms=434 threshold_ms=100 host=worker-02
+ts=2026-03-15T10:30:03.969Z level=info msg="Response sent" method=PATCH path=/api/v1/products status=200 bytes=30688 host=api-01
+ts=2026-03-15T10:30:19.006Z level=warn msg="High memory usage" used_mb=2760 limit_mb=4096 host=worker-01
+ts=2026-03-15T10:30:03.987Z level=debug msg="Query executed" table=users rows=748 duration_ms=156 host=api-01
+ts=2026-03-15T10:30:01.776Z level=info msg="Connection established" remote_addr=10.0.2.32:63020 host=web-01
+ts=2026-03-15T10:30:09.345Z level=error msg="Connection refused" remote_addr=10.0.1.10:46661 error="connection refused" host=api-02
+ts=2026-03-15T10:30:08.028Z level=warn msg="Slow query" table=orders duration_ms=18 threshold_ms=100 host=web-03
+ts=2026-03-15T10:30:16.092Z level=info msg="Request received" method=DELETE path=/api/v1/health status=400 duration_ms=303 host=worker-02
+ts=2026-03-15T10:30:09.856Z level=info msg="Health check passed" uptime_s=85718 host=web-03
+ts=2026-03-15T10:30:15.266Z level=warn msg="High memory usage" used_mb=1368 limit_mb=4096 host=web-03
+ts=2026-03-15T10:30:07.200Z level=debug msg="Template rendered" name=dashboard duration_ms=22 host=worker-01
+ts=2026-03-15T10:30:04.510Z level=debug msg="Cache miss" key=config:main host=web-03
+ts=2026-03-15T10:30:15.368Z level=debug msg="Query executed" table=users rows=305 duration_ms=18 host=worker-02
+ts=2026-03-15T10:30:17.214Z level=warn msg="Slow query" table=orders duration_ms=204 threshold_ms=100 host=web-03
+ts=2026-03-15T10:30:18.160Z level=info msg="Metric recorded" name=http_request_total value=85049 host=web-02
+ts=2026-03-15T10:30:03.640Z level=info msg="Metric recorded" name=http_request_total value=84631 host=api-02
+ts=2026-03-15T10:30:18.240Z level=info msg="Connection established" remote_addr=10.0.3.34:46944 host=api-01
+ts=2026-03-15T10:30:13.710Z level=info msg="Connection established" remote_addr=10.0.0.228:47665 host=api-02
+ts=2026-03-15T10:30:14.198Z level=info msg="Server started" port=8080 pid=7934 host=api-02
+ts=2026-03-15T10:30:19.278Z level=debug msg="Query executed" table=users rows=61 duration_ms=361 host=web-03
+ts=2026-03-15T10:30:20.700Z level=info msg="Connection established" remote_addr=10.0.0.242:37747 host=web-01
+ts=2026-03-15T10:30:05.993Z level=info msg="Connection established" remote_addr=10.0.3.135:60847 host=web-03
+ts=2026-03-15T10:30:22.176Z level=debug msg="Middleware applied" name=auth duration_ms=452 host=api-02
+ts=2026-03-15T10:30:14.353Z level=info msg="Response sent" method=DELETE path=/api/v1/metrics status=500 bytes=7722 host=worker-02
+ts=2026-03-15T10:30:22.736Z level=warn msg="Slow query" table=orders duration_ms=354 threshold_ms=100 host=web-03
+ts=2026-03-15T10:30:20.460Z level=info msg="Connection established" remote_addr=10.0.0.110:62307 host=api-02
+ts=2026-03-15T10:30:13.514Z level=info msg="Connection established" remote_addr=10.0.3.176:53795 host=web-01
+ts=2026-03-15T10:30:02.335Z level=info msg="Server started" port=8080 pid=8938 host=web-03
+ts=2026-03-15T10:30:01.404Z level=info msg="Server started" port=9090 pid=1843 host=web-01
+ts=2026-03-15T10:30:08.442Z level=info msg="Request received" method=GET path=/api/v1/orders status=204 duration_ms=4 host=api-02
+ts=2026-03-15T10:30:17.860Z level=warn msg="Deprecated API used" path=/api/v1/health client=10.0.0.100 host=web-03
+ts=2026-03-15T10:30:18.840Z level=debug msg="Query executed" table=users rows=714 duration_ms=198 host=api-01
+ts=2026-03-15T10:30:07.552Z level=warn msg="Slow query" table=orders duration_ms=419 threshold_ms=100 host=api-02
+ts=2026-03-15T10:30:18.447Z level=info msg="Server started" port=8081 pid=6544 host=web-03
+ts=2026-03-15T10:30:20.382Z level=error msg="Connection refused" remote_addr=10.0.3.115:38379 error="connection refused" host=web-02
+ts=2026-03-15T10:30:11.400Z level=debug msg="Cache hit" key=user:789 ttl=3600 host=web-02
+ts=2026-03-15T10:30:17.612Z level=warn msg="Rate limit approaching" client=10.0.0.106 remaining=1 host=api-02
+ts=2026-03-15T10:30:02.862Z level=warn msg="Slow query" table=orders duration_ms=354 threshold_ms=100 host=worker-01
+ts=2026-03-15T10:30:10.994Z level=info msg="Response sent" method=POST path=/api/v1/health status=404 bytes=21444 host=worker-01
+ts=2026-03-15T10:30:08.622Z level=info msg="Server started" port=9090 pid=6718 host=web-03
+ts=2026-03-15T10:30:15.840Z level=info msg="Request received" method=POST path=/api/v2/users status=500 duration_ms=212 host=web-02
+ts=2026-03-15T10:30:19.721Z level=info msg="Health check passed" uptime_s=27659 host=worker-02
+ts=2026-03-15T10:30:09.640Z level=info msg="Server started" port=8081 pid=4075 host=api-01
+ts=2026-03-15T10:30:22.701Z level=warn msg="Slow query" table=orders duration_ms=430 threshold_ms=100 host=worker-02
+ts=2026-03-15T10:30:10.648Z level=info msg="Server started" port=8080 pid=7222 host=web-03
+ts=2026-03-15T10:30:10.670Z level=debug msg="Cache hit" key=user:789 ttl=60 host=web-01
+ts=2026-03-15T10:30:17.496Z level=error msg="Request timeout" method=GET path=/api/v1/products timeout_ms=30000 host=worker-02
+ts=2026-03-15T10:30:08.766Z level=info msg="Connection established" remote_addr=10.0.2.177:51061 host=api-02
+ts=2026-03-15T10:30:08.784Z level=info msg="Metric recorded" name=http_request_total value=92494 host=web-03
+ts=2026-03-15T10:30:03.912Z level=info msg="Response sent" method=PATCH path=/api/v1/products status=404 bytes=18870 host=web-03
+ts=2026-03-15T10:30:11.270Z level=info msg="Request received" method=PATCH path=/api/v1/orders status=503 duration_ms=350 host=worker-01
+ts=2026-03-15T10:30:23.077Z level=info msg="Request received" method=GET path=/api/v1/metrics status=200 duration_ms=191 host=web-03
+ts=2026-03-15T10:30:21.156Z level=debug msg="Middleware applied" name=auth duration_ms=206 host=worker-01
+ts=2026-03-15T10:30:05.423Z level=debug msg="Cache miss" key=config:main host=web-02
+ts=2026-03-15T10:30:08.398Z level=debug msg="Query executed" table=users rows=225 duration_ms=417 host=web-02
+ts=2026-03-15T10:30:14.355Z level=info msg="Request received" method=PATCH path=/api/v1/metrics status=401 duration_ms=218 host=web-01
+ts=2026-03-15T10:30:17.856Z level=info msg="Request received" method=DELETE path=/api/v1/health status=200 duration_ms=135 host=web-01
+ts=2026-03-15T10:30:20.377Z level=debug msg="Template rendered" name=dashboard duration_ms=390 host=worker-01
+ts=2026-03-15T10:30:03.984Z level=info msg="Connection established" remote_addr=10.0.3.29:38388 host=api-01
+ts=2026-03-15T10:30:19.461Z level=info msg="Server started" port=8081 pid=8983 host=api-02
+ts=2026-03-15T10:30:15.500Z level=debug msg="Query executed" table=users rows=769 duration_ms=16 host=worker-02
+ts=2026-03-15T10:30:18.036Z level=info msg="Request received" method=GET path=/api/v1/orders status=200 duration_ms=467 host=api-01
+ts=2026-03-15T10:30:11.546Z level=info msg="Server started" port=9090 pid=2078 host=web-03
+ts=2026-03-15T10:30:06.539Z level=info msg="Server started" port=9090 pid=2826 host=web-01
+ts=2026-03-15T10:30:05.040Z level=warn msg="Rate limit approaching" client=10.0.1.174 remaining=23 host=api-01
+ts=2026-03-15T10:30:04.040Z level=debug msg="Cache hit" key=product:100 ttl=600 host=worker-01
+ts=2026-03-15T10:30:00.506Z level=info msg="Connection established" remote_addr=10.0.1.226:39224 host=api-01
+ts=2026-03-15T10:30:21.294Z level=info msg="Response sent" method=PUT path=/api/v1/auth status=500 bytes=29039 host=worker-01
+ts=2026-03-15T10:30:12.700Z level=info msg="Request received" method=GET path=/api/v2/users status=204 duration_ms=333 host=api-02
+ts=2026-03-15T10:30:08.144Z level=info msg="Server started" port=3000 pid=6180 host=api-01
+ts=2026-03-15T10:30:19.380Z level=info msg="Health check passed" uptime_s=94838 host=web-02
+ts=2026-03-15T10:30:12.264Z level=error msg="Connection refused" remote_addr=10.0.0.4:54903 error="connection refused" host=web-03
+ts=2026-03-15T10:30:21.504Z level=info msg="Response sent" method=GET path=/api/v2/orders status=200 bytes=32257 host=worker-01
+ts=2026-03-15T10:30:03.078Z level=error msg="Connection refused" remote_addr=10.0.2.200:34920 error="connection refused" host=api-01
+ts=2026-03-15T10:30:02.570Z level=info msg="Response sent" method=DELETE path=/api/v2/users status=503 bytes=25441 host=api-02
+ts=2026-03-15T10:30:17.510Z level=debug msg="Cache hit" key=product:200 ttl=300 host=worker-02
+ts=2026-03-15T10:30:02.580Z level=info msg="Request received" method=POST path=/api/v1/users status=400 duration_ms=426 host=api-01
+ts=2026-03-15T10:30:16.027Z level=info msg="Metric recorded" name=http_request_total value=13218 host=web-01
+ts=2026-03-15T10:30:18.130Z level=warn msg="Rate limit approaching" client=10.0.1.117 remaining=61 host=worker-01
+ts=2026-03-15T10:30:23.355Z level=info msg="Connection established" remote_addr=10.0.1.161:52115 host=worker-01
+ts=2026-03-15T10:30:21.320Z level=info msg="Connection established" remote_addr=10.0.3.34:49437 host=web-01
+ts=2026-03-15T10:30:00.521Z level=error msg="Request timeout" method=GET path=/api/v2/orders timeout_ms=30000 host=web-03
+ts=2026-03-15T10:30:05.742Z level=info msg="Response sent" method=GET path=/api/v2/users status=204 bytes=48297 host=api-02
+ts=2026-03-15T10:30:23.012Z level=debug msg="Cache miss" key=user:123 host=api-02
+ts=2026-03-15T10:30:13.100Z level=info msg="Health check passed" uptime_s=53953 host=api-02
+ts=2026-03-15T10:30:16.275Z level=info msg="Response sent" method=GET path=/api/v1/metrics status=403 bytes=21832 host=api-01
+ts=2026-03-15T10:30:03.682Z level=warn msg="Deprecated API used" path=/api/v2/users client=10.0.2.254 host=web-02
+ts=2026-03-15T10:30:26.350Z level=debug msg="Cache hit" key=session:abc ttl=600 host=worker-01
+ts=2026-03-15T10:30:12.672Z level=warn msg="Slow query" table=orders duration_ms=77 threshold_ms=100 host=web-02
+ts=2026-03-15T10:30:06.877Z level=debug msg="Query executed" table=users rows=917 duration_ms=248 host=api-01
+ts=2026-03-15T10:30:08.480Z level=info msg="Health check passed" uptime_s=85113 host=worker-02
+ts=2026-03-15T10:30:26.550Z level=debug msg="Template rendered" name=dashboard duration_ms=152 host=web-03
+ts=2026-03-15T10:30:13.300Z level=info msg="Metric recorded" name=http_request_total value=41861 host=worker-01
+ts=2026-03-15T10:30:09.061Z level=debug msg="Cache hit" key=session:def ttl=1800 host=worker-01
+ts=2026-03-15T10:30:06.942Z level=info msg="Request received" method=POST path=/api/v1/health status=500 duration_ms=473 host=api-02
+ts=2026-03-15T10:30:19.795Z level=debug msg="Template rendered" name=dashboard duration_ms=278 host=api-02
+ts=2026-03-15T10:30:10.184Z level=info msg="Health check passed" uptime_s=89530 host=api-02
+ts=2026-03-15T10:30:20.943Z level=warn msg="Slow query" table=orders duration_ms=455 threshold_ms=100 host=web-02
+ts=2026-03-15T10:30:25.824Z level=info msg="Health check passed" uptime_s=86794 host=api-01
+ts=2026-03-15T10:30:04.851Z level=info msg="Metric recorded" name=http_request_total value=86852 host=web-01
+ts=2026-03-15T10:30:15.660Z level=info msg="Response sent" method=POST path=/api/v1/health status=400 bytes=27729 host=web-03
+ts=2026-03-15T10:30:16.771Z level=error msg="Query failed" table=users error="deadlock detected" retries=3 host=worker-02
+ts=2026-03-15T10:30:19.512Z level=info msg="Server started" port=8080 pid=5422 host=web-02
+ts=2026-03-15T10:30:23.349Z level=info msg="Health check passed" uptime_s=72251 host=worker-01
+ts=2026-03-15T10:30:10.336Z level=info msg="Server started" port=8081 pid=5017 host=api-01
+ts=2026-03-15T10:30:09.810Z level=info msg="Response sent" method=POST path=/api/v1/users status=401 bytes=31471 host=web-02
+ts=2026-03-15T10:30:21.840Z level=info msg="Connection established" remote_addr=10.0.3.91:51593 host=api-02
+ts=2026-03-15T10:30:02.188Z level=debug msg="Middleware applied" name=auth duration_ms=316 host=web-03
+ts=2026-03-15T10:30:02.192Z level=info msg="Response sent" method=PATCH path=/api/v2/orders status=503 bytes=34688 host=web-02
+ts=2026-03-15T10:30:08.235Z level=error msg="Connection refused" remote_addr=10.0.0.187:34572 error="connection refused" host=api-01
+ts=2026-03-15T10:30:11.550Z level=debug msg="Template rendered" name=dashboard duration_ms=161 host=web-02
+ts=2026-03-15T10:30:06.061Z level=debug msg="Query executed" table=users rows=440 duration_ms=144 host=worker-02
+ts=2026-03-15T10:30:22.080Z level=info msg="Health check passed" uptime_s=94060 host=api-01
+ts=2026-03-15T10:30:03.871Z level=info msg="Health check passed" uptime_s=11050 host=worker-01
+ts=2026-03-15T10:30:17.174Z level=info msg="Server started" port=3000 pid=5811 host=web-02
+ts=2026-03-15T10:30:08.325Z level=debug msg="Middleware applied" name=auth duration_ms=220 host=web-03
+ts=2026-03-15T10:30:10.564Z level=debug msg="Cache miss" key=session:abc host=web-03
+ts=2026-03-15T10:30:16.153Z level=debug msg="Cache hit" key=user:123 ttl=60 host=web-02
+ts=2026-03-15T10:30:11.718Z level=info msg="Health check passed" uptime_s=39355 host=web-01
+ts=2026-03-15T10:30:07.267Z level=info msg="Response sent" method=GET path=/api/v1/health status=403 bytes=22560 host=api-01
+ts=2026-03-15T10:30:19.040Z level=debug msg="Middleware applied" name=auth duration_ms=283 host=api-01
+ts=2026-03-15T10:30:21.879Z level=debug msg="Query executed" table=users rows=415 duration_ms=249 host=api-02
+ts=2026-03-15T10:30:22.480Z level=debug msg="Middleware applied" name=auth duration_ms=171 host=web-01
+ts=2026-03-15T10:30:24.209Z level=info msg="Metric recorded" name=http_request_total value=18680 host=web-03
+ts=2026-03-15T10:30:00.564Z level=debug msg="Query executed" table=users rows=849 duration_ms=381 host=worker-02
+ts=2026-03-15T10:30:19.775Z level=info msg="Metric recorded" name=http_request_total value=31922 host=worker-01
+ts=2026-03-15T10:30:06.226Z level=info msg="Connection established" remote_addr=10.0.3.16:59483 host=web-01
+ts=2026-03-15T10:30:11.340Z level=error msg="Internal error" request_id=req_791215 error="null pointer" host=web-01
+ts=2026-03-15T10:30:06.816Z level=error msg="Internal error" request_id=req_901148 error="null pointer" host=worker-01
+ts=2026-03-15T10:30:05.690Z level=error msg="Internal error" request_id=req_384780 error="null pointer" host=worker-01
+ts=2026-03-15T10:30:27.930Z level=error msg="Connection refused" remote_addr=10.0.2.77:56327 error="connection refused" host=worker-01
+ts=2026-03-15T10:30:05.139Z level=info msg="Connection established" remote_addr=10.0.3.224:35013 host=api-01
+ts=2026-03-15T10:30:16.588Z level=warn msg="Deprecated API used" path=/api/v1/metrics client=10.0.2.166 host=api-02
+ts=2026-03-15T10:30:14.325Z level=error msg="Request timeout" method=POST path=/api/v1/users timeout_ms=30000 host=web-02
+ts=2026-03-15T10:30:16.072Z level=info msg="Server started" port=8080 pid=7532 host=web-02
+ts=2026-03-15T10:30:10.925Z level=debug msg="Cache miss" key=user:123 host=web-03
+ts=2026-03-15T10:30:20.160Z level=info msg="Metric recorded" name=http_request_total value=87367 host=web-01
+ts=2026-03-15T10:30:28.273Z level=info msg="Server started" port=9090 pid=7430 host=api-01
+ts=2026-03-15T10:30:16.762Z level=warn msg="Slow query" table=orders duration_ms=158 threshold_ms=100 host=web-03
+ts=2026-03-15T10:30:15.054Z level=info msg="Metric recorded" name=http_request_total value=93879 host=worker-01
+ts=2026-03-15T10:30:25.520Z level=info msg="Request received" method=PATCH path=/api/v1/orders status=400 duration_ms=383 host=web-02
+ts=2026-03-15T10:30:18.011Z level=info msg="Response sent" method=GET path=/api/v2/orders status=502 bytes=10976 host=web-01
+ts=2026-03-15T10:30:14.550Z level=debug msg="Template rendered" name=dashboard duration_ms=328 host=worker-01
+ts=2026-03-15T10:30:04.664Z level=info msg="Request received" method=GET path=/api/v1/metrics status=301 duration_ms=283 host=api-01
+ts=2026-03-15T10:30:20.440Z level=info msg="Connection established" remote_addr=10.0.0.111:34563 host=web-02
+ts=2026-03-15T10:30:01.755Z level=info msg="Response sent" method=PUT path=/api/v1/auth status=201 bytes=23099 host=worker-01
+ts=2026-03-15T10:30:25.784Z level=info msg="Health check passed" uptime_s=8928 host=web-02
+ts=2026-03-15T10:30:28.176Z level=info msg="Metric recorded" name=http_request_total value=70737 host=worker-02
+ts=2026-03-15T10:30:08.820Z level=debug msg="Middleware applied" name=auth duration_ms=452 host=web-03
+ts=2026-03-15T10:30:27.094Z level=info msg="Request received" method=POST path=/api/v1/orders status=404 duration_ms=49 host=web-03
+ts=2026-03-15T10:30:00.590Z level=debug msg="Cache miss" key=session:def host=worker-02
+ts=2026-03-15T10:30:13.002Z level=debug msg="Middleware applied" name=auth duration_ms=442 host=worker-02
+ts=2026-03-15T10:30:07.104Z level=info msg="Metric recorded" name=http_request_total value=8147 host=api-02
+ts=2026-03-15T10:30:06.523Z level=warn msg="Slow query" table=orders duration_ms=382 threshold_ms=100 host=worker-02
+ts=2026-03-15T10:30:22.572Z level=warn msg="High memory usage" used_mb=2237 limit_mb=4096 host=web-01
+ts=2026-03-15T10:30:12.495Z level=warn msg="Rate limit approaching" client=10.0.1.51 remaining=86 host=web-03
+ts=2026-03-15T10:30:09.536Z level=debug msg="Cache hit" key=user:123 ttl=60 host=worker-01
+ts=2026-03-15T10:30:17.313Z level=info msg="Metric recorded" name=http_request_total value=90579 host=api-02
+ts=2026-03-15T10:30:02.392Z level=warn msg="High memory usage" used_mb=2973 limit_mb=4096 host=api-01
+ts=2026-03-15T10:30:28.153Z level=info msg="Server started" port=8080 pid=9375 host=api-02
+ts=2026-03-15T10:30:28.200Z level=debug msg="Middleware applied" name=auth duration_ms=417 host=worker-02
+ts=2026-03-15T10:30:06.611Z level=info msg="Request received" method=GET path=/api/v2/users status=200 duration_ms=81 host=worker-01
+ts=2026-03-15T10:30:13.244Z level=debug msg="Query executed" table=users rows=901 duration_ms=95 host=worker-01
+ts=2026-03-15T10:30:18.090Z level=info msg="Health check passed" uptime_s=81388 host=api-01
+ts=2026-03-15T10:30:02.416Z level=error msg="Request timeout" method=GET path=/api/v1/orders timeout_ms=30000 host=worker-01
+ts=2026-03-15T10:30:21.175Z level=info msg="Health check passed" uptime_s=27718 host=api-02
+ts=2026-03-15T10:30:21.816Z level=debug msg="Query executed" table=users rows=625 duration_ms=12 host=worker-02
+ts=2026-03-15T10:30:26.708Z level=info msg="Connection established" remote_addr=10.0.2.103:57562 host=web-02
+ts=2026-03-15T10:30:22.496Z level=debug msg="Query executed" table=users rows=939 duration_ms=44 host=worker-02
+ts=2026-03-15T10:30:07.917Z level=info msg="Metric recorded" name=http_request_total value=45953 host=web-03
+ts=2026-03-15T10:30:10.370Z level=info msg="Request received" method=POST path=/api/v1/metrics status=503 duration_ms=243 host=api-01
+ts=2026-03-15T10:30:07.332Z level=warn msg="High memory usage" used_mb=1129 limit_mb=4096 host=web-03
+ts=2026-03-15T10:30:12.852Z level=warn msg="Deprecated API used" path=/api/v1/metrics client=10.0.2.131 host=worker-01
+ts=2026-03-15T10:30:01.226Z level=info msg="Metric recorded" name=http_request_total value=93643 host=web-03
+ts=2026-03-15T10:30:05.526Z level=info msg="Server started" port=9090 pid=1708 host=web-02
+ts=2026-03-15T10:30:17.835Z level=debug msg="Cache miss" key=session:def host=worker-01
+ts=2026-03-15T10:30:20.944Z level=warn msg="High memory usage" used_mb=2584 limit_mb=4096 host=web-03
+ts=2026-03-15T10:30:03.702Z level=info msg="Server started" port=3000 pid=3605 host=worker-01
+ts=2026-03-15T10:30:15.450Z level=info msg="Health check passed" uptime_s=33178 host=api-01
+ts=2026-03-15T10:30:14.237Z level=info msg="Request received" method=POST path=/api/v1/metrics status=403 duration_ms=87 host=api-01
+ts=2026-03-15T10:30:19.220Z level=debug msg="Template rendered" name=dashboard duration_ms=309 host=api-02
+ts=2026-03-15T10:30:22.356Z level=debug msg="Template rendered" name=dashboard duration_ms=493 host=api-01
+ts=2026-03-15T10:30:27.990Z level=warn msg="High memory usage" used_mb=3367 limit_mb=4096 host=web-01
+ts=2026-03-15T10:30:19.313Z level=info msg="Metric recorded" name=http_request_total value=64198 host=api-02
+ts=2026-03-15T10:30:07.488Z level=debug msg="Cache miss" key=session:abc host=web-02
+ts=2026-03-15T10:30:23.750Z level=debug msg="Query executed" table=users rows=477 duration_ms=80 host=worker-02
+ts=2026-03-15T10:30:31.300Z level=info msg="Request received" method=PATCH path=/api/v2/orders status=502 duration_ms=269 host=worker-02
+ts=2026-03-15T10:30:27.588Z level=info msg="Server started" port=3000 pid=7003 host=api-02
+ts=2026-03-15T10:30:19.468Z level=info msg="Metric recorded" name=http_request_total value=95236 host=web-02
+ts=2026-03-15T10:30:23.273Z level=info msg="Connection established" remote_addr=10.0.1.74:38471 host=api-02
+ts=2026-03-15T10:30:06.930Z level=debug msg="Template rendered" name=dashboard duration_ms=275 host=web-02
+ts=2026-03-15T10:30:10.727Z level=debug msg="Cache hit" key=session:def ttl=600 host=web-02
+ts=2026-03-15T10:30:21.488Z level=info msg="Connection established" remote_addr=10.0.2.231:50834 host=web-02
+ts=2026-03-15T10:30:13.293Z level=info msg="Connection established" remote_addr=10.0.1.157:54332 host=api-02
+ts=2026-03-15T10:30:08.242Z level=info msg="Response sent" method=GET path=/api/v2/orders status=200 bytes=33037 host=worker-01
+ts=2026-03-15T10:30:08.255Z level=info msg="Request received" method=DELETE path=/api/v2/users status=500 duration_ms=301 host=web-03
+ts=2026-03-15T10:30:23.532Z level=error msg="Request timeout" method=PATCH path=/api/v2/orders timeout_ms=30000 host=worker-02
+ts=2026-03-15T10:30:15.288Z level=info msg="Request received" method=PATCH path=/api/v1/auth status=502 duration_ms=307 host=api-02
+ts=2026-03-15T10:30:12.760Z level=debug msg="Middleware applied" name=auth duration_ms=40 host=worker-01
+ts=2026-03-15T10:30:25.560Z level=info msg="Connection established" remote_addr=10.0.3.17:61190 host=web-02
+ts=2026-03-15T10:30:03.840Z level=info msg="Health check passed" uptime_s=83400 host=web-01
+ts=2026-03-15T10:30:18.589Z level=info msg="Connection established" remote_addr=10.0.1.48:55392 host=api-01
+ts=2026-03-15T10:30:08.346Z level=info msg="Response sent" method=GET path=/api/v1/health status=204 bytes=32222 host=web-03
+ts=2026-03-15T10:30:09.645Z level=debug msg="Cache miss" key=session:def host=web-02
+ts=2026-03-15T10:30:23.828Z level=info msg="Connection established" remote_addr=10.0.3.63:31006 host=web-02
+ts=2026-03-15T10:30:06.450Z level=info msg="Server started" port=8080 pid=6327 host=api-02
+ts=2026-03-15T10:30:28.424Z level=info msg="Request received" method=POST path=/api/v2/orders status=201 duration_ms=347 host=worker-01
+ts=2026-03-15T10:30:25.880Z level=debug msg="Cache miss" key=product:100 host=worker-01
+ts=2026-03-15T10:30:14.256Z level=info msg="Request received" method=GET path=/api/v1/auth status=200 duration_ms=275 host=worker-02
+ts=2026-03-15T10:30:30.503Z level=warn msg="Slow query" table=orders duration_ms=45 threshold_ms=100 host=api-01
+ts=2026-03-15T10:30:03.900Z level=info msg="Request received" method=GET path=/api/v1/orders status=401 duration_ms=256 host=web-01
+ts=2026-03-15T10:30:05.859Z level=info msg="Response sent" method=GET path=/api/v1/auth status=401 bytes=49504 host=worker-01
+ts=2026-03-15T10:30:20.864Z level=debug msg="Query executed" table=users rows=923 duration_ms=487 host=worker-01
+ts=2026-03-15T10:30:20.896Z level=info msg="Connection established" remote_addr=10.0.2.62:37164 host=api-02
+ts=2026-03-15T10:30:07.848Z level=warn msg="High memory usage" used_mb=3690 limit_mb=4096 host=api-02
+ts=2026-03-15T10:30:31.440Z level=info msg="Request received" method=GET path=/api/v1/metrics status=204 duration_ms=466 host=worker-01
+ts=2026-03-15T10:30:15.744Z level=info msg="Connection established" remote_addr=10.0.1.234:42554 host=api-01
+ts=2026-03-15T10:30:19.053Z level=warn msg="Slow query" table=orders duration_ms=2 threshold_ms=100 host=worker-02
+ts=2026-03-15T10:30:05.922Z level=info msg="Metric recorded" name=http_request_total value=57910 host=api-02
+ts=2026-03-15T10:30:29.655Z level=info msg="Health check passed" uptime_s=97924 host=worker-02
+ts=2026-03-15T10:30:19.140Z level=info msg="Metric recorded" name=http_request_total value=67799 host=web-02
+ts=2026-03-15T10:30:14.542Z level=debug msg="Cache hit" key=user:456 ttl=60 host=worker-02
+ts=2026-03-15T10:30:05.958Z level=warn msg="Deprecated API used" path=/api/v2/users client=10.0.1.15 host=api-01
+ts=2026-03-15T10:30:27.183Z level=info msg="Server started" port=9090 pid=5851 host=web-03
+ts=2026-03-15T10:30:03.984Z level=error msg="Query failed" table=users error="deadlock detected" retries=2 host=worker-02
+ts=2026-03-15T10:30:32.585Z level=warn msg="Deprecated API used" path=/api/v1/orders client=10.0.3.58 host=worker-01
+ts=2026-03-15T10:30:28.638Z level=info msg="Server started" port=9090 pid=2708 host=api-01
+ts=2026-03-15T10:30:15.341Z level=debug msg="Query executed" table=users rows=934 duration_ms=50 host=api-02
+ts=2026-03-15T10:30:24.048Z level=warn msg="Slow query" table=orders duration_ms=480 threshold_ms=100 host=web-01
+ts=2026-03-15T10:30:26.091Z level=error msg="Internal error" request_id=req_629884 error="null pointer" host=web-03
+ts=2026-03-15T10:30:12.060Z level=info msg="Metric recorded" name=http_request_total value=32408 host=web-02
+ts=2026-03-15T10:30:33.550Z level=error msg="Internal error" request_id=req_624842 error="null pointer" host=api-01
+ts=2026-03-15T10:30:04.704Z level=info msg="Health check passed" uptime_s=13474 host=web-02
+ts=2026-03-15T10:30:08.749Z level=warn msg="Rate limit approaching" client=10.0.1.135 remaining=67 host=api-01
+ts=2026-03-15T10:30:31.678Z level=warn msg="High memory usage" used_mb=1129 limit_mb=4096 host=api-02
+ts=2026-03-15T10:30:14.175Z level=debug msg="Cache miss" key=config:main host=api-02
+ts=2026-03-15T10:30:14.196Z level=warn msg="Deprecated API used" path=/api/v1/health client=10.0.2.64 host=api-01
+ts=2026-03-15T10:30:22.341Z level=warn msg="Deprecated API used" path=/api/v1/health client=10.0.0.178 host=web-01
+ts=2026-03-15T10:30:02.034Z level=info msg="Connection established" remote_addr=10.0.2.53:53845 host=worker-01
+ts=2026-03-15T10:30:08.827Z level=info msg="Request received" method=GET path=/api/v2/users status=404 duration_ms=394 host=web-03
+ts=2026-03-15T10:30:02.040Z level=debug msg="Query executed" table=users rows=83 duration_ms=230 host=worker-01
+ts=2026-03-15T10:30:02.724Z level=error msg="Connection refused" remote_addr=10.0.0.54:62826 error="connection refused" host=web-01
+ts=2026-03-15T10:30:06.138Z level=info msg="Metric recorded" name=http_request_total value=78395 host=web-02
+ts=2026-03-15T10:30:06.147Z level=warn msg="Deprecated API used" path=/api/v2/orders client=10.0.0.230 host=worker-01
+ts=2026-03-15T10:30:19.836Z level=info msg="Connection established" remote_addr=10.0.1.200:55252 host=web-01
+ts=2026-03-15T10:30:33.565Z level=info msg="Server started" port=3000 pid=1308 host=api-02
+ts=2026-03-15T10:30:12.348Z level=info msg="Server started" port=8080 pid=7271 host=web-03
+ts=2026-03-15T10:30:07.557Z level=warn msg="Deprecated API used" path=/api/v1/users client=10.0.3.37 host=worker-01
+ts=2026-03-15T10:30:15.136Z level=info msg="Metric recorded" name=http_request_total value=79581 host=worker-02
+ts=2026-03-15T10:30:18.603Z level=debug msg="Cache miss" key=config:main host=web-01
+ts=2026-03-15T10:30:08.970Z level=debug msg="Cache hit" key=user:123 ttl=3600 host=api-02
+ts=2026-03-15T10:30:24.876Z level=info msg="Request received" method=GET path=/api/v1/products status=404 duration_ms=305 host=web-02
+ts=2026-03-15T10:30:11.764Z level=warn msg="Rate limit approaching" client=10.0.3.113 remaining=56 host=worker-02
+ts=2026-03-15T10:30:20.097Z level=info msg="Response sent" method=POST path=/api/v1/orders status=200 bytes=17225 host=api-02
+ts=2026-03-15T10:30:15.268Z level=error msg="Internal error" request_id=req_471685 error="null pointer" host=api-01
+ts=2026-03-15T10:30:13.205Z level=info msg="Connection established" remote_addr=10.0.2.202:50647 host=web-01
+ts=2026-03-15T10:30:29.232Z level=debug msg="Template rendered" name=dashboard duration_ms=282 host=worker-02
+ts=2026-03-15T10:30:25.092Z level=info msg="Connection established" remote_addr=10.0.2.33:41836 host=web-03
+ts=2026-03-15T10:30:10.470Z level=info msg="Metric recorded" name=http_request_total value=58538 host=web-03
+ts=2026-03-15T10:30:04.893Z level=debug msg="Cache hit" key=user:456 ttl=600 host=worker-02
+ts=2026-03-15T10:30:04.900Z level=warn msg="Rate limit approaching" client=10.0.0.163 remaining=36 host=api-01
+ts=2026-03-15T10:30:00.701Z level=error msg="Internal error" request_id=req_213322 error="null pointer" host=web-03
+ts=2026-03-15T10:30:08.424Z level=warn msg="Deprecated API used" path=/api/v1/orders client=10.0.2.133 host=web-03
+ts=2026-03-15T10:30:20.387Z level=debug msg="Cache miss" key=user:123 host=web-03
+ts=2026-03-15T10:30:21.824Z level=error msg="Internal error" request_id=req_101800 error="null pointer" host=api-02
+ts=2026-03-15T10:30:03.525Z level=debug msg="Cache miss" key=config:main host=api-02
+ts=2026-03-15T10:30:05.648Z level=info msg="Server started" port=8081 pid=7014 host=worker-01
+ts=2026-03-15T10:30:05.656Z level=error msg="Request timeout" method=POST path=/api/v1/users timeout_ms=30000 host=api-01
+ts=2026-03-15T10:30:11.328Z level=debug msg="Cache miss" key=product:100 host=worker-01
+ts=2026-03-15T10:30:09.217Z level=info msg="Response sent" method=PATCH path=/api/v1/metrics status=502 bytes=42401 host=api-02
+ts=2026-03-15T10:30:10.650Z level=info msg="Metric recorded" name=http_request_total value=41683 host=web-03
+ts=2026-03-15T10:30:01.422Z level=info msg="Server started" port=8080 pid=4061 host=web-03
+ts=2026-03-15T10:30:07.832Z level=debug msg="Middleware applied" name=auth duration_ms=83 host=worker-01
+ts=2026-03-15T10:30:35.650Z level=debug msg="Template rendered" name=dashboard duration_ms=192 host=worker-02
+ts=2026-03-15T10:30:21.420Z level=info msg="Connection established" remote_addr=10.0.3.199:45489 host=web-01
+ts=2026-03-15T10:30:22.165Z level=debug msg="Cache miss" key=product:100 host=api-02
+ts=2026-03-15T10:30:24.344Z level=error msg="Internal error" request_id=req_632041 error="null pointer" host=web-02
+ts=2026-03-15T10:30:11.472Z level=info msg="Connection established" remote_addr=10.0.1.181:33497 host=api-01
+ts=2026-03-15T10:30:22.976Z level=warn msg="Slow query" table=orders duration_ms=486 threshold_ms=100 host=web-02
+ts=2026-03-15T10:30:28.760Z level=info msg="Server started" port=3000 pid=1465 host=web-01
+ts=2026-03-15T10:30:26.640Z level=info msg="Health check passed" uptime_s=76844 host=worker-02
+ts=2026-03-15T10:30:35.329Z level=warn msg="Rate limit approaching" client=10.0.1.232 remaining=34 host=web-03
+ts=2026-03-15T10:30:35.378Z level=info msg="Health check passed" uptime_s=47911 host=worker-02
+ts=2026-03-15T10:30:25.305Z level=info msg="Response sent" method=PUT path=/api/v2/orders status=204 bytes=7972 host=worker-01
+ts=2026-03-15T10:30:26.064Z level=warn msg="Deprecated API used" path=/api/v1/metrics client=10.0.2.204 host=api-01
+ts=2026-03-15T10:30:22.475Z level=info msg="Response sent" method=POST path=/api/v1/health status=200 bytes=14810 host=web-01
+ts=2026-03-15T10:30:15.972Z level=warn msg="Slow query" table=orders duration_ms=300 threshold_ms=100 host=worker-02
+ts=2026-03-15T10:30:01.454Z level=info msg="Server started" port=8080 pid=1756 host=web-03
+ts=2026-03-15T10:30:29.848Z level=debug msg="Middleware applied" name=auth duration_ms=93 host=worker-02
+ts=2026-03-15T10:30:08.019Z level=info msg="Server started" port=8081 pid=4114 host=worker-02
+ts=2026-03-15T10:30:35.770Z level=info msg="Request received" method=PATCH path=/api/v1/users status=301 duration_ms=182 host=web-01
+ts=2026-03-15T10:30:21.199Z level=info msg="Response sent" method=GET path=/api/v1/users status=204 bytes=39903 host=web-02
+ts=2026-03-15T10:30:36.600Z level=info msg="Metric recorded" name=http_request_total value=85857 host=web-03
+ts=2026-03-15T10:30:05.864Z level=debug msg="Middleware applied" name=auth duration_ms=81 host=web-01
+ts=2026-03-15T10:30:32.296Z level=info msg="Server started" port=8080 pid=6692 host=worker-01
+ts=2026-03-15T10:30:02.205Z level=info msg="Connection established" remote_addr=10.0.2.178:49987 host=worker-02
+ts=2026-03-15T10:30:01.472Z level=info msg="Request received" method=GET path=/api/v2/users status=204 duration_ms=414 host=api-01
+ts=2026-03-15T10:30:25.058Z level=debug msg="Query executed" table=users rows=40 duration_ms=216 host=api-01
+ts=2026-03-15T10:30:12.546Z level=debug msg="Template rendered" name=dashboard duration_ms=243 host=web-02
+ts=2026-03-15T10:30:02.956Z level=info msg="Connection established" remote_addr=10.0.3.62:52095 host=api-02
+ts=2026-03-15T10:30:34.780Z level=info msg="Server started" port=8080 pid=8977 host=api-02
+ts=2026-03-15T10:30:30.381Z level=debug msg="Middleware applied" name=auth duration_ms=88 host=api-02
+ts=2026-03-15T10:30:07.420Z level=debug msg="Query executed" table=users rows=456 duration_ms=139 host=api-02
+ts=2026-03-15T10:30:31.949Z level=info msg="Server started" port=8081 pid=1886 host=api-01
+ts=2026-03-15T10:30:08.184Z level=info msg="Health check passed" uptime_s=78472 host=web-03
+ts=2026-03-15T10:30:11.175Z level=info msg="Metric recorded" name=http_request_total value=20255 host=worker-01
+ts=2026-03-15T10:30:29.840Z level=debug msg="Cache miss" key=session:def host=web-01
+ts=2026-03-15T10:30:19.422Z level=error msg="Request timeout" method=DELETE path=/api/v2/orders timeout_ms=30000 host=api-01
+ts=2026-03-15T10:30:02.244Z level=debug msg="Query executed" table=users rows=119 duration_ms=237 host=api-01
+ts=2026-03-15T10:30:09.737Z level=warn msg="Rate limit approaching" client=10.0.3.168 remaining=33 host=worker-01
+ts=2026-03-15T10:30:37.500Z level=debug msg="Middleware applied" name=auth duration_ms=187 host=web-02
+ts=2026-03-15T10:30:08.261Z level=info msg="Connection established" remote_addr=10.0.2.49:45174 host=web-01
+ts=2026-03-15T10:30:30.832Z level=error msg="Internal error" request_id=req_636494 error="null pointer" host=api-01
+ts=2026-03-15T10:30:10.542Z level=debug msg="Template rendered" name=dashboard duration_ms=303 host=web-01
+ts=2026-03-15T10:30:15.080Z level=info msg="Response sent" method=POST path=/api/v1/auth status=500 bytes=13874 host=web-03
+ts=2026-03-15T10:30:36.240Z level=debug msg="Middleware applied" name=auth duration_ms=240 host=worker-01
+ts=2026-03-15T10:30:15.876Z level=debug msg="Middleware applied" name=auth duration_ms=464 host=api-02
+ts=2026-03-15T10:30:05.299Z level=debug msg="Middleware applied" name=auth duration_ms=80 host=web-02
+ts=2026-03-15T10:30:24.256Z level=info msg="Response sent" method=POST path=/api/v1/auth status=503 bytes=25208 host=api-01
+ts=2026-03-15T10:30:29.601Z level=debug msg="Query executed" table=users rows=289 duration_ms=53 host=api-02
+ts=2026-03-15T10:30:26.600Z level=info msg="Health check passed" uptime_s=29461 host=web-02
+ts=2026-03-15T10:30:33.484Z level=info msg="Metric recorded" name=http_request_total value=52034 host=worker-01
+ts=2026-03-15T10:30:29.718Z level=info msg="Health check passed" uptime_s=12899 host=web-01
+ts=2026-03-15T10:30:02.289Z level=debug msg="Middleware applied" name=auth duration_ms=126 host=api-02
+ts=2026-03-15T10:30:33.616Z level=info msg="Health check passed" uptime_s=78498 host=api-01
+ts=2026-03-15T10:30:15.300Z level=info msg="Server started" port=8081 pid=8399 host=worker-02
+ts=2026-03-15T10:30:30.640Z level=info msg="Health check passed" uptime_s=89348 host=web-01
+ts=2026-03-15T10:30:35.282Z level=info msg="Health check passed" uptime_s=95121 host=web-03
+ts=2026-03-15T10:30:17.664Z level=info msg="Request received" method=GET path=/api/v1/auth status=200 duration_ms=150 host=web-01
+ts=2026-03-15T10:30:23.839Z level=debug msg="Cache miss" key=user:789 host=api-01
+ts=2026-03-15T10:30:32.340Z level=info msg="Server started" port=8081 pid=5883 host=web-02
+ts=2026-03-15T10:30:00.771Z level=info msg="Connection established" remote_addr=10.0.3.44:59436 host=worker-01
+ts=2026-03-15T10:30:30.108Z level=info msg="Connection established" remote_addr=10.0.0.94:44261 host=api-01
+ts=2026-03-15T10:30:20.871Z level=info msg="Health check passed" uptime_s=80137 host=worker-01
+ts=2026-03-15T10:30:04.644Z level=info msg="Health check passed" uptime_s=92502 host=web-01
+ts=2026-03-15T10:30:13.175Z level=info msg="Request received" method=DELETE path=/api/v2/orders status=201 duration_ms=11 host=web-03
+ts=2026-03-15T10:30:18.624Z level=info msg="Health check passed" uptime_s=39666 host=web-01
+ts=2026-03-15T10:30:11.655Z level=info msg="Health check passed" uptime_s=26163 host=web-02
+ts=2026-03-15T10:30:30.342Z level=debug msg="Template rendered" name=dashboard duration_ms=4 host=api-01
+ts=2026-03-15T10:30:14.022Z level=info msg="Connection established" remote_addr=10.0.0.231:43980 host=web-02
+ts=2026-03-15T10:30:35.880Z level=info msg="Metric recorded" name=http_request_total value=17674 host=web-01
+ts=2026-03-15T10:30:36.707Z level=info msg="Health check passed" uptime_s=88399 host=api-02
+ts=2026-03-15T10:30:27.370Z level=info msg="Server started" port=8080 pid=1978 host=api-01
+ts=2026-03-15T10:30:02.349Z level=debug msg="Cache hit" key=session:def ttl=600 host=web-01
+ts=2026-03-15T10:30:00.784Z level=info msg="Response sent" method=GET path=/api/v2/orders status=400 bytes=49887 host=web-02
+ts=2026-03-15T10:30:05.495Z level=error msg="Internal error" request_id=req_161596 error="null pointer" host=worker-01
+ts=2026-03-15T10:30:18.864Z level=debug msg="Cache hit" key=config:main ttl=60 host=worker-02
+ts=2026-03-15T10:30:19.675Z level=info msg="Metric recorded" name=http_request_total value=74787 host=web-02
+ts=2026-03-15T10:30:13.396Z level=debug msg="Query executed" table=users rows=504 duration_ms=231 host=api-02
+ts=2026-03-15T10:30:26.037Z level=info msg="Metric recorded" name=http_request_total value=63634 host=worker-02
+ts=2026-03-15T10:30:37.920Z level=debug msg="Query executed" table=users rows=288 duration_ms=259 host=worker-02
+ts=2026-03-15T10:30:12.656Z level=error msg="Internal error" request_id=req_526957 error="null pointer" host=web-03
+ts=2026-03-15T10:30:10.296Z level=debug msg="Template rendered" name=dashboard duration_ms=421 host=web-03
+ts=2026-03-15T10:30:10.309Z level=info msg="Response sent" method=GET path=/api/v1/orders status=200 bytes=782 host=web-02
+ts=2026-03-15T10:30:03.970Z level=debug msg="Cache hit" key=session:abc ttl=3600 host=api-01
+ts=2026-03-15T10:30:39.750Z level=info msg="Health check passed" uptime_s=26225 host=api-01
+ts=2026-03-15T10:30:37.412Z level=error msg="Query failed" table=users error="deadlock detected" retries=2 host=api-01
+ts=2026-03-15T10:30:09.564Z level=info msg="Response sent" method=PUT path=/api/v1/users status=500 bytes=28459 host=api-02
+ts=2026-03-15T10:30:29.526Z level=info msg="Response sent" method=PUT path=/api/v1/health status=400 bytes=806 host=worker-01
+ts=2026-03-15T10:30:35.156Z level=info msg="Request received" method=POST path=/api/v1/auth status=200 duration_ms=219 host=worker-01

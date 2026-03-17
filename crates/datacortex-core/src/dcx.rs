@@ -4,7 +4,7 @@
 //!   Bytes  0-3:  Magic "DCX\x03"
 //!   Byte   4:    Version (3)
 //!   Byte   5:    Mode (0=Max, 1=Balanced, 2=Fast)
-//!   Byte   6:    Format hint (0-6)
+//!   Byte   6:    Format hint (0-10)
 //!   Byte   7:    Flags (bit 0: has_transform_metadata)
 //!   Bytes  8-15: Original size (u64 LE)
 //!   Bytes 16-23: Compressed data size (u64 LE)
@@ -67,6 +67,10 @@ pub enum FormatHint {
     Csv = 4,
     Code = 5,
     Log = 6,
+    Logfmt = 7,
+    Prometheus = 8,
+    Yaml = 9,
+    Xml = 10,
 }
 
 impl FormatHint {
@@ -79,6 +83,10 @@ impl FormatHint {
             4 => Ok(Self::Csv),
             5 => Ok(Self::Code),
             6 => Ok(Self::Log),
+            7 => Ok(Self::Logfmt),
+            8 => Ok(Self::Prometheus),
+            9 => Ok(Self::Yaml),
+            10 => Ok(Self::Xml),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("unknown format: {v}"),
@@ -95,6 +103,10 @@ impl FormatHint {
             Self::Csv => "csv",
             Self::Code => "code",
             Self::Log => "log",
+            Self::Logfmt => "logfmt",
+            Self::Prometheus => "prometheus",
+            Self::Yaml => "yaml",
+            Self::Xml => "xml",
         }
     }
 }

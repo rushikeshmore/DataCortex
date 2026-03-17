@@ -31,6 +31,10 @@ pub const TRANSFORM_CSV_COLUMNAR: u8 = 5;
 pub const TRANSFORM_LOG_COLUMNAR: u8 = 6;
 pub const TRANSFORM_JSON_ARRAY_COLUMNAR: u8 = 7;
 pub const TRANSFORM_MD_STRUCTURAL: u8 = 8;
+pub const TRANSFORM_LOGFMT_COLUMNAR: u8 = 9;
+pub const TRANSFORM_PROMETHEUS_COLUMNAR: u8 = 10;
+pub const TRANSFORM_YAML_COLUMNAR: u8 = 11;
+pub const TRANSFORM_XML_COLUMNAR: u8 = 12;
 
 impl TransformChain {
     pub fn new() -> Self {

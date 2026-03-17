@@ -7,17 +7,22 @@ pub mod csv;
 pub mod json;
 pub mod json_array;
 pub mod log_transform;
+pub mod logfmt;
 pub mod lzp;
 pub mod markdown;
 pub mod ndjson;
+pub mod prometheus;
 pub mod transform;
 pub mod wrt;
+pub mod xml;
+pub mod yaml;
 
 use crate::dcx::{FormatHint, Mode};
 use transform::{
     TRANSFORM_CSV_COLUMNAR, TRANSFORM_JSON_ARRAY_COLUMNAR, TRANSFORM_JSON_KEY_INTERN,
-    TRANSFORM_LOG_COLUMNAR, TRANSFORM_LZP, TRANSFORM_MD_STRUCTURAL, TRANSFORM_NDJSON_COLUMNAR,
-    TRANSFORM_WRT, TransformChain,
+    TRANSFORM_LOG_COLUMNAR, TRANSFORM_LOGFMT_COLUMNAR, TRANSFORM_LZP, TRANSFORM_MD_STRUCTURAL,
+    TRANSFORM_NDJSON_COLUMNAR, TRANSFORM_PROMETHEUS_COLUMNAR, TRANSFORM_WRT,
+    TRANSFORM_XML_COLUMNAR, TRANSFORM_YAML_COLUMNAR, TransformChain,
 };
 
 /// Detect file format from content bytes.
@@ -28,6 +33,11 @@ pub fn detect_format(data: &[u8]) -> FormatHint {
 
     let trimmed = trim_leading_whitespace(data);
 
+    // XML detection: starts with < (but not logfmt or other formats).
+    if starts_with_byte(trimmed, b'<') && xml::detect_xml(data) {
+        return FormatHint::Xml;
+    }
+
     if starts_with_byte(trimmed, b'{') || starts_with_byte(trimmed, b'[') {
         if is_ndjson(data) {
             return FormatHint::Ndjson;
@@ -35,12 +45,29 @@ pub fn detect_format(data: &[u8]) -> FormatHint {
         return FormatHint::Json;
     }
 
+    // Prometheus detection: lines starting with # HELP/# TYPE + metric data.
+    // Check BEFORE generic markdown (which also triggers on #).
+    if starts_with_byte(trimmed, b'#') && prometheus::detect_prometheus(data) {
+        return FormatHint::Prometheus;
+    }
+
     if starts_with_byte(trimmed, b'#') || has_markdown_indicators(data) {
         return FormatHint::Markdown;
     }
 
+    // YAML detection: multi-document files with --- separators.
+    if yaml::detect_yaml(data) {
+        return FormatHint::Yaml;
+    }
+
     if is_csv(data) {
         return FormatHint::Csv;
+    }
+
+    // logfmt detection: key=value structured logs.
+    // Check BEFORE generic log detection (logfmt looks different from bracket-style logs).
+    if logfmt::detect_logfmt(data) {
+        return FormatHint::Logfmt;
     }
 
     if is_log(data) {
@@ -63,6 +90,9 @@ pub fn detect_from_extension(path: &str) -> Option<FormatHint> {
         "ndjson" | "jsonl" => Some(FormatHint::Ndjson),
         "csv" | "tsv" => Some(FormatHint::Csv),
         "log" => Some(FormatHint::Log),
+        "yaml" | "yml" => Some(FormatHint::Yaml),
+        "xml" | "svg" | "xhtml" | "rss" | "atom" => Some(FormatHint::Xml),
+        "prom" => Some(FormatHint::Prometheus),
         "rs" | "py" | "js" | "ts" | "go" | "c" | "cpp" | "h" | "java" | "rb" | "zig" => {
             Some(FormatHint::Code)
         }
@@ -107,6 +137,48 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
     if format == FormatHint::Log {
         if let Some(result) = log_transform::preprocess(&current) {
             chain.push(TRANSFORM_LOG_COLUMNAR, result.metadata);
+            current = result.data;
+            return (current, chain);
+        }
+    }
+
+    // logfmt columnar reorg: ALL modes.
+    // Key-value structured logs (Heroku, Grafana Loki style).
+    // Timestamps, levels, hosts grouped — similar to log columnar but for k=v format.
+    if format == FormatHint::Logfmt {
+        if let Some(result) = logfmt::preprocess(&current) {
+            chain.push(TRANSFORM_LOGFMT_COLUMNAR, result.metadata);
+            current = result.data;
+            return (current, chain);
+        }
+    }
+
+    // Prometheus columnar reorg: ALL modes.
+    // Groups metric lines by metric name, columnar on labels and values.
+    // Label values (method, endpoint, status) are highly repetitive.
+    if format == FormatHint::Prometheus {
+        if let Some(result) = prometheus::preprocess(&current) {
+            chain.push(TRANSFORM_PROMETHEUS_COLUMNAR, result.metadata);
+            current = result.data;
+            return (current, chain);
+        }
+    }
+
+    // YAML document-level reorg: ALL modes.
+    // Groups similar K8s documents (Deployments, Services, HPAs) together.
+    if format == FormatHint::Yaml {
+        if let Some(result) = yaml::preprocess(&current) {
+            chain.push(TRANSFORM_YAML_COLUMNAR, result.metadata);
+            current = result.data;
+            return (current, chain);
+        }
+    }
+
+    // XML columnar reorg: ALL modes.
+    // Repeated sibling elements (catalog/book, rss/item) -> columnar on child content.
+    if format == FormatHint::Xml {
+        if let Some(result) = xml::preprocess(&current) {
+            chain.push(TRANSFORM_XML_COLUMNAR, result.metadata);
             current = result.data;
             return (current, chain);
         }
@@ -182,6 +254,18 @@ pub fn reverse_preprocess(data: &[u8], chain: &TransformChain) -> Vec<u8> {
             }
             TRANSFORM_MD_STRUCTURAL => {
                 current = markdown::reverse(&current, &record.metadata);
+            }
+            TRANSFORM_LOGFMT_COLUMNAR => {
+                current = logfmt::reverse(&current, &record.metadata);
+            }
+            TRANSFORM_PROMETHEUS_COLUMNAR => {
+                current = prometheus::reverse(&current, &record.metadata);
+            }
+            TRANSFORM_YAML_COLUMNAR => {
+                current = yaml::reverse(&current, &record.metadata);
+            }
+            TRANSFORM_XML_COLUMNAR => {
+                current = xml::reverse(&current, &record.metadata);
             }
             TRANSFORM_WRT => {
                 current = wrt::reverse(&current);
@@ -585,5 +669,52 @@ mod tests {
         let (preprocessed, chain) = preprocess(data, FormatHint::Generic, Mode::Fast);
         assert!(chain.is_empty());
         assert_eq!(preprocessed, data.to_vec());
+    }
+
+    #[test]
+    fn corpus_logfmt_roundtrip() {
+        let data = std::fs::read("../../corpus/test-logfmt.log").unwrap();
+        let fmt = detect_format(&data);
+        assert_eq!(fmt, FormatHint::Logfmt, "should detect logfmt");
+        let (preprocessed, chain) = preprocess(&data, fmt, Mode::Balanced);
+        // Transform may or may not apply (roundtrip verification in preprocess).
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(
+            restored, data,
+            "logfmt corpus roundtrip must be byte-perfect"
+        );
+    }
+
+    #[test]
+    fn corpus_prometheus_roundtrip() {
+        let data = std::fs::read("../../corpus/test-metrics.prom").unwrap();
+        let fmt = detect_format(&data);
+        assert_eq!(fmt, FormatHint::Prometheus, "should detect prometheus");
+        let (preprocessed, chain) = preprocess(&data, fmt, Mode::Balanced);
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(
+            restored, data,
+            "prometheus corpus roundtrip must be byte-perfect"
+        );
+    }
+
+    #[test]
+    fn corpus_yaml_roundtrip() {
+        let data = std::fs::read("../../corpus/test-config.yaml").unwrap();
+        // YAML may be detected as Generic if --- isn't at start.
+        // Use explicit format hint for testing.
+        let (preprocessed, chain) = preprocess(&data, FormatHint::Yaml, Mode::Balanced);
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(restored, data, "yaml corpus roundtrip must be byte-perfect");
+    }
+
+    #[test]
+    fn corpus_xml_roundtrip() {
+        let data = std::fs::read("../../corpus/test-data.xml").unwrap();
+        let fmt = detect_format(&data);
+        assert_eq!(fmt, FormatHint::Xml, "should detect xml");
+        let (preprocessed, chain) = preprocess(&data, fmt, Mode::Balanced);
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(restored, data, "xml corpus roundtrip must be byte-perfect");
     }
 }
