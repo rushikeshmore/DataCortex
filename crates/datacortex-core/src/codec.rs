@@ -74,7 +74,7 @@ fn cm_decompress(compressed: &[u8], original_size: usize, config: CMConfig) -> V
 fn gru_compress(data: &[u8], config: CMConfig) -> Vec<u8> {
     let mut engine = CMEngine::with_config(config);
     let mut gru = GruModel::new();
-    let mut meta_mixer = MetaMixer::new(8); // 8% GRU weight
+    let mut meta_mixer = MetaMixer::new(12); // 12% GRU weight
     let mut encoder = ArithmeticEncoder::new();
 
     let total_bytes = data.len();
@@ -147,7 +147,7 @@ fn gru_compress(data: &[u8], config: CMConfig) -> Vec<u8> {
 fn gru_decompress(compressed: &[u8], original_size: usize, config: CMConfig) -> Vec<u8> {
     let mut engine = CMEngine::with_config(config);
     let mut gru = GruModel::new();
-    let mut meta_mixer = MetaMixer::new(8); // same 8% as encoder
+    let mut meta_mixer = MetaMixer::new(12); // same 12% as encoder
     let mut decoder = ArithmeticDecoder::new(compressed);
     let mut output = Vec::with_capacity(original_size);
 

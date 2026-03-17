@@ -18,7 +18,7 @@
 //! sigmoid/tanh implementations must be EXACT same in both paths.
 
 const EMBED_DIM: usize = 32;
-const HIDDEN_DIM: usize = 64;
+const HIDDEN_DIM: usize = 128;
 const VOCAB_SIZE: usize = 256;
 
 // Total parameter count for reference: ~43,456
