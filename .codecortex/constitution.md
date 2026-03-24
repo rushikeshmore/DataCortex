@@ -6,14 +6,14 @@
 - **Name:** datacortex
 - **Languages:** rust
 - **Files:** 50
-- **Symbols:** 953
+- **Symbols:** 968
 - **Modules:** 3
-- **Last updated:** 2026-03-24T19:30:41.860Z
+- **Last updated:** 2026-03-24T20:49:48.222Z
 
 ## Architecture
 
 **Modules (3):**
-- **datacortex-core** (45 files, 15858 lines) — rust
+- **datacortex-core** (45 files, 16457 lines) — rust
 - **datacortex-neural** (3 files, 773 lines) — rust
 - **datacortex-cli** (1 files, 635 lines) — rust
 
@@ -22,7 +22,7 @@
 **Hottest files (most changes):**
 - `crates/datacortex-core/src/format/mod.rs` — 14 changes, VOLATILE
 - `crates/datacortex-core/src/model/engine.rs` — 13 changes, VOLATILE
-- `CLAUDE.md` — 11 changes, VOLATILE
+- `CLAUDE.md` — 12 changes, VOLATILE
 - `crates/datacortex-core/src/codec.rs` — 11 changes, VOLATILE
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` — 11 changes, VOLATILE
 

@@ -108,14 +108,14 @@ Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` in commit mess
 ## CodeCortex — Project Knowledge (auto-updated)
 
 ### Architecture
-**datacortex** — rust — 50 files, 953 symbols
-- **Modules (3):** datacortex-core (15858loc), datacortex-neural (773loc), datacortex-cli (635loc)
+**datacortex** — rust — 50 files, 968 symbols
+- **Modules (3):** datacortex-core (16457loc), datacortex-neural (773loc), datacortex-cli (635loc)
 
 ### Risk Map
 **High-risk files:**
 - `crates/datacortex-core/src/format/mod.rs` — 14 changes, volatile, coupled to: transform.rs ⚠, dcx.rs ⚠
 - `crates/datacortex-core/src/model/engine.rs` — 13 changes, volatile, coupled to: dual_mixer.rs ⚠, mod.rs ⚠
-- `CLAUDE.md` — 11 changes, volatile
+- `CLAUDE.md` — 12 changes, volatile
 - `crates/datacortex-core/src/codec.rs` — 11 changes, volatile, coupled to: mod.rs ⚠, mod.rs ⚠
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` — 11 changes, volatile, coupled to: engine.rs ⚠, mod.rs ⚠
 

@@ -5,7 +5,7 @@
 //!   Byte   4:    Version (3)
 //!   Byte   5:    Mode (0=Max, 1=Balanced, 2=Fast)
 //!   Byte   6:    Format hint (0-10)
-//!   Byte   7:    Flags (bit 0: has_transform_metadata)
+//!   Byte   7:    Flags (bit 0: has_transform_metadata, bit 1: has_zstd_dictionary)
 //!   Bytes  8-15: Original size (u64 LE)
 //!   Bytes 16-23: Compressed data size (u64 LE)
 //!   Bytes 24-27: CRC-32 of original data (u32 LE)
@@ -119,6 +119,12 @@ impl std::fmt::Display for FormatHint {
     }
 }
 
+/// Flags byte layout:
+///   bit 0: has_transform_metadata
+///   bit 1: has_zstd_dictionary (Fast mode only)
+pub const FLAG_HAS_TRANSFORM: u8 = 1 << 0;
+pub const FLAG_HAS_DICT: u8 = 1 << 1;
+
 /// .dcx file header.
 #[derive(Debug, Clone)]
 pub struct DcxHeader {
@@ -128,6 +134,8 @@ pub struct DcxHeader {
     pub compressed_size: u64,
     pub crc32: u32,
     pub transform_metadata: Vec<u8>,
+    /// True if the compressed payload embeds a zstd dictionary.
+    pub has_dict: bool,
 }
 
 impl DcxHeader {
@@ -137,11 +145,13 @@ impl DcxHeader {
         w.write_all(&[VERSION])?;
         w.write_all(&[self.mode as u8])?;
         w.write_all(&[self.format_hint as u8])?;
-        let flags: u8 = if self.transform_metadata.is_empty() {
-            0
-        } else {
-            1
-        };
+        let mut flags: u8 = 0;
+        if !self.transform_metadata.is_empty() {
+            flags |= FLAG_HAS_TRANSFORM;
+        }
+        if self.has_dict {
+            flags |= FLAG_HAS_DICT;
+        }
         w.write_all(&[flags])?;
         w.write_all(&self.original_size.to_le_bytes())?;
         w.write_all(&self.compressed_size.to_le_bytes())?;
@@ -174,12 +184,13 @@ impl DcxHeader {
         let mode = Mode::from_u8(buf[5])?;
         let format_hint = FormatHint::from_u8(buf[6])?;
         let flags = buf[7];
+        let has_dict = flags & FLAG_HAS_DICT != 0;
         let original_size = u64::from_le_bytes(buf[8..16].try_into().unwrap());
         let compressed_size = u64::from_le_bytes(buf[16..24].try_into().unwrap());
         let crc32 = u32::from_le_bytes(buf[24..28].try_into().unwrap());
         let transform_metadata_len = u32::from_le_bytes(buf[28..32].try_into().unwrap()) as usize;
 
-        let transform_metadata = if flags & 1 != 0 && transform_metadata_len > 0 {
+        let transform_metadata = if flags & FLAG_HAS_TRANSFORM != 0 && transform_metadata_len > 0 {
             let mut meta = vec![0u8; transform_metadata_len];
             r.read_exact(&mut meta)?;
             meta
@@ -194,6 +205,7 @@ impl DcxHeader {
             compressed_size,
             crc32,
             transform_metadata,
+            has_dict,
         })
     }
 
@@ -216,6 +228,7 @@ mod tests {
             compressed_size: 6789,
             crc32: 0xDEADBEEF,
             transform_metadata: vec![],
+            has_dict: false,
         };
 
         let mut buf = Vec::new();
@@ -243,6 +256,7 @@ mod tests {
             compressed_size: 500,
             crc32: 0x12345678,
             transform_metadata: meta.clone(),
+            has_dict: false,
         };
 
         let mut buf = Vec::new();
@@ -253,6 +267,30 @@ mod tests {
         let decoded = DcxHeader::read_from(&mut cursor).unwrap();
         assert_eq!(decoded.transform_metadata, meta);
         assert_eq!(decoded.total_size(), HEADER_SIZE + 5);
+    }
+
+    #[test]
+    fn header_dict_flag_roundtrip() {
+        let header = DcxHeader {
+            mode: Mode::Fast,
+            format_hint: FormatHint::Ndjson,
+            original_size: 5000,
+            compressed_size: 2000,
+            crc32: 0xCAFEBABE,
+            transform_metadata: vec![10, 20],
+            has_dict: true,
+        };
+
+        let mut buf = Vec::new();
+        header.write_to(&mut buf).unwrap();
+
+        // Flags byte at offset 7 should have both bit 0 and bit 1 set.
+        assert_eq!(buf[7], FLAG_HAS_TRANSFORM | FLAG_HAS_DICT);
+
+        let mut cursor = io::Cursor::new(&buf);
+        let decoded = DcxHeader::read_from(&mut cursor).unwrap();
+        assert!(decoded.has_dict);
+        assert_eq!(decoded.transform_metadata, vec![10, 20]);
     }
 
     #[test]

@@ -25,6 +25,212 @@ fn zstd_level(mode: Mode) -> i32 {
     }
 }
 
+// ─── Zstd Dictionary Training (Fast mode) ─────────────────────────────────────
+
+/// Minimum preprocessed data size to attempt dictionary training.
+/// Below this threshold the dictionary overhead exceeds any savings.
+const DICT_MIN_DATA_SIZE: usize = 8192;
+
+/// Target chunk size for splitting preprocessed data before per-chunk compression.
+/// Each chunk is compressed independently with the shared dictionary.
+/// Smaller chunks benefit more from dictionary priming, but each chunk has
+/// framing overhead (4 bytes size + zstd frame header ~10 bytes).
+/// Adaptive: scale with data size to avoid too many chunks.
+fn dict_chunk_size(data_len: usize) -> usize {
+    if data_len > 4_194_304 {
+        131_072 // 128 KB for > 4 MB
+    } else if data_len > 1_048_576 {
+        65_536 // 64 KB for 1 - 4 MB
+    } else if data_len > 262_144 {
+        32_768 // 32 KB for 256 KB - 1 MB
+    } else {
+        16_384 // 16 KB for smaller files
+    }
+}
+
+/// Maximum dictionary size based on input data size.
+/// Kept relatively small to minimize overhead. The dictionary primes each chunk's
+/// compressor context, so even a small dict provides most of the benefit.
+fn dict_max_size(data_len: usize) -> usize {
+    if data_len > 4_194_304 {
+        16_384 // 16 KB for > 4 MB
+    } else if data_len > 1_048_576 {
+        8_192 // 8 KB for 1 - 4 MB
+    } else {
+        4_096 // 4 KB for smaller files
+    }
+}
+
+/// Generate training samples from the data for dictionary training.
+///
+/// Uses column boundaries (0x00 separators) if available, otherwise fixed blocks.
+/// These samples are only used for `zstd::dict::from_samples`, NOT for the
+/// actual chunked compression (which uses `split_into_chunks`).
+fn generate_training_samples(data: &[u8], chunk_size: usize) -> Vec<&[u8]> {
+    // Try column boundaries (0x00 separators from columnar transform).
+    let col_chunks: Vec<&[u8]> = data.split(|&b| b == 0x00).collect();
+    if col_chunks.len() >= 5 {
+        // Filter out empty chunks and return.
+        return col_chunks.into_iter().filter(|c| !c.is_empty()).collect();
+    }
+
+    // Fall back to fixed-size blocks for training.
+    split_into_chunks(data, chunk_size)
+}
+
+/// Split data into fixed-size chunks for per-chunk compression.
+/// Every byte is preserved exactly -- no bytes are lost at boundaries.
+fn split_into_chunks(data: &[u8], chunk_size: usize) -> Vec<&[u8]> {
+    let mut chunks = Vec::new();
+    let mut offset = 0;
+    while offset < data.len() {
+        let end = (offset + chunk_size).min(data.len());
+        chunks.push(&data[offset..end]);
+        offset = end;
+    }
+    chunks
+}
+
+/// Attempt chunk-based dictionary compression.
+///
+/// 1. Split data into chunks
+/// 2. Train a zstd dictionary on the chunks
+/// 3. Compress each chunk independently using the trained dictionary
+/// 4. Return the dict + all compressed chunks as a payload
+///
+/// Returns `Some(payload)` if the total is smaller than `plain_size`, else `None`.
+fn try_dict_compress(data: &[u8], level: i32, plain_size: usize) -> Option<Vec<u8>> {
+    let chunk_size = dict_chunk_size(data.len());
+
+    // Generate training samples (may use column boundaries for better diversity).
+    let training_samples = generate_training_samples(data, chunk_size);
+    if training_samples.len() < 5 {
+        return None;
+    }
+
+    let max_dict = dict_max_size(data.len());
+
+    // Train dictionary from the training samples.
+    let dict = zstd::dict::from_samples(&training_samples, max_dict).ok()?;
+    if dict.is_empty() {
+        return None;
+    }
+
+    // Split data into fixed-size chunks for per-chunk compression.
+    let chunks = split_into_chunks(data, chunk_size);
+
+    // Compress each chunk independently with the dictionary.
+    let mut compressor = zstd::bulk::Compressor::with_dictionary(level, &dict).ok()?;
+    let mut compressed_chunks: Vec<Vec<u8>> = Vec::with_capacity(chunks.len());
+    for chunk in &chunks {
+        let cc = compressor.compress(chunk).ok()?;
+        compressed_chunks.push(cc);
+    }
+
+    // Build payload:
+    //   [dict_size: u32 LE] [dict_bytes]
+    //   [num_chunks: u32 LE]
+    //   for each chunk: [chunk_compressed_size: u32 LE] [chunk_data]
+    let total_compressed: usize = compressed_chunks.iter().map(|c| 4 + c.len()).sum();
+    let payload_size = 4 + dict.len() + 4 + total_compressed;
+
+    // Only use dict if it beats plain compression.
+    if payload_size >= plain_size {
+        return None;
+    }
+
+    let mut payload = Vec::with_capacity(payload_size);
+    payload.extend_from_slice(&(dict.len() as u32).to_le_bytes());
+    payload.extend_from_slice(&dict);
+    payload.extend_from_slice(&(compressed_chunks.len() as u32).to_le_bytes());
+    for cc in &compressed_chunks {
+        payload.extend_from_slice(&(cc.len() as u32).to_le_bytes());
+        payload.extend_from_slice(cc);
+    }
+
+    Some(payload)
+}
+
+/// Decompress a chunk-based dictionary-compressed payload.
+///
+/// Payload format:
+///   [dict_size: u32 LE] [dict_bytes]
+///   [num_chunks: u32 LE]
+///   for each chunk: [chunk_compressed_size: u32 LE] [chunk_data]
+///
+/// Chunks are decompressed individually and concatenated.
+fn decompress_with_dict(payload: &[u8], capacity: usize) -> std::io::Result<Vec<u8>> {
+    if payload.len() < 4 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "dict payload too short for dict_size",
+        ));
+    }
+    let mut pos = 0;
+
+    // Read dictionary.
+    let dict_size = u32::from_le_bytes(payload[pos..pos + 4].try_into().unwrap()) as usize;
+    pos += 4;
+    if payload.len() < pos + dict_size {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "dict payload truncated: dictionary bytes",
+        ));
+    }
+    let dict_bytes = &payload[pos..pos + dict_size];
+    pos += dict_size;
+
+    // Read number of chunks.
+    if payload.len() < pos + 4 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "dict payload truncated: num_chunks",
+        ));
+    }
+    let num_chunks = u32::from_le_bytes(payload[pos..pos + 4].try_into().unwrap()) as usize;
+    pos += 4;
+
+    // Prepare decompressor with dictionary.
+    let mut decompressor = zstd::bulk::Decompressor::with_dictionary(dict_bytes)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+    let mut output = Vec::with_capacity(capacity);
+
+    for i in 0..num_chunks {
+        if payload.len() < pos + 4 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("dict payload truncated: chunk {i} size"),
+            ));
+        }
+        let chunk_size =
+            u32::from_le_bytes(payload[pos..pos + 4].try_into().unwrap()) as usize;
+        pos += 4;
+        if payload.len() < pos + chunk_size {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("dict payload truncated: chunk {i} data"),
+            ));
+        }
+        let chunk_data = &payload[pos..pos + chunk_size];
+        pos += chunk_size;
+
+        // Each chunk decompresses to at most chunk_size + some headroom.
+        let chunk_capacity = capacity.saturating_sub(output.len());
+        let decompressed = decompressor
+            .decompress(chunk_data, chunk_capacity)
+            .map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("chunk {i} decompress failed: {e}"),
+                )
+            })?;
+        output.extend_from_slice(&decompressed);
+    }
+
+    Ok(output)
+}
+
 /// Compress data using the CM engine with the given configuration.
 /// Returns the compressed byte stream.
 fn cm_compress(data: &[u8], config: CMConfig) -> Vec<u8> {
@@ -437,10 +643,26 @@ pub fn compress_with_model<W: Write>(
     };
 
     // Step 2: Compress with engine.
+    let mut use_dict = false;
     let compressed = match mode {
         // Fast mode: zstd compression on preprocessed data.
+        // Try dictionary training if data is large enough.
         Mode::Fast => {
-            zstd::bulk::compress(&preprocessed, zstd_level(mode)).map_err(io::Error::other)?
+            let level = zstd_level(mode);
+            let plain = zstd::bulk::compress(&preprocessed, level).map_err(io::Error::other)?;
+
+            if preprocessed.len() >= DICT_MIN_DATA_SIZE {
+                if let Some(dict_payload) =
+                    try_dict_compress(&preprocessed, level, plain.len())
+                {
+                    use_dict = true;
+                    dict_payload
+                } else {
+                    plain
+                }
+            } else {
+                plain
+            }
         }
         // Balanced mode: dual-path CM + GRU byte predictor.
         Mode::Balanced => {
@@ -516,6 +738,7 @@ pub fn compress_with_model<W: Write>(
         compressed_size: compressed.len() as u64,
         crc32: crc,
         transform_metadata,
+        has_dict: use_dict,
     };
 
     header.write_to(output)?;
@@ -542,8 +765,13 @@ pub fn decompress_with_model<R: Read>(
     // Step 1: Decompress with engine.
     let preprocessed = match header.mode {
         Mode::Fast => {
-            zstd::bulk::decompress(&compressed, header.original_size as usize * 2 + 65536)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
+            let capacity = header.original_size as usize * 2 + 65536;
+            if header.has_dict {
+                decompress_with_dict(&compressed, capacity)?
+            } else {
+                zstd::bulk::decompress(&compressed, capacity)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
+            }
         }
         Mode::Balanced => {
             // Balanced mode: dual-path CM + GRU byte predictor.
@@ -885,5 +1113,142 @@ mod tests {
         let compressed = compress_to_vec(original, Mode::Max, None).unwrap();
         let decompressed = decompress_from_slice(&compressed).unwrap();
         assert_eq!(decompressed, original);
+    }
+
+    // ─── Dictionary compression tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_dict_compress_roundtrip() {
+        // Generate NDJSON data large enough to trigger dictionary training.
+        // Repetitive columnar data is ideal for dictionary learning.
+        let mut ndjson = String::new();
+        for i in 0..500 {
+            ndjson.push_str(&format!(
+                r#"{{"id":{},"name":"user_{}","status":"active","score":{}}}"#,
+                i,
+                i,
+                i * 17 % 100
+            ));
+            ndjson.push('\n');
+        }
+        let data = ndjson.as_bytes();
+        assert!(
+            data.len() > DICT_MIN_DATA_SIZE,
+            "test data should exceed dict threshold: {} bytes",
+            data.len()
+        );
+
+        let compressed =
+            compress_to_vec(data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(
+            decompressed, data,
+            "dict compress roundtrip: byte-exact mismatch"
+        );
+    }
+
+    #[test]
+    fn test_dict_falls_back_on_small() {
+        // Data smaller than DICT_MIN_DATA_SIZE should not use dictionary.
+        let data = b"small data that won't trigger dictionary training";
+        assert!(data.len() < DICT_MIN_DATA_SIZE);
+
+        let compressed = compress_to_vec(data, Mode::Fast, None).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed, data.to_vec());
+
+        // Verify no dict flag in header.
+        let mut cursor = Cursor::new(&compressed);
+        let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
+        assert!(
+            !header.has_dict,
+            "small data should not have dict flag set"
+        );
+    }
+
+    #[test]
+    fn test_dict_backward_compat() {
+        // Compress with old behavior (no dict) and verify it still decompresses.
+        // We simulate this by compressing small data (which skips dict).
+        let original = b"backward compatibility test data for decompression";
+        let compressed = compress_to_vec(original, Mode::Fast, None).unwrap();
+
+        // Verify the flag is NOT set.
+        let mut cursor = Cursor::new(&compressed);
+        let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
+        assert!(!header.has_dict);
+
+        // Decompress should work fine.
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed, original.to_vec());
+    }
+
+    #[test]
+    fn test_dict_ndjson_large_roundtrip() {
+        // Larger NDJSON dataset — should benefit from dictionary.
+        let mut ndjson = String::new();
+        for i in 0..2000 {
+            ndjson.push_str(&format!(
+                r#"{{"timestamp":"2025-01-{:02}T{:02}:{:02}:00Z","level":"info","message":"Request processed","request_id":"req_{}","duration_ms":{}}}"#,
+                (i % 28) + 1,
+                i % 24,
+                i % 60,
+                i,
+                (i * 13) % 500
+            ));
+            ndjson.push('\n');
+        }
+        let data = ndjson.as_bytes();
+
+        let compressed =
+            compress_to_vec(data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed, data, "large NDJSON roundtrip mismatch");
+    }
+
+    #[test]
+    fn test_dict_generic_data_roundtrip() {
+        // Generic (non-JSON) data that's large enough for dict training.
+        // Uses fixed-size block splitting instead of column boundaries.
+        let mut data = Vec::new();
+        for i in 0..3000 {
+            data.extend_from_slice(
+                format!("line {i}: the quick brown fox jumps over the lazy dog\n").as_bytes(),
+            );
+        }
+        assert!(data.len() > DICT_MIN_DATA_SIZE);
+
+        let compressed =
+            compress_to_vec(&data, Mode::Fast, Some(FormatHint::Generic)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed, data, "generic data dict roundtrip mismatch");
+    }
+
+    #[test]
+    fn test_dict_does_not_affect_other_modes() {
+        // Dictionary training should only apply to Fast mode.
+        // Balanced and Max modes should remain unchanged.
+        let mut ndjson = String::new();
+        for i in 0..200 {
+            ndjson.push_str(&format!(
+                r#"{{"id":{},"name":"user_{}","status":"active"}}"#,
+                i, i
+            ));
+            ndjson.push('\n');
+        }
+        let data = ndjson.as_bytes();
+
+        for mode in [Mode::Balanced, Mode::Max] {
+            let compressed =
+                compress_to_vec(data, mode, Some(FormatHint::Ndjson)).unwrap();
+            let mut cursor = Cursor::new(&compressed);
+            let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
+            assert!(
+                !header.has_dict,
+                "mode {mode} should never have dict flag"
+            );
+            let decompressed = decompress_from_slice(&compressed).unwrap();
+            assert_eq!(decompressed, data, "roundtrip failed for mode {mode}");
+        }
     }
 }
