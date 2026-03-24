@@ -1,122 +1,107 @@
 # DataCortex — Claude Code Instructions
 
 ## What This Is
-Lossless text compression engine in Rust. Three modes: Max (sub-1.0 bpb), Balanced (1.2-1.4 bpb), Fast (1.8-2.0 bpb). Format-aware preprocessing for JSON/MD/NDJSON/CSV/code/logs + bit-level context mixing + Ramanujan periodic features + entropy coding.
+JSON/NDJSON-focused lossless compression engine in Rust. Dual-pipeline: Fast mode (columnar + typed encoding + zstd dict) and Balanced mode (columnar + CM engine). Beats zstd-19 by 14-49% on NDJSON.
 
 ## Architecture
 ```
-Input → Format Detection → Preprocessing → CM Engine (or Fast zstd) → .dcx output
+Input → Format Detection → NDJSON Columnar Reorg → [Nested Decomposition] → [Typed Encoding (Fast only)] → [Value Dict] → [zstd Dict Training (Fast)] / [CM Engine (Balanced)] → .dcx output
 ```
-- `crates/datacortex-core/` — Core library
-  - `format/` — Detection (7 types) + JSON key interning + transform pipeline
-  - `model/` — Order0-9, match model, word model, sparse, run, JSON, indirect, XML tracker; CMEngine orchestrator
-  - `state/` — StateTable (256-state), StateMap (adaptive), ContextMap (lossy hash, checksum, 2-way assoc)
-  - `mixer/` — Triple logistic mixer (fine 64K + med 16K + coarse 4K), squash/stretch, 3-stage APM
-  - `entropy/` — Binary arithmetic coder (12-bit, carry-free)
-  - `codec.rs` — Pipeline orchestrator (Fast=zstd, Balanced=CM, Max=CM)
-  - `dcx.rs` — .dcx v3 file format (32-byte header + CRC-32)
-- `crates/datacortex-cli/` — CLI binary (compress, decompress, bench, info)
-- `crates/datacortex-neural/` — Optional RWKV model for Max mode (stub)
-- `corpus/` — 7 Tier 1 test files (checked in, never change)
-- `benchmarks/` — baseline.json
+
+Key modules:
+- `format/ndjson.rs` — Columnar transform (uniform Strategy 1 + grouped Strategy 2)
+- `format/schema.rs` — Auto schema inference (8 types: Integer, Float, Boolean, Timestamp, UUID, Enum, String, Null)
+- `format/typed_encoding.rs` — Type-specific binary encoding (delta varint, bitmap, enum dict, timestamp delta, etc.)
+- `format/value_dict.rs` — Per-column dictionary encoding
+- `format/json.rs` — Key interning (Balanced/Max only)
+- `format/json_array.rs` — JSON array columnar
+- `model/` — CM engine: Order0-9, match, word, sparse, run, JSON, indirect, PPM, DMC models
+- `mixer/` — Triple logistic mixer + 7-stage APM + GRU MetaMixer
+- `entropy/` — Binary arithmetic coder (12-bit)
+- `codec.rs` — Pipeline orchestrator with zstd dict training
+- `dcx.rs` — .dcx v3 file format
 
 ## Current Status
-**Phase 26 (v0.2.0-dev).** 2.15 bpb alice29, **1.84 bpb enwik8** (confirmed full 100MB). 393 tests (389 unit + 4 integration). ~400MB memory. 29 commits.
+**v0.2.0-pivot.** JSON/NDJSON focused. 311 tests. ~40 commits.
 
-**Engine:** 16 CM models + PPM + DMC + GRU byte mixer (128 cells, BPTT-10, 12% blend) + 7-stage APM + triple logistic mixer. 9 format transforms, 11 detected formats.
+**Benchmark results:**
+| File | Size | zstd-19 | DCX Fast | Advantage |
+|------|------|---------|----------|-----------|
+| test-ndjson (200 rows) | 110KB | 15.5x | 17.7x | +14% |
+| uniform-10k (10K rows) | 3.3MB | 15.9x | 23.6x | +49% |
+| GH Archive (diverse) | 10MB | 7.5x | 6.7x | -11% |
 
-**BPTT-10 (uncommitted):** Truncated backprop on GRU. cargo test passed. alice29 2.15 bpb (-0.01). enwik8 benchmark running.
+## Dual Pipeline (Gotcha #35)
+- **Fast mode:** columnar → typed encoding → zstd dict → zstd-9. Best ratio on NDJSON.
+- **Balanced mode:** columnar → CM engine (no typed encoding). Typed encoding HURTS CM.
+- **Max mode:** same as Balanced with larger context maps.
 
 ## Build & Test
 ```bash
 cargo build --release
-cargo test                    # Tier 1: roundtrip + unit tests (<5s)
+cargo test                    # 311 tests (<5s for lib, minutes for integration)
 cargo clippy --all-targets -- -D warnings
-cargo bench --bench compress_bench  # Tier 2: full benchmark (~1 min)
 ```
 
 ## Rules
 1. **Roundtrip is sacred.** Compress → decompress must produce identical output. Always.
-2. **Benchmark after every change.** Tier 1 corpus. Log bpb. Regression >0.5% = stop and fix.
-3. **Solo model test before mixing.** New models get solo bpb on alice29.txt before entering mixer.
-4. **No speculative optimization.** Correct first, fast second.
-5. **V2 dead ends stay dead.** Don't retry: logistic byte-level mixing, geometric mixing, hybrid byte+bit, η>5, 4+ APM stages on small files. See gotchas below.
-6. **Format-aware advantage >10% on JSON** vs raw zstd. If not meeting this, focus on preprocessing.
+2. **Typed encoding is Fast-mode-only.** Never apply to Balanced/Max (gotcha #35).
+3. **Benchmark after every change.** Use corpus/test-ndjson.ndjson + corpus/json-bench/uniform-10k.ndjson.
+4. **A/B test new encoders.** Test with both Fast (zstd) and Balanced (CM) backends.
+5. **Solo model test before mixing.** New CM models get solo bpb test first.
+6. **No external deps for parsing.** Manual ISO 8601, UUID, etc. parsing (no chrono, no regex).
 
-## Key Gotchas (Don't Repeat — see vault gotchas.md for all 31)
-- Match model: rolling hash must be non-cumulative (V2 bug cost 0.44 bpb)
-- Logistic mixing at byte-level = +69% regression. Bit-level ONLY.
-- Adding weak models dilutes mixer weights. Solo test first.
-- η=2 for fine mixer (64K weights), η=4 for coarse (4K). Don't increase without A/B test.
-- WRT regresses on XML-heavy content. Only enable per-format after A/B test.
-- **Multi-set mixer FAILS with <100 inputs** (+0.44 regression at 28 inputs). Need multi-output ContextMap2 FIRST.
-- **ISSE negligible** (-0.001 bpb, redundant with APM).
-- **Hierarchical mixer** causes information bottleneck (-0.02 regression).
-- **Memory scaling negligible** (450MB→1GB = -0.003 bpb). Architecture is bottleneck, not memory.
-- **Transforms beat models** for structured data. For general text, paradigm diversity (PPM/DMC/neural) is the path.
-- **LLM byte mapping:** unmapped bytes get mean logit, not -100. Keep blend weight low until comprehensive.
+## Key Gotchas
+- **#35:** Typed encoding HURTS CM, HELPS zstd. Fast-mode-only.
+- **#33:** Columnar transform + strong CM = worse than raw + strong CM (confirmed with cmix).
+- **#34:** Value dict saves 55% raw but only 3% compressed (CM already predicts repetition).
+- **#38:** Non-JSON transforms removed, archived at datacortex-general repo.
+- Match model: rolling hash must be non-cumulative.
+- Multi-set mixer FAILS with <100 inputs.
+- η=2 for fine mixer (64K weights), η=4 for coarse (4K).
 
-## V3 Engine (Phase 5+ — current)
-- 16 models: Order-0 (256 direct), Order-1 (32MB), Order-2 (16MB), Order-3 (32MB checksum), Order-4 (32MB checksum), Order-5 (32MB assoc), Order-6 (16MB assoc), Order-7 (32MB assoc), Order-8 (32MB assoc), Order-9 (16MB assoc), Match (16MB ring + 8M hash, multi-candidate), Word (16MB), Sparse (16MB), Run (4MB), JSON (8MB), Indirect (8MB + 2MB pred table)
-- XML state tracker: 8-state FSM provides context bits for markup-heavy content (tag/content/attr/comment/entity)
-- Multi-output ContextMaps: each order model (O1-O9) produces 2 predictions (state + run-count). 28 total mixer inputs (was 19).
-- Triple logistic mixer: fine (64K, η=2), medium (16K, η=3), coarse (4K, η=4). XML state + run-length context in mixer hash.
-- Multi-set mixer available but not used (regresses on 1MB; needs larger data).
-- 7-stage APM cascade: 2K/16K/4K/4K/4K/2K/4K contexts. XML state injected into APM2 and APM5.
-- byte_class: 12 classes (was 8) — high bytes split into 4 WRT groups + escape for future WRT support.
-- StateTable (256-state PAQ8), StateMap (adaptive 1/n), ContextMap (lossy/checksum/2-way assoc)
-- Binary AC: 12-bit precision, carry-free
-- JSON key interning: Balanced/Max only (hurts Fast due to zstd redundancy)
-- WRT: implemented but disabled (regresses on XML-heavy content; keep for future per-format enable)
-- Total memory: ~264MB
+## Corpus
+- `corpus/test-ndjson.ndjson` — 200 rows, 14 columns, uniform schema (primary test)
+- `corpus/test-api.json` — JSON API response
+- `corpus/test-config.json` — Small JSON config
+- `corpus/alice29.txt` — English prose (general text reference)
+- `corpus/json-bench/uniform-10k.ndjson` — 10K rows (scaling test)
+- `corpus/json-bench/gharchive-10mb.ndjson` — Real GH Archive (diverse schemas)
+- `corpus/json-bench/twitter.json` — simdjson benchmark
+- `corpus/json-bench/citm_catalog.json` — Highly repetitive JSON
+- `corpus/json-bench/canada.json` — GeoJSON (numeric-heavy)
 
-## Corpus (Tier 1 — run on every cargo test)
-- `corpus/alice29.txt` — English prose (152 KB)
-- `corpus/test-api.json` — JSON API responses (~100 KB)
-- `corpus/test-config.json` — JSON configs (~10 KB)
-- `corpus/test-doc.md` — Markdown docs (~50 KB)
-- `corpus/test-ndjson.ndjson` — NDJSON stream (~100 KB)
-- `corpus/test-log.log` — Server logs (~100 KB)
-- `corpus/test-code.rs` — Rust source (~20 KB)
-
-## Phase Gates
-| Phase | Gate | bpb |
-|-------|------|-----|
-| 0 | cargo test passes, benchmark harness runs | — |
-| 1 | Format-aware >10% on JSON vs zstd | Fast ships |
-| 2 | Roundtrip all corpus files | ~7.0 (O0) |
-| 3 | ≤2.10 bpb alice29 (match V2) | 2.10 |
-| 4 | <1.80 alice29, <1.00 JSON-API | 1.80/1.00 |
-| 5 | 1.2-1.4 enwik8 (Balanced) | 1.40 |
-| 6 | sub-1.0 enwik8 (Max+RWKV) | 1.00 |
-| 7 | All targets met, published | All |
+## Typed Encoding (format/typed_encoding.rs)
+- Integer: delta + ZigZag + LEB128 varint
+- Boolean: bitmap (8 per byte)
+- Timestamp: ISO 8601 → epoch micros → delta varint
+- Enum: frequency-sorted ordinal dictionary (1 byte per value)
+- String: quote strip + length prefix
+- UUID: 38 bytes → 16 bytes binary
+- Float: raw passthrough (roundtrip risk)
 
 ## Full Documentation (Obsidian Vault)
-All detailed docs are in `Rushikesh OS/2. Projects/06. DataCortex/`:
-- `CLAUDE-Instructions.md` — Autopilot bootstrap (session start/end protocol)
-- `Architecture-Strategy.md` — Full architecture, project structure, phases
-- `Benchmark-Targets.md` — bpb targets per mode per file type
-- `DataCortex-Retrospective.md` — V1/V2 learnings
-- `Landscape-Analysis.md` — SOTA survey (21 compressors)
-- `Ramanujan-Structures.md` — RPT, filter banks, Stern-Brocot research
-- `Build SOP's/` — testing, deployment, gotchas, surfaces, coding
+All detailed docs in `Rushikesh OS/2. Projects/06. DataCortex/`:
+- `Build SOP's/gotchas.md` — 38 institutional lessons
+- `Build SOP's/testing.md`, `deployment.md`, `coding.md` — SOPs
+- Session logs in `00. Logs/`
 
 ## Commits
-Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` in commit messages.
+Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` in commit messages.
 
 <!-- codecortex:start -->
 ## CodeCortex — Project Knowledge (auto-updated)
 
 ### Architecture
-**datacortex** — rust — 50 files, 968 symbols
-- **Modules (3):** datacortex-core (16457loc), datacortex-neural (773loc), datacortex-cli (635loc)
+**datacortex** — rust — 50 files, 984 symbols
+- **Modules (3):** datacortex-core (16860loc), datacortex-neural (773loc), datacortex-cli (635loc)
 
 ### Risk Map
 **High-risk files:**
 - `crates/datacortex-core/src/format/mod.rs` — 14 changes, volatile, coupled to: transform.rs ⚠, dcx.rs ⚠
+- `CLAUDE.md` — 13 changes, volatile
 - `crates/datacortex-core/src/model/engine.rs` — 13 changes, volatile, coupled to: dual_mixer.rs ⚠, mod.rs ⚠
-- `CLAUDE.md` — 12 changes, volatile
-- `crates/datacortex-core/src/codec.rs` — 11 changes, volatile, coupled to: mod.rs ⚠, mod.rs ⚠
+- `crates/datacortex-core/src/codec.rs` — 12 changes, volatile, coupled to: mod.rs ⚠, mod.rs ⚠
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` — 11 changes, volatile, coupled to: engine.rs ⚠, mod.rs ⚠
 
 **Hidden couplings (co-change, no import):**
