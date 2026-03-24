@@ -44,6 +44,7 @@ const ENC_TIMESTAMP: u8 = 4;
 const ENC_ENUM: u8 = 5;
 const ENC_STRING: u8 = 6;
 const ENC_UUID: u8 = 7;
+const ENC_HEX_PREFIX: u8 = 9;
 
 // ─── ZigZag + LEB128 Primitives ─────────────────────────────────────────────
 
@@ -761,6 +762,208 @@ fn decode_uuid_column(data: &[u8]) -> Vec<Vec<u8>> {
     result
 }
 
+// ─── Hex Prefix Encoder ─────────────────────────────────────────────────────
+
+/// Check if a byte is a lowercase hex character [0-9a-f].
+#[inline]
+fn is_lower_hex(b: u8) -> bool {
+    matches!(b, b'0'..=b'9' | b'a'..=b'f')
+}
+
+/// Try to detect and encode a column of strings that follow a pattern:
+/// `"prefix_HEXHEX..."` — a common prefix followed by a fixed number of
+/// lowercase hex characters.
+///
+/// Returns `Some(encoded)` if all values match, `None` otherwise (fall back).
+///
+/// Requirements for hex prefix encoding:
+/// - All values must share the same prefix (including the opening quote `"`)
+/// - All suffixes after the prefix must be only lowercase hex chars [0-9a-f]
+/// - All hex suffixes must have the same length
+/// - Hex suffix length must be >= 2
+/// - Values must be non-empty
+///
+/// Encoding format:
+/// ```text
+///   prefix_len: u16 LE
+///   prefix_bytes: [u8; prefix_len]  (includes opening quote and literal prefix,
+///                                     e.g., b'"sess_')
+///   suffix_hex_len: u8              (number of hex chars per value, e.g. 6)
+///   count: u32 LE
+///   binary_bytes: [u8; ceil(suffix_hex_len/2)] per value
+/// ```
+///
+/// On decode, binary bytes are converted back to lowercase hex, and the
+/// closing quote `"` is appended.
+fn try_encode_hex_prefix(values: &[&[u8]]) -> Option<Vec<u8>> {
+    // DISABLED: hex→binary removes the limited-alphabet structure that zstd exploits
+    // via Huffman coding. Converting 16-symbol hex chars to 256-symbol binary bytes
+    // makes the data LESS compressible by zstd (same entropy, higher per-byte density).
+    // Same gotcha pattern as #33/#35. Keep code for future use with non-zstd backends.
+    let _ = values;
+    return None;
+    #[allow(unreachable_code)]
+    if values.is_empty() {
+        return None;
+    }
+
+    // All values must be quoted strings.
+    for val in values {
+        if val.len() < 2 || val[0] != b'"' || val[val.len() - 1] != b'"' {
+            return None;
+        }
+    }
+
+    // Find the longest common prefix (including the opening quote) across
+    // the inner content (everything except the closing quote).
+    // We compare bytes from position 0 up to len-1 (excluding closing quote).
+    let first = &values[0][..values[0].len() - 1]; // drop closing quote
+    let mut prefix_len = first.len();
+
+    for val in &values[1..] {
+        let inner = &val[..val.len() - 1];
+        let max_check = prefix_len.min(inner.len());
+        let mut matching = 0;
+        for i in 0..max_check {
+            if first[i] == inner[i] {
+                matching += 1;
+            } else {
+                break;
+            }
+        }
+        prefix_len = matching;
+        if prefix_len == 0 {
+            return None;
+        }
+    }
+
+    // The prefix is first[..prefix_len]. The suffix is the rest up to closing quote.
+    // Check that all suffixes are lowercase hex and have the same length.
+    let suffix_len = (values[0].len() - 1) - prefix_len; // -1 for closing quote
+    if suffix_len < 2 {
+        return None; // Too short to be worth it.
+    }
+
+    for val in values {
+        let inner_len = val.len() - 1; // exclude closing quote
+        let this_suffix_len = inner_len - prefix_len;
+        if this_suffix_len != suffix_len {
+            return None; // Variable length suffix -> fall back.
+        }
+        // Check all suffix bytes are lowercase hex.
+        for &b in &val[prefix_len..inner_len] {
+            if !is_lower_hex(b) {
+                return None; // Non-lowercase-hex char -> fall back.
+            }
+        }
+    }
+
+    // All checks passed. Encode.
+    let prefix_bytes = &first[..prefix_len];
+    let binary_len = suffix_len.div_ceil(2); // ceil(suffix_hex_len / 2)
+
+    let mut out = Vec::with_capacity(
+        2 + prefix_len + 1 + 4 + values.len() * binary_len,
+    );
+
+    // Header.
+    out.extend_from_slice(&(prefix_len as u16).to_le_bytes());
+    out.extend_from_slice(prefix_bytes);
+    out.push(suffix_len as u8);
+    out.extend_from_slice(&(values.len() as u32).to_le_bytes());
+
+    // Per-value binary data.
+    for val in values {
+        let hex_start = prefix_len;
+        let hex_end = val.len() - 1; // exclude closing quote
+        let hex_bytes = &val[hex_start..hex_end];
+
+        // Convert pairs of hex chars to binary bytes.
+        for i in (0..hex_bytes.len()).step_by(2) {
+            let hi = hex_nibble(hex_bytes[i]).unwrap_or(0);
+            if i + 1 < hex_bytes.len() {
+                let lo = hex_nibble(hex_bytes[i + 1]).unwrap_or(0);
+                out.push((hi << 4) | lo);
+            } else {
+                // Odd number of hex chars: store the last nibble in the high bits.
+                out.push(hi << 4);
+            }
+        }
+    }
+
+    Some(out)
+}
+
+/// Decode a hex-prefix-encoded column back to quoted strings.
+fn decode_hex_prefix_column(data: &[u8]) -> Vec<Vec<u8>> {
+    if data.len() < 7 {
+        return decode_raw(data);
+    }
+
+    let mut pos = 0;
+
+    // Read prefix.
+    let prefix_len = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
+    pos += 2;
+    if pos + prefix_len > data.len() {
+        return decode_raw(data);
+    }
+    let prefix = &data[pos..pos + prefix_len];
+    pos += prefix_len;
+
+    // Read suffix hex length.
+    if pos >= data.len() {
+        return decode_raw(data);
+    }
+    let suffix_hex_len = data[pos] as usize;
+    pos += 1;
+
+    // Read count.
+    if pos + 4 > data.len() {
+        return decode_raw(data);
+    }
+    let count = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+    pos += 4;
+
+    let binary_len = suffix_hex_len.div_ceil(2);
+    let total_val_len = prefix_len + suffix_hex_len + 1; // +1 for closing quote
+
+    const HEX_LOWER: &[u8; 16] = b"0123456789abcdef";
+
+    let mut result = Vec::with_capacity(count);
+
+    for _ in 0..count {
+        if pos + binary_len > data.len() {
+            break;
+        }
+        let bin = &data[pos..pos + binary_len];
+        pos += binary_len;
+
+        let mut val = Vec::with_capacity(total_val_len);
+        // Write prefix.
+        val.extend_from_slice(prefix);
+
+        // Convert binary back to hex.
+        let mut hex_written = 0;
+        for &b in bin {
+            if hex_written < suffix_hex_len {
+                val.push(HEX_LOWER[(b >> 4) as usize]);
+                hex_written += 1;
+            }
+            if hex_written < suffix_hex_len {
+                val.push(HEX_LOWER[(b & 0x0F) as usize]);
+                hex_written += 1;
+            }
+        }
+
+        // Closing quote.
+        val.push(b'"');
+        result.push(val);
+    }
+
+    result
+}
+
 // ─── Null-Aware Encoder ─────────────────────────────────────────────────────
 
 /// Encode a nullable column: null bitmap + typed sub-encoding.
@@ -818,6 +1021,16 @@ fn encode_nullable_column(values: &[&[u8]], sub_type: u8) -> Vec<u8> {
             let encoded = encode_uuid_column(&non_null_values);
             out.extend_from_slice(&encoded);
         }
+        ENC_HEX_PREFIX => {
+            if let Some(encoded) = try_encode_hex_prefix(&non_null_values) {
+                out.extend_from_slice(&encoded);
+            } else {
+                // Fall back to string encoding if hex prefix fails on non-null subset.
+                out[0] = ENC_STRING; // Patch the sub-type byte.
+                let encoded = encode_string_column(&non_null_values);
+                out.extend_from_slice(&encoded);
+            }
+        }
         _ => {}
     }
 
@@ -863,6 +1076,7 @@ fn decode_nullable_column(data: &[u8]) -> Vec<Vec<u8>> {
         ENC_ENUM => decode_enum_column(typed_data),
         ENC_STRING => decode_string_column(typed_data),
         ENC_UUID => decode_uuid_column(typed_data),
+        ENC_HEX_PREFIX => decode_hex_prefix_column(typed_data),
         _ => Vec::new(),
     };
 
@@ -1063,9 +1277,24 @@ fn encode_column(values: &[&[u8]], col_type: &ColumnType) -> (u8, Vec<u8>) {
         }
         ColumnType::String { nullable } => {
             if *nullable {
+                // For nullable strings, extract non-null values and try hex prefix.
+                let non_null: Vec<&[u8]> = values.iter().filter(|v| **v != b"null").copied().collect();
+                if !non_null.is_empty() {
+                    if let Some(hex_data) = try_encode_hex_prefix(&non_null) {
+                        // Re-encode as nullable with hex prefix sub-type.
+                        let _ = hex_data; // We need a different approach for nullable.
+                        // Build nullable wrapper with ENC_HEX_PREFIX sub-type.
+                        return (ENC_NULL_TYPED, encode_nullable_column(values, ENC_HEX_PREFIX));
+                    }
+                }
                 (ENC_NULL_TYPED, encode_nullable_column(values, ENC_STRING))
             } else {
-                (ENC_STRING, encode_string_column(values))
+                // Try hex prefix first for non-nullable strings.
+                if let Some(hex_data) = try_encode_hex_prefix(values) {
+                    (ENC_HEX_PREFIX, hex_data)
+                } else {
+                    (ENC_STRING, encode_string_column(values))
+                }
             }
         }
         ColumnType::Uuid { nullable } => {
@@ -1100,6 +1329,7 @@ fn decode_column(enc_type: u8, col_data: &[u8]) -> Vec<Vec<u8>> {
         ENC_ENUM => decode_enum_column(col_data),
         ENC_STRING => decode_string_column(col_data),
         ENC_UUID => decode_uuid_column(col_data),
+        ENC_HEX_PREFIX => decode_hex_prefix_column(col_data),
         _ => decode_raw(col_data),
     }
 }
@@ -1798,6 +2028,189 @@ mod tests {
                 String::from_utf8_lossy(val),
                 String::from_utf8_lossy(&decoded[i])
             );
+        }
+    }
+
+    // ─── Hex Prefix Encoder Tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_hex_prefix_detection() {
+        // Standard session IDs with "sess_" prefix and 6 hex chars.
+        let values: &[&[u8]] = &[
+            b"\"sess_a1b2c3\"",
+            b"\"sess_d4e5f6\"",
+            b"\"sess_001122\"",
+        ];
+        let result = try_encode_hex_prefix(values);
+        assert!(result.is_some(), "should detect sess_ + hex pattern");
+    }
+
+    #[test]
+    fn test_hex_prefix_encode_decode() {
+        // Roundtrip encoding of session IDs.
+        let values: &[&[u8]] = &[
+            b"\"sess_a1b2c3\"",
+            b"\"sess_d4e5f6\"",
+            b"\"sess_001122\"",
+            b"\"sess_aabbcc\"",
+            b"\"sess_ff0099\"",
+        ];
+        let encoded = try_encode_hex_prefix(values).expect("should encode");
+        let decoded = decode_hex_prefix_column(&encoded);
+
+        assert_eq!(decoded.len(), values.len());
+        for (i, val) in values.iter().enumerate() {
+            assert_eq!(
+                decoded[i],
+                val.to_vec(),
+                "hex prefix mismatch at index {i}: expected {:?}, got {:?}",
+                String::from_utf8_lossy(val),
+                String::from_utf8_lossy(&decoded[i])
+            );
+        }
+
+        // Verify size savings: each original value is 13 bytes.
+        // Encoded: header (2 + 6 + 1 + 4 = 13 bytes) + 5 * 3 bytes = 28 bytes.
+        // Raw: 5 * 13 + 4 separators = 69 bytes.
+        assert!(
+            encoded.len() < 5 * 13,
+            "hex prefix should save space: {} < {}",
+            encoded.len(),
+            5 * 13
+        );
+    }
+
+    #[test]
+    fn test_hex_prefix_variable_lengths_fallback() {
+        // Different hex suffix lengths should fall back.
+        let values: &[&[u8]] = &[
+            b"\"sess_a1b2c3\"",    // 6 hex chars
+            b"\"sess_d4e5f6a0\"",  // 8 hex chars
+        ];
+        let result = try_encode_hex_prefix(values);
+        assert!(result.is_none(), "variable hex lengths should fall back");
+    }
+
+    #[test]
+    fn test_hex_prefix_uppercase_fallback() {
+        // Uppercase hex should fall back.
+        let values: &[&[u8]] = &[
+            b"\"sess_A1B2C3\"",
+            b"\"sess_D4E5F6\"",
+        ];
+        let result = try_encode_hex_prefix(values);
+        assert!(result.is_none(), "uppercase hex should fall back");
+    }
+
+    #[test]
+    fn test_hex_prefix_non_hex_fallback() {
+        // Non-hex characters in suffix should fall back.
+        let values: &[&[u8]] = &[
+            b"\"sess_a1b2g3\"",  // 'g' is not hex
+            b"\"sess_d4e5f6\"",
+        ];
+        let result = try_encode_hex_prefix(values);
+        assert!(result.is_none(), "non-hex suffix should fall back");
+    }
+
+    #[test]
+    fn test_hex_prefix_request_ids() {
+        // Longer hex suffixes (12 chars).
+        let values: &[&[u8]] = &[
+            b"\"req_f0e1d2c3b4a5\"",
+            b"\"req_001122334455\"",
+            b"\"req_aabbccddeeff\"",
+        ];
+        let encoded = try_encode_hex_prefix(values).expect("should encode request IDs");
+        let decoded = decode_hex_prefix_column(&encoded);
+
+        assert_eq!(decoded.len(), values.len());
+        for (i, val) in values.iter().enumerate() {
+            assert_eq!(
+                decoded[i],
+                val.to_vec(),
+                "request_id roundtrip failed at index {i}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_hex_prefix_odd_hex_length() {
+        // Odd number of hex chars (5 chars -> 3 binary bytes).
+        let values: &[&[u8]] = &[
+            b"\"id_a1b2c\"",
+            b"\"id_d4e5f\"",
+            b"\"id_00112\"",
+        ];
+        let encoded = try_encode_hex_prefix(values).expect("should encode odd-length hex");
+        let decoded = decode_hex_prefix_column(&encoded);
+
+        assert_eq!(decoded.len(), values.len());
+        for (i, val) in values.iter().enumerate() {
+            assert_eq!(
+                decoded[i],
+                val.to_vec(),
+                "odd hex length roundtrip failed at index {i}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_hex_prefix_real_corpus() {
+        // Test on uniform-10k.ndjson session_id column.
+        let corpus = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../corpus/json-bench/uniform-10k.ndjson"
+        ));
+        if corpus.is_err() {
+            return; // Skip if corpus not available.
+        }
+        let corpus = corpus.unwrap();
+
+        let ndjson_result = crate::format::ndjson::preprocess(&corpus)
+            .expect("ndjson preprocess should succeed");
+        let columnar = &ndjson_result.data;
+
+        // Apply typed encoding and reverse, verify roundtrip.
+        if let Some(typed_result) = preprocess(columnar) {
+            let restored = reverse(&typed_result.data, &typed_result.metadata);
+            assert_eq!(
+                restored.len(),
+                columnar.len(),
+                "real corpus typed roundtrip length mismatch"
+            );
+            assert_eq!(
+                restored,
+                columnar.to_vec(),
+                "real corpus typed roundtrip data mismatch"
+            );
+        }
+    }
+
+    #[test]
+    fn test_hex_prefix_via_column_dispatch() {
+        // Test that the encode_column dispatch correctly chooses hex prefix
+        // for String columns with hex-prefix pattern.
+        let values: &[&[u8]] = &[
+            b"\"sess_a1b2c3\"",
+            b"\"sess_d4e5f6\"",
+            b"\"sess_001122\"",
+            b"\"sess_aabbcc\"",
+            b"\"sess_ff0099\"",
+        ];
+        let col_type = ColumnType::String { nullable: false };
+        let (enc_type, enc_data) = encode_column(values, &col_type);
+
+        assert_eq!(
+            enc_type, ENC_HEX_PREFIX,
+            "should use hex prefix encoding for sess_ pattern"
+        );
+
+        // Decode via dispatch.
+        let decoded = decode_column(enc_type, &enc_data);
+        assert_eq!(decoded.len(), values.len());
+        for (i, val) in values.iter().enumerate() {
+            assert_eq!(decoded[i], val.to_vec());
         }
     }
 }

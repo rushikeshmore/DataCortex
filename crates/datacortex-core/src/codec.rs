@@ -631,6 +631,18 @@ pub fn compress_with_model<W: Write>(
     model_path: Option<&str>,
     output: &mut W,
 ) -> io::Result<()> {
+    compress_with_options(data, mode, format_override, model_path, None, output)
+}
+
+/// Compress with optional explicit model path and zstd level override.
+pub fn compress_with_options<W: Write>(
+    data: &[u8],
+    mode: Mode,
+    format_override: Option<FormatHint>,
+    model_path: Option<&str>,
+    zstd_level_override: Option<i32>,
+    output: &mut W,
+) -> io::Result<()> {
     let format_hint = format_override.unwrap_or_else(|| detect_format(data));
     let crc = crc32fast::hash(data);
 
@@ -648,7 +660,7 @@ pub fn compress_with_model<W: Write>(
         // Fast mode: zstd compression on preprocessed data.
         // Try dictionary training if data is large enough.
         Mode::Fast => {
-            let level = zstd_level(mode);
+            let level = zstd_level_override.unwrap_or_else(|| zstd_level(mode));
             let plain = zstd::bulk::compress(&preprocessed, level).map_err(io::Error::other)?;
 
             if preprocessed.len() >= DICT_MIN_DATA_SIZE {
@@ -906,6 +918,19 @@ pub fn compress_to_vec_with_model(
 ) -> io::Result<Vec<u8>> {
     let mut buf = Vec::new();
     compress_with_model(data, mode, format_override, model_path, &mut buf)?;
+    Ok(buf)
+}
+
+/// Compress to Vec with explicit model path and zstd level override.
+pub fn compress_to_vec_with_options(
+    data: &[u8],
+    mode: Mode,
+    format_override: Option<FormatHint>,
+    model_path: Option<&str>,
+    zstd_level_override: Option<i32>,
+) -> io::Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    compress_with_options(data, mode, format_override, model_path, zstd_level_override, &mut buf)?;
     Ok(buf)
 }
 
@@ -1250,5 +1275,72 @@ mod tests {
             let decompressed = decompress_from_slice(&compressed).unwrap();
             assert_eq!(decompressed, data, "roundtrip failed for mode {mode}");
         }
+    }
+
+    // ─── Configurable zstd level tests ──────────────────────────────────────
+
+    #[test]
+    fn test_compress_with_level() {
+        // Compress with level 19 override in Fast mode, verify roundtrip.
+        let data = "hello world, compressing with custom zstd level. ".repeat(50);
+        let compressed =
+            compress_to_vec_with_options(data.as_bytes(), Mode::Fast, None, None, Some(19))
+                .unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed, data.as_bytes(), "level 19 roundtrip failed");
+    }
+
+    #[test]
+    fn test_compress_with_level_default() {
+        // No level override — should use mode default (9 for Fast).
+        let data = "default level test data. ".repeat(50);
+        let compressed =
+            compress_to_vec_with_options(data.as_bytes(), Mode::Fast, None, None, None).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(
+            decompressed,
+            data.as_bytes(),
+            "default level roundtrip failed"
+        );
+    }
+
+    #[test]
+    fn test_compress_with_level_higher_ratio() {
+        // Level 19 should compress better than level 1 on repetitive data.
+        let data = r#"{"name":"Alice","score":95}"#.repeat(200);
+        let low = compress_to_vec_with_options(
+            data.as_bytes(),
+            Mode::Fast,
+            None,
+            None,
+            Some(1),
+        )
+        .unwrap();
+        let high = compress_to_vec_with_options(
+            data.as_bytes(),
+            Mode::Fast,
+            None,
+            None,
+            Some(19),
+        )
+        .unwrap();
+
+        // Both must roundtrip.
+        assert_eq!(
+            decompress_from_slice(&low).unwrap(),
+            data.as_bytes()
+        );
+        assert_eq!(
+            decompress_from_slice(&high).unwrap(),
+            data.as_bytes()
+        );
+
+        // Higher level should produce smaller output (or at least not larger).
+        assert!(
+            high.len() <= low.len(),
+            "level 19 ({}) should be <= level 1 ({})",
+            high.len(),
+            low.len()
+        );
     }
 }

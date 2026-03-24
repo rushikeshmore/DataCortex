@@ -8,7 +8,7 @@
 - **Files:** 50
 - **Symbols:** 984
 - **Modules:** 3
-- **Last updated:** 2026-03-24T21:33:52.279Z
+- **Last updated:** 2026-03-24T21:37:40.097Z
 
 ## Architecture
 
@@ -20,8 +20,8 @@
 ## Risk Map
 
 **Hottest files (most changes):**
+- `CLAUDE.md` — 14 changes, VOLATILE
 - `crates/datacortex-core/src/format/mod.rs` — 14 changes, VOLATILE
-- `CLAUDE.md` — 13 changes, VOLATILE
 - `crates/datacortex-core/src/model/engine.rs` — 13 changes, VOLATILE
 - `crates/datacortex-core/src/codec.rs` — 12 changes, VOLATILE
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` — 11 changes, VOLATILE

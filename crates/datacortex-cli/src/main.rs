@@ -6,7 +6,7 @@ use std::time::Instant;
 use clap::{Parser, Subcommand};
 use datacortex_core::{
     codec::compress_to_vec,
-    compress_with_model,
+    compress_with_options,
     dcx::{FormatHint, Mode},
     decompress_with_model, detect_format,
     format::detect_from_extension,
@@ -62,6 +62,9 @@ enum Command {
         /// Force format hint (auto-detected if omitted)
         #[arg(short, long)]
         format: Option<String>,
+        /// Override zstd compression level (Fast mode only; default: mode-based)
+        #[arg(long)]
+        level: Option<i32>,
     },
     /// Decompress a .dcx file
     Decompress {
@@ -122,12 +125,14 @@ fn parse_format(s: &str) -> io::Result<FormatHint> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_compress(
     input: &Path,
     output: Option<&Path>,
     mode: Mode,
     format_override: Option<FormatHint>,
     model_path: Option<&str>,
+    zstd_level_override: Option<i32>,
     quiet: bool,
     verbose: bool,
 ) -> io::Result<()> {
@@ -174,7 +179,7 @@ fn cmd_compress(
 
     let start = Instant::now();
     let mut out = BufWriter::new(fs::File::create(&output_path)?);
-    compress_with_model(&data, mode, Some(format), model_path, &mut out)?;
+    compress_with_options(&data, mode, Some(format), model_path, zstd_level_override, &mut out)?;
     let elapsed = start.elapsed();
 
     let output_size = fs::metadata(&output_path)?.len();
@@ -588,6 +593,7 @@ fn main() {
             output,
             mode,
             format,
+            level,
         } => {
             let mode = parse_mode(mode).unwrap_or_else(|e| {
                 eprintln!("Error: {e}");
@@ -605,6 +611,7 @@ fn main() {
                 mode,
                 format,
                 cli.model_path.as_deref(),
+                *level,
                 cli.quiet,
                 cli.verbose,
             )
