@@ -1,0 +1,63 @@
+{
+  "date": "2026-03-24",
+  "note": "Phase 0 baseline — before typed encoding pivot",
+  "files": [
+    {
+      "file": "test-ndjson.ndjson",
+      "original_bytes": 110104,
+      "zstd_19_bytes": 7064, "zstd_19_ratio": 15.5,
+      "zstd_dict_bytes": 5826, "zstd_dict_ratio": 18.9,
+      "brotli_11_bytes": 6650, "brotli_11_ratio": 16.5,
+      "datacortex_balanced_bytes": 5797, "datacortex_balanced_ratio": 18.9,
+      "datacortex_balanced_bpb": 0.421
+    },
+    {
+      "file": "test-api.json",
+      "original_bytes": 37325,
+      "zstd_19_bytes": 2817, "zstd_19_ratio": 13.2,
+      "brotli_11_bytes": 2494, "brotli_11_ratio": 14.9,
+      "datacortex_balanced_bytes": 3272, "datacortex_balanced_ratio": 11.4,
+      "datacortex_balanced_bpb": 0.701
+    },
+    {
+      "file": "twitter.json",
+      "original_bytes": 631515,
+      "zstd_19_bytes": 37707, "zstd_19_ratio": 16.7,
+      "brotli_11_bytes": 33339, "brotli_11_ratio": 18.9,
+      "datacortex_balanced_bytes": 40535, "datacortex_balanced_ratio": 15.5,
+      "datacortex_balanced_bpb": 0.513
+    },
+    {
+      "file": "citm_catalog.json",
+      "original_bytes": 1727204,
+      "zstd_19_bytes": 9811, "zstd_19_ratio": 176.0,
+      "brotli_11_bytes": 9090, "brotli_11_ratio": 190.0,
+      "datacortex_balanced_bytes": 332218, "datacortex_balanced_ratio": 5.1,
+      "datacortex_balanced_bpb": 1.538,
+      "note": "DataCortex severely underperforms — json_array transform not firing or ineffective"
+    },
+    {
+      "file": "canada.json (GeoJSON)",
+      "original_bytes": 304477,
+      "zstd_19_bytes": 117460, "zstd_19_ratio": 2.5,
+      "brotli_11_bytes": 113192, "brotli_11_ratio": 2.6,
+      "note": "GeoJSON — numeric-heavy coordinates"
+    },
+    {
+      "file": "gharchive-10mb.ndjson",
+      "original_bytes": 10485760,
+      "zstd_19_bytes": 1394286, "zstd_19_ratio": 7.5,
+      "zstd_dict_bytes": 1525995, "zstd_dict_ratio": 6.9,
+      "brotli_11_bytes": 1292750, "brotli_11_ratio": 8.1,
+      "note": "DataCortex too slow for 10MB CM (72s for 617KB). Fast mode needed."
+    }
+  ],
+  "key_findings": [
+    "DataCortex MATCHES zstd+dict on test-ndjson (both 18.9x) — columnar = trained dict",
+    "DataCortex BEHIND zstd on twitter.json (15.5x vs 16.7x) and test-api.json (11.4x vs 13.2x)",
+    "citm_catalog: zstd=176x, DataCortex=5.1x — json_array transform broken or not firing",
+    "GH Archive 10MB: too slow for CM mode, need Fast mode (typed+zstd)",
+    "canada.json (GeoJSON): all compressors struggle (~2.5x) — numeric coordinates have high entropy",
+    "Target: 2-3x improvement over current to clearly beat zstd"
+  ]
+}

@@ -6,6 +6,7 @@
 pub mod json;
 pub mod json_array;
 pub mod ndjson;
+pub mod schema;
 pub mod transform;
 pub mod value_dict;
 
