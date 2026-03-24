@@ -1,0 +1,25 @@
+version: 1.0.0
+project: datacortex
+root: /Users/rushikeshmore/Desktop/personal-desk/03-projects/datacortex
+generated: 2026-03-24T11:04:44.370Z
+lastUpdated: 2026-03-24T16:42:06.553Z
+languages:
+  - rust
+totalFiles: 47
+totalSymbols: 807
+totalModules: 3
+projectSize: small
+tiers:
+  hot:
+    - cortex.yaml
+    - constitution.md
+    - overview.md
+    - graph.json
+    - symbols.json
+    - temporal.json
+  warm:
+    - modules/
+  cold:
+    - decisions/
+    - sessions/
+    - patterns.md

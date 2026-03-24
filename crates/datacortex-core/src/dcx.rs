@@ -62,8 +62,10 @@ impl std::fmt::Display for Mode {
 pub enum FormatHint {
     Generic = 0,
     Json = 1,
+    // Legacy variants kept for backward compat decoding
     Markdown = 2,
     Ndjson = 3,
+    // Legacy variants kept for backward compat decoding
     Csv = 4,
     Code = 5,
     Log = 6,

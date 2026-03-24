@@ -21,7 +21,11 @@ Input → Format Detection → Preprocessing → CM Engine (or Fast zstd) → .d
 - `benchmarks/` — baseline.json
 
 ## Current Status
-**Phase 5+.** 2.15 bpb alice29, 1.87 bpb enwik8 (was 1.89). 246 tests. ~280MB memory. Multi-output ContextMaps (run-count predictions, 28 mixer inputs).
+**Phase 26 (v0.2.0-dev).** 2.15 bpb alice29, **1.84 bpb enwik8** (confirmed full 100MB). 393 tests (389 unit + 4 integration). ~400MB memory. 29 commits.
+
+**Engine:** 16 CM models + PPM + DMC + GRU byte mixer (128 cells, BPTT-10, 12% blend) + 7-stage APM + triple logistic mixer. 9 format transforms, 11 detected formats.
+
+**BPTT-10 (uncommitted):** Truncated backprop on GRU. cargo test passed. alice29 2.15 bpb (-0.01). enwik8 benchmark running.
 
 ## Build & Test
 ```bash
@@ -39,16 +43,18 @@ cargo bench --bench compress_bench  # Tier 2: full benchmark (~1 min)
 5. **V2 dead ends stay dead.** Don't retry: logistic byte-level mixing, geometric mixing, hybrid byte+bit, η>5, 4+ APM stages on small files. See gotchas below.
 6. **Format-aware advantage >10% on JSON** vs raw zstd. If not meeting this, focus on preprocessing.
 
-## Key V2/V3 Gotchas (Don't Repeat)
+## Key Gotchas (Don't Repeat — see vault gotchas.md for all 31)
 - Match model: rolling hash must be non-cumulative (V2 bug cost 0.44 bpb)
-- Match model: linear confidence ramp, not step function
-- Match model: length tracking must reset on mismatch
 - Logistic mixing at byte-level = +69% regression. Bit-level ONLY.
 - Adding weak models dilutes mixer weights. Solo test first.
 - η=2 for fine mixer (64K weights), η=4 for coarse (4K). Don't increase without A/B test.
-- 2-stage APM for Balanced, 3-stage only for Max mode on large files.
-- WRT regresses on XML-heavy content (enwik8: 2.14 -> 2.18 bpb). Only enable per-format after A/B test.
-- byte_class must split high bytes (128-255) into multiple groups for WRT to work. Single group = mixer can't discriminate word codes.
+- WRT regresses on XML-heavy content. Only enable per-format after A/B test.
+- **Multi-set mixer FAILS with <100 inputs** (+0.44 regression at 28 inputs). Need multi-output ContextMap2 FIRST.
+- **ISSE negligible** (-0.001 bpb, redundant with APM).
+- **Hierarchical mixer** causes information bottleneck (-0.02 regression).
+- **Memory scaling negligible** (450MB→1GB = -0.003 bpb). Architecture is bottleneck, not memory.
+- **Transforms beat models** for structured data. For general text, paradigm diversity (PPM/DMC/neural) is the path.
+- **LLM byte mapping:** unmapped bytes get mean logit, not -100. Keep blend weight low until comprehensive.
 
 ## V3 Engine (Phase 5+ — current)
 - 16 models: Order-0 (256 direct), Order-1 (32MB), Order-2 (16MB), Order-3 (32MB checksum), Order-4 (32MB checksum), Order-5 (32MB assoc), Order-6 (16MB assoc), Order-7 (32MB assoc), Order-8 (32MB assoc), Order-9 (16MB assoc), Match (16MB ring + 8M hash, multi-candidate), Word (16MB), Sparse (16MB), Run (4MB), JSON (8MB), Indirect (8MB + 2MB pred table)
@@ -97,3 +103,45 @@ All detailed docs are in `Rushikesh OS/2. Projects/06. DataCortex/`:
 
 ## Commits
 Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` in commit messages.
+
+<!-- codecortex:start -->
+## CodeCortex — Project Knowledge (auto-updated)
+
+### Architecture
+**datacortex** — rust — 47 files, 807 symbols
+- **Modules (3):** datacortex-core (12314loc), datacortex-neural (773loc), datacortex-cli (635loc)
+
+### Risk Map
+**High-risk files:**
+- `crates/datacortex-core/src/model/engine.rs` — 12 changes, stabilizing, coupled to: dual_mixer.rs ⚠, mod.rs ⚠
+- `crates/datacortex-core/src/codec.rs` — 10 changes, stabilizing, coupled to: mod.rs ⚠, mod.rs ⚠
+- `crates/datacortex-core/src/model/mod.rs` — 10 changes, stabilizing, coupled to: engine.rs ⚠, codec.rs ⚠
+- `crates/datacortex-core/src/format/mod.rs` — 10 changes, stabilizing, coupled to: transform.rs ⚠, codec.rs ⚠
+- `crates/datacortex-core/src/mixer/dual_mixer.rs` — 10 changes, stabilizing, coupled to: engine.rs ⚠, mod.rs ⚠
+
+**Hidden couplings (co-change, no import):**
+- `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` (83% co-change)
+- `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (80% co-change)
+- `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` (58% co-change)
+
+### Before Editing
+Check `.codecortex/hotspots.md` for risk-ranked files before editing.
+If CodeCortex MCP tools are available, call `get_edit_briefing` for coupling + risk details.
+If not, read `.codecortex/modules/<module>.md` for the relevant module's dependencies and bug history.
+
+### Project Knowledge
+Read these files directly (always available, no tool call needed):
+- `.codecortex/hotspots.md` — risk-ranked files with coupling + bug data
+- `.codecortex/modules/*.md` — module docs, dependencies, temporal signals
+- `.codecortex/constitution.md` — full architecture overview
+- `.codecortex/patterns.md` — coding conventions
+- `.codecortex/decisions/*.md` — architectural decisions
+
+### MCP Tools (if available)
+If a CodeCortex MCP server is connected, these tools provide live analysis:
+- `get_edit_briefing` — risk + coupling + bugs for files you plan to edit.
+- `get_change_coupling` — files that co-change (hidden dependencies).
+- `get_project_overview` — architecture + dependency graph summary.
+- `get_dependency_graph` — scoped import/call graph for file or module.
+- `lookup_symbol` — precise symbol search (name, kind, file filters).
+<!-- codecortex:end -->

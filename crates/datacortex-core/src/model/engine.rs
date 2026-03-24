@@ -17,7 +17,8 @@
 //! CRITICAL: Encoder/decoder must use IDENTICAL prediction sequence.
 
 use crate::mixer::apm::APMStage;
-use crate::mixer::dual_mixer::{DualMixer, NUM_MODELS, byte_class};
+use crate::mixer::dual_mixer::{NUM_MODELS, byte_class};
+use crate::mixer::multi_set_mixer::MultiSetMixer;
 use crate::mixer::isse::IsseChain;
 use crate::model::cm_model::{AssociativeContextModel, ChecksumContextModel, ContextModel};
 use crate::model::dmc_model::DmcModel;
@@ -29,8 +30,6 @@ use crate::model::ppm_model::{PpmConfig, PpmModel};
 use crate::model::run_model::RunModel;
 use crate::model::sparse_model::SparseModel;
 use crate::model::word_model::WordModel;
-use crate::model::xml_model::XmlTracker;
-
 /// Configuration for the CM engine -- controls memory/quality trade-off.
 ///
 /// Each field specifies the ContextMap size in bytes for the corresponding model.
@@ -164,7 +163,7 @@ pub struct CMEngine {
 
     // --- Mixer + APM ---
     /// Triple logistic mixer (fine 64K + medium 16K + coarse 4K).
-    mixer: DualMixer,
+    mixer: MultiSetMixer,
     /// APM Stage 1: 2K contexts (c0 * bpos), 50% blend.
     apm1: APMStage,
     /// APM Stage 2: 16K contexts (c1 * bpos * byte_class), 25% blend.
@@ -213,8 +212,6 @@ pub struct CMEngine {
     run_len: u8,
     /// Distance since last newline (quantized).
     line_pos: u16,
-    /// XML structural state tracker (provides context bits for markup-heavy content).
-    xml_tracker: XmlTracker,
 }
 
 impl CMEngine {
@@ -244,7 +241,7 @@ impl CMEngine {
             indirect_model: IndirectModel::new(),
             ppm_model: PpmModel::with_config(config.ppm_config),
             dmc_model: DmcModel::new_single(),
-            mixer: DualMixer::new(),
+            mixer: MultiSetMixer::new(),
             apm1: APMStage::new(2048, 55),  // c0(256) * bpos(8) = 2048
             apm2: APMStage::new(16384, 30), // c1*bpos*byte_class = 256*8*8 = 16K
             apm3: APMStage::new(4096, 25), // match_q(4) * c2_top2(4) * c1_top4(16) * bpos(8) = 2048, use 4K
@@ -266,7 +263,6 @@ impl CMEngine {
             bpos: 0,
             run_len: 0,
             line_pos: 0,
-            xml_tracker: XmlTracker::new(),
         }
     }
 
@@ -359,12 +355,10 @@ impl CMEngine {
         let bclass = byte_class(c1);
         let match_q = self.match_model.match_length_quantized();
         let run_q = quantize_run_for_mixer(self.run_len);
-        let xml_s = self.xml_tracker.state_bits();
-        let xml_d = self.xml_tracker.depth_quantized();
 
         let mixed = self
             .mixer
-            .predict(&predictions, c0, c1, bpos, bclass, match_q, run_q, xml_s);
+            .predict(&predictions, c0, c1, c2, bpos, bclass, match_q, run_q, 0);
 
         // --- APM cascade ---
         // Stage 1: context = c0_partial(8b) + bpos(3b) + run_q(2b) = 13 bits -> 2048 contexts (folded).
@@ -374,12 +368,10 @@ impl CMEngine {
             & 2047;
         let after_apm1 = self.apm1.predict(mixed, apm1_ctx);
 
-        // Stage 2: context = c1(8b) * bpos(3b) + byte_class(3b) + c2_top4(4b) + xml_state(3b).
+        // Stage 2: context = c1(8b) * bpos(3b) + byte_class(3b) + c2_top4(4b).
         let apm2_ctx = (((c1 as usize) << 3 | bpos as usize) * 8 + bclass as usize)
             .wrapping_mul(17)
             .wrapping_add(c2 as usize >> 4)
-            .wrapping_mul(9)
-            .wrapping_add(xml_s as usize)
             & 16383;
         let after_apm2 = self.apm2.predict(after_apm1, apm2_ctx);
 
@@ -404,14 +396,11 @@ impl CMEngine {
             & 4095;
         let after_apm4 = self.apm4.predict(after_apm3, apm4_ctx);
 
-        // Stage 5: Longer-range byte pattern context + XML depth.
-        // (c3_top4, c2_top4, c1_top2, bpos, xml_depth_q) — captures trigram character patterns
-        // with structural depth awareness.
+        // Stage 5: Longer-range byte pattern context.
+        // (c3_top4, c2_top4, c1_top2, bpos) — captures trigram character patterns.
         let apm5_ctx = ((c3 as usize >> 4).wrapping_mul(67) + (c2 as usize >> 4))
             .wrapping_mul(67)
             .wrapping_add((c1 as usize >> 6) * 8 + bpos as usize)
-            .wrapping_mul(5)
-            .wrapping_add(xml_d as usize)
             & 4095;
         let after_apm5 = self.apm5.predict(after_apm4, apm5_ctx);
 
@@ -489,9 +478,6 @@ impl CMEngine {
             } else {
                 self.line_pos = self.line_pos.saturating_add(1);
             }
-
-            // Update XML state tracker with the completed byte.
-            self.xml_tracker.update(byte);
 
             // Update PPM model at byte level (NOT per-bit).
             self.ppm_model.update_byte(byte);

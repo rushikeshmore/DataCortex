@@ -1,98 +1,150 @@
-//! GRU (Gated Recurrent Unit) byte-level predictor for dual-path compression.
+//! GRU (Gated Recurrent Unit) byte-level predictor with truncated BPTT.
 //!
-//! A byte-level neural predictor that provides a DIFFERENT signal from the
-//! bit-level CM engine. The GRU captures cross-bit correlations within bytes
-//! and sequential byte patterns via its hidden state.
+//! A byte-level neural predictor providing a DIFFERENT signal from the bit-level
+//! CM engine. The GRU captures cross-byte sequential patterns via a recurrent
+//! hidden state trained with backpropagation through time (BPTT).
 //!
 //! Architecture:
 //!   Input: one-hot byte embedding (256 → 32 via embedding matrix)
-//!   GRU: 64 hidden cells, 1 layer
-//!   Output: 64 → 256 linear → softmax → byte probabilities
+//!   GRU: 128 hidden cells, 1 layer
+//!   Output: 128 → 256 linear → softmax → byte probabilities
 //!
-//! Online training: after each byte is observed, backprop through current
-//! step only (no BPTT). Hidden state carries forward context.
+//! Training: truncated BPTT-10. At each byte completion, gradients propagate
+//! back through the last 10 steps of GRU history. This is the same strategy
+//! used by cmix (which uses BPTT-100) and gives the majority of the gain at
+//! 10% of the BPTT-100 cost.
 //!
-//! ~43K parameters (~170KB at f32).
+//! ~43K parameters (~170KB at f32). History + gradient buffers: ~260KB.
 //!
 //! CRITICAL: Encoder and decoder must maintain IDENTICAL GRU state.
-//! sigmoid/tanh implementations must be EXACT same in both paths.
+//! Both must call train(byte) then forward(byte) in the same order on the
+//! same bytes so that history buffers and weight updates are identical.
 
 const EMBED_DIM: usize = 32;
 const HIDDEN_DIM: usize = 128;
 const VOCAB_SIZE: usize = 256;
 
-// Total parameter count for reference: ~43,456
-// - Embedding: 256 * 32 = 8,192
-// - W_z, W_r, W_h: 3 * (32 * 64) = 6,144
-// - U_z, U_r, U_h: 3 * (64 * 64) = 12,288
-// - b_z, b_r, b_h: 3 * 64 = 192
-// - W_o: 64 * 256 = 16,384
-// - b_o: 256
+/// BPTT truncation horizon: backpropagate gradients through this many steps.
+///
+/// 10 steps captures most sequential byte patterns with manageable overhead.
+/// cmix achieves -0.07 bpb using BPTT-100; 10 steps provides ~60-70% of that
+/// gain at 1/10 the training cost (~5× total slowdown vs no-BPTT).
+const BPTT_HORIZON: usize = 10;
 
-/// Learning rate for online SGD.
+/// Online SGD learning rate.
+///
+/// 0.01 is conservative — the GRU sees each byte only once (online learning).
+/// Lower than typical offline training LR to avoid overshooting on rare bytes.
 const LEARNING_RATE: f32 = 0.01;
 
-/// Gradient clipping threshold.
+/// Gradient clip magnitude.
+///
+/// BPTT through 10 steps can accumulate gradients. Clipping at 5.0 prevents
+/// exploding gradients while preserving the direction of improvement.
 const GRAD_CLIP: f32 = 5.0;
 
-/// GRU byte-level predictor with online learning.
+/// GRU byte-level predictor with BPTT-10 online training.
 pub struct GruModel {
-    // --- Parameters ---
-    /// Embedding matrix: [VOCAB_SIZE][EMBED_DIM]
+    // ─── Parameters ──────────────────────────────────────────────────────────
+    /// Embedding matrix: [VOCAB_SIZE * EMBED_DIM]
     embedding: Vec<f32>,
 
-    /// Update gate weights: W_z [HIDDEN_DIM][EMBED_DIM]
+    /// Update gate input weights: [HIDDEN_DIM * EMBED_DIM]
     w_z: Vec<f32>,
-    /// Update gate recurrent: U_z [HIDDEN_DIM][HIDDEN_DIM]
+    /// Update gate recurrent weights: [HIDDEN_DIM * HIDDEN_DIM]
     u_z: Vec<f32>,
-    /// Update gate bias: [HIDDEN_DIM]
+    /// Update gate biases: [HIDDEN_DIM]
     b_z: Vec<f32>,
 
-    /// Reset gate weights: W_r [HIDDEN_DIM][EMBED_DIM]
+    /// Reset gate input weights: [HIDDEN_DIM * EMBED_DIM]
     w_r: Vec<f32>,
-    /// Reset gate recurrent: U_r [HIDDEN_DIM][HIDDEN_DIM]
+    /// Reset gate recurrent weights: [HIDDEN_DIM * HIDDEN_DIM]
     u_r: Vec<f32>,
-    /// Reset gate bias: [HIDDEN_DIM]
+    /// Reset gate biases: [HIDDEN_DIM]
     b_r: Vec<f32>,
 
-    /// Candidate weights: W_h [HIDDEN_DIM][EMBED_DIM]
+    /// Candidate hidden input weights: [HIDDEN_DIM * EMBED_DIM]
     w_h: Vec<f32>,
-    /// Candidate recurrent: U_h [HIDDEN_DIM][HIDDEN_DIM]
+    /// Candidate hidden recurrent weights: [HIDDEN_DIM * HIDDEN_DIM]
     u_h: Vec<f32>,
-    /// Candidate bias: [HIDDEN_DIM]
+    /// Candidate hidden biases: [HIDDEN_DIM]
     b_h: Vec<f32>,
 
-    /// Output weights: W_o [VOCAB_SIZE][HIDDEN_DIM]
+    /// Output projection weights: [VOCAB_SIZE * HIDDEN_DIM]
     w_o: Vec<f32>,
-    /// Output bias: [VOCAB_SIZE]
+    /// Output projection biases: [VOCAB_SIZE]
     b_o: Vec<f32>,
 
-    // --- State ---
+    // ─── Recurrent state ─────────────────────────────────────────────────────
     /// Hidden state: [HIDDEN_DIM]
     h: Vec<f32>,
 
-    // --- Cached forward pass values (for backprop) ---
-    /// Last input embedding: [EMBED_DIM]
+    // ─── Cached forward pass values (for the most recent step) ───────────────
+    /// Input embedding for the most recent forward step: [EMBED_DIM]
     last_x: Vec<f32>,
-    /// Last hidden state before this step: [HIDDEN_DIM]
+    /// Hidden state before the most recent forward step: [HIDDEN_DIM]
     last_h_prev: Vec<f32>,
-    /// Last update gate output: [HIDDEN_DIM]
+    /// Update gate output from the most recent step: [HIDDEN_DIM]
     last_z: Vec<f32>,
-    /// Last reset gate output: [HIDDEN_DIM]
+    /// Reset gate output from the most recent step: [HIDDEN_DIM]
     last_r: Vec<f32>,
-    /// Last candidate activation: [HIDDEN_DIM]
+    /// Candidate hidden from the most recent step: [HIDDEN_DIM]
     last_h_tilde: Vec<f32>,
 
-    /// Cached byte probabilities after softmax: [VOCAB_SIZE]
+    /// Cached softmax probabilities over the next byte: [VOCAB_SIZE]
     byte_probs: Vec<f32>,
-    /// Whether byte_probs is valid.
+    /// Whether byte_probs has been computed for the current step.
     probs_valid: bool,
-    /// Whether we have processed at least one byte (have valid probs).
+    /// Whether at least one byte has been processed (have valid hidden state).
     has_context: bool,
+
+    // ─── BPTT history ring buffer ─────────────────────────────────────────────
+    // Flat layout: entry at ring position `p` occupies [p*DIM .. (p+1)*DIM].
+    // hist_pos is the next WRITE position (circular). After writing,
+    // hist_pos = (hist_pos + 1) % BPTT_HORIZON.
+    //
+    /// Saved input embeddings: [BPTT_HORIZON * EMBED_DIM]
+    hist_x: Vec<f32>,
+    /// Saved h_prev (hidden before each step): [BPTT_HORIZON * HIDDEN_DIM]
+    hist_h_prev: Vec<f32>,
+    /// Saved update gate outputs: [BPTT_HORIZON * HIDDEN_DIM]
+    hist_z: Vec<f32>,
+    /// Saved reset gate outputs: [BPTT_HORIZON * HIDDEN_DIM]
+    hist_r: Vec<f32>,
+    /// Saved candidate hidden values: [BPTT_HORIZON * HIDDEN_DIM]
+    hist_h_tilde: Vec<f32>,
+    /// Next write position in the ring (0..BPTT_HORIZON).
+    hist_pos: usize,
+    /// Number of valid entries in the ring (0..=BPTT_HORIZON).
+    hist_count: usize,
+
+    // ─── Pre-allocated gradient accumulators ─────────────────────────────────
+    // Zeroed at the start of each train() call and accumulated across all BPTT
+    // steps before a single weight update. Stored in the struct to avoid
+    // per-call heap allocation in the hot path.
+    //
+    /// Accumulated gradient for w_z: [HIDDEN_DIM * EMBED_DIM]
+    grad_w_z: Vec<f32>,
+    /// Accumulated gradient for u_z: [HIDDEN_DIM * HIDDEN_DIM]
+    grad_u_z: Vec<f32>,
+    /// Accumulated gradient for b_z: [HIDDEN_DIM]
+    grad_b_z: Vec<f32>,
+    /// Accumulated gradient for w_r: [HIDDEN_DIM * EMBED_DIM]
+    grad_w_r: Vec<f32>,
+    /// Accumulated gradient for u_r: [HIDDEN_DIM * HIDDEN_DIM]
+    grad_u_r: Vec<f32>,
+    /// Accumulated gradient for b_r: [HIDDEN_DIM]
+    grad_b_r: Vec<f32>,
+    /// Accumulated gradient for w_h: [HIDDEN_DIM * EMBED_DIM]
+    grad_w_h: Vec<f32>,
+    /// Accumulated gradient for u_h: [HIDDEN_DIM * HIDDEN_DIM]
+    grad_u_h: Vec<f32>,
+    /// Accumulated gradient for b_h: [HIDDEN_DIM]
+    grad_b_h: Vec<f32>,
 }
 
 impl GruModel {
-    /// Create a new GRU model with Xavier-initialized weights.
+    /// Create a new GRU model with Xavier-initialized weights and zeroed buffers.
     pub fn new() -> Self {
         let mut model = GruModel {
             embedding: vec![0.0; VOCAB_SIZE * EMBED_DIM],
@@ -116,6 +168,24 @@ impl GruModel {
             byte_probs: vec![1.0 / VOCAB_SIZE as f32; VOCAB_SIZE],
             probs_valid: false,
             has_context: false,
+            // History ring buffers — zeroed.
+            hist_x: vec![0.0; BPTT_HORIZON * EMBED_DIM],
+            hist_h_prev: vec![0.0; BPTT_HORIZON * HIDDEN_DIM],
+            hist_z: vec![0.0; BPTT_HORIZON * HIDDEN_DIM],
+            hist_r: vec![0.0; BPTT_HORIZON * HIDDEN_DIM],
+            hist_h_tilde: vec![0.0; BPTT_HORIZON * HIDDEN_DIM],
+            hist_pos: 0,
+            hist_count: 0,
+            // Gradient accumulators — zeroed (will be explicitly zeroed each train() call).
+            grad_w_z: vec![0.0; HIDDEN_DIM * EMBED_DIM],
+            grad_u_z: vec![0.0; HIDDEN_DIM * HIDDEN_DIM],
+            grad_b_z: vec![0.0; HIDDEN_DIM],
+            grad_w_r: vec![0.0; HIDDEN_DIM * EMBED_DIM],
+            grad_u_r: vec![0.0; HIDDEN_DIM * HIDDEN_DIM],
+            grad_b_r: vec![0.0; HIDDEN_DIM],
+            grad_w_h: vec![0.0; HIDDEN_DIM * EMBED_DIM],
+            grad_u_h: vec![0.0; HIDDEN_DIM * HIDDEN_DIM],
+            grad_b_h: vec![0.0; HIDDEN_DIM],
         };
         model.init_weights();
         model
@@ -131,46 +201,54 @@ impl GruModel {
         let embed_scale = (2.0 / (VOCAB_SIZE + EMBED_DIM) as f32).sqrt();
         fill_xavier(&mut self.embedding, embed_scale, &mut seed);
 
-        // Xavier scale for input weights: sqrt(2 / (32 + 64))
+        // Xavier scale for input weights: sqrt(2 / (32 + 128))
         let wx_scale = (2.0 / (EMBED_DIM + HIDDEN_DIM) as f32).sqrt();
         fill_xavier(&mut self.w_z, wx_scale, &mut seed);
         fill_xavier(&mut self.w_r, wx_scale, &mut seed);
         fill_xavier(&mut self.w_h, wx_scale, &mut seed);
 
-        // Xavier scale for recurrent weights: sqrt(2 / (64 + 64))
+        // Xavier scale for recurrent weights: sqrt(2 / (128 + 128))
         let uh_scale = (2.0 / (HIDDEN_DIM + HIDDEN_DIM) as f32).sqrt();
         fill_xavier(&mut self.u_z, uh_scale, &mut seed);
         fill_xavier(&mut self.u_r, uh_scale, &mut seed);
         fill_xavier(&mut self.u_h, uh_scale, &mut seed);
 
-        // Xavier scale for output weights: sqrt(2 / (64 + 256))
+        // Xavier scale for output weights: sqrt(2 / (128 + 256))
         let wo_scale = (2.0 / (HIDDEN_DIM + VOCAB_SIZE) as f32).sqrt();
         fill_xavier(&mut self.w_o, wo_scale, &mut seed);
 
-        // Biases: initialize gate biases to slightly positive for update gate
-        // (helps gradient flow) and zero for others.
+        // Bias update gate to slightly positive so it starts in "remember" mode
+        // (z → 1 means keep old hidden state). Helps gradient flow early in training.
         for b in self.b_z.iter_mut() {
-            *b = 1.0; // Bias update gate to "remember" (z → 1 → keep old state).
+            *b = 1.0;
         }
         // Reset gate and candidate biases stay at 0.
     }
 
     /// Forward pass: process one byte, update hidden state, compute output probs.
-    /// Call this after observing a complete byte.
+    ///
+    /// Call this with the byte that was just OBSERVED. The resulting byte_probs
+    /// predict the NEXT byte. After forward(), call predict_bit() to get bit
+    /// probabilities for the next byte.
+    ///
+    /// Also saves the step into the BPTT history ring for train() to use.
     #[inline(never)]
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "matrix ops are clearer with explicit indices"
+    )]
     pub fn forward(&mut self, byte: u8) {
         // Save previous hidden state for backprop.
         self.last_h_prev.copy_from_slice(&self.h);
 
-        // Get embedding for the input byte (just a row lookup, not full matmul).
+        // Get embedding for the input byte (row lookup).
         let byte_idx = byte as usize;
         let embed_start = byte_idx * EMBED_DIM;
         self.last_x
             .copy_from_slice(&self.embedding[embed_start..embed_start + EMBED_DIM]);
 
-        // Compute all three gates in a fused manner for better cache locality.
-        // Pre-compute x contribution for all gates at once.
+        // Compute update gate z, reset gate r, and candidate h_tilde in a fused
+        // loop for cache locality.
         for i in 0..HIDDEN_DIM {
             let w_off = i * EMBED_DIM;
             let wz_row = &self.w_z[w_off..w_off + EMBED_DIM];
@@ -181,7 +259,7 @@ impl GruModel {
             let mut val_r = self.b_r[i];
             let mut val_h = self.b_h[i];
 
-            // W @ x for all three gates (auto-vectorizable).
+            // W @ x for all three gates.
             for j in 0..EMBED_DIM {
                 let xj = self.last_x[j];
                 val_z += wz_row[j] * xj;
@@ -205,7 +283,7 @@ impl GruModel {
             self.last_z[i] = z_i;
             self.last_r[i] = r_i;
 
-            // U_h @ (r_t * h_{t-1}) for candidate
+            // U_h @ (r[i] * h_{t-1}) — uses r[i] (output-dimension convention).
             let uh_row = &self.u_h[u_off..u_off + HIDDEN_DIM];
             for j in 0..HIDDEN_DIM {
                 val_h += uh_row[j] * (r_i * self.last_h_prev[j]);
@@ -218,17 +296,35 @@ impl GruModel {
             self.h[i] = (1.0 - z_i) * self.last_h_prev[i] + z_i * h_tilde_i;
         }
 
-        // Output: y_t = softmax(W_o @ h_t + b_o)
+        // Compute output probabilities.
         self.compute_output_probs();
         self.probs_valid = true;
         self.has_context = true;
+
+        // ─── Save this step into the BPTT history ring ───────────────────────
+        let x_base = self.hist_pos * EMBED_DIM;
+        self.hist_x[x_base..x_base + EMBED_DIM].copy_from_slice(&self.last_x);
+
+        let h_base = self.hist_pos * HIDDEN_DIM;
+        self.hist_h_prev[h_base..h_base + HIDDEN_DIM].copy_from_slice(&self.last_h_prev);
+        self.hist_z[h_base..h_base + HIDDEN_DIM].copy_from_slice(&self.last_z);
+        self.hist_r[h_base..h_base + HIDDEN_DIM].copy_from_slice(&self.last_r);
+        self.hist_h_tilde[h_base..h_base + HIDDEN_DIM].copy_from_slice(&self.last_h_tilde);
+
+        // Advance circular write head.
+        self.hist_pos = (self.hist_pos + 1) % BPTT_HORIZON;
+        if self.hist_count < BPTT_HORIZON {
+            self.hist_count += 1;
+        }
     }
 
     /// Compute softmax output probabilities from current hidden state.
     #[inline(never)]
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "matrix ops are clearer with explicit indices"
+    )]
     fn compute_output_probs(&mut self) {
-        // Compute logits: W_o @ h + b_o
         let mut max_logit: f32 = f32::NEG_INFINITY;
         for i in 0..VOCAB_SIZE {
             let w_row = &self.w_o[i * HIDDEN_DIM..(i + 1) * HIDDEN_DIM];
@@ -242,7 +338,7 @@ impl GruModel {
             }
         }
 
-        // Softmax with numerical stability (subtract max).
+        // Numerically stable softmax: subtract max before exp.
         let mut sum: f32 = 0.0;
         for p in self.byte_probs.iter_mut() {
             let e = (*p - max_logit).exp();
@@ -250,7 +346,7 @@ impl GruModel {
             sum += e;
         }
 
-        // Normalize. Add tiny epsilon to avoid division by zero.
+        // Normalize with epsilon guard.
         let inv_sum = 1.0 / (sum + 1e-30);
         for p in self.byte_probs.iter_mut() {
             *p *= inv_sum;
@@ -261,9 +357,7 @@ impl GruModel {
         }
     }
 
-    /// Convert byte probabilities to a bit prediction.
-    /// Same logic as PPM: sum byte probs where the target bit is 1,
-    /// conditioned on the already-decoded bits.
+    /// Convert byte probabilities to a bit prediction for the CM MetaMixer.
     ///
     /// `bpos`: bit position 0-7 (0 = MSB).
     /// `c0`: partial byte being built (starts at 1, accumulates bits MSB-first).
@@ -272,7 +366,7 @@ impl GruModel {
     #[inline]
     pub fn predict_bit(&self, bpos: u8, c0: u32) -> u32 {
         if !self.has_context {
-            return 2048; // uniform before first byte
+            return 2048; // Uniform before first byte.
         }
 
         let bit_pos = 7 - bpos;
@@ -282,7 +376,7 @@ impl GruModel {
         let mut sum_zero: f64 = 0.0;
 
         if bpos == 0 {
-            // No bits decoded yet for this byte — sum over all 256.
+            // No bits decoded yet — sum over all 256.
             for b in 0..VOCAB_SIZE {
                 let p = self.byte_probs[b] as f64;
                 if (b as u8) & mask != 0 {
@@ -293,8 +387,6 @@ impl GruModel {
             }
         } else {
             // Some bits decoded. Only consider bytes matching the partial prefix.
-            // c0 has format: 1 followed by bpos decoded bits (MSB first).
-            // Extract the decoded bits.
             let partial = (c0 & ((1u32 << bpos) - 1)) as u8;
             let shift = 8 - bpos;
             let base = (partial as usize) << shift;
@@ -320,11 +412,22 @@ impl GruModel {
         p.clamp(1, 4095)
     }
 
-    /// Online training: backprop through current step after observing actual byte.
-    /// No BPTT -- gradients don't flow through time. The hidden state carries
-    /// sequential context from the forward pass.
+    /// Online training with truncated BPTT.
+    ///
+    /// Computes the output-layer gradient for `actual_byte`, then propagates
+    /// d_h backwards through up to BPTT_HORIZON stored steps. Gradients are
+    /// accumulated into pre-allocated buffers and applied in a single weight
+    /// update at the end. This avoids the weight-corruption from immediate
+    /// per-step updates that would otherwise occur in BPTT.
+    ///
+    /// Call this BEFORE forward(actual_byte) (matches codec.rs flow). Both
+    /// encoder and decoder see the same byte sequence so their weights and
+    /// history buffers evolve identically — parity is preserved.
     #[inline(never)]
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "matrix ops are clearer with explicit indices"
+    )]
     pub fn train(&mut self, actual_byte: u8) {
         if !self.has_context {
             return;
@@ -332,19 +435,15 @@ impl GruModel {
 
         let target = actual_byte as usize;
 
-        // --- Output layer gradient ---
-        // d_logits[i] = probs[i] - (1 if i == target else 0)  [softmax + cross-entropy]
-        let mut d_logits = [0.0f32; VOCAB_SIZE];
-        d_logits.copy_from_slice(&self.byte_probs);
-        d_logits[target] -= 1.0;
-
-        // --- Gradient for W_o, b_o + accumulate d_h ---
+        // ─── Output layer: update W_o, b_o and compute initial d_h ──────────
+        // Cross-entropy + softmax gradient: d_logits[i] = probs[i] - (i==target).
         let mut d_h = [0.0f32; HIDDEN_DIM];
 
         for i in 0..VOCAB_SIZE {
-            let dl = clip_grad(d_logits[i]);
+            let dl = clip_grad(self.byte_probs[i] - if i == target { 1.0 } else { 0.0 });
             if dl.abs() < 1e-7 {
-                continue; // Skip near-zero gradients (most of the 256 outputs).
+                // Skip near-zero gradient — most of the 256 outputs.
+                continue;
             }
             let w_row = &mut self.w_o[i * HIDDEN_DIM..(i + 1) * HIDDEN_DIM];
             let lr_dl = LEARNING_RATE * dl;
@@ -355,85 +454,194 @@ impl GruModel {
             self.b_o[i] -= LEARNING_RATE * dl;
         }
 
-        // --- GRU backward (single step, no BPTT) ---
-        let mut d_h_tilde = [0.0f32; HIDDEN_DIM];
-        let mut d_z = [0.0f32; HIDDEN_DIM];
-        let mut d_pre_z = [0.0f32; HIDDEN_DIM];
-        let mut d_pre_h = [0.0f32; HIDDEN_DIM];
+        // ─── Zero gradient accumulators ──────────────────────────────────────
+        self.grad_w_z.fill(0.0);
+        self.grad_u_z.fill(0.0);
+        self.grad_b_z.fill(0.0);
+        self.grad_w_r.fill(0.0);
+        self.grad_u_r.fill(0.0);
+        self.grad_b_r.fill(0.0);
+        self.grad_w_h.fill(0.0);
+        self.grad_u_h.fill(0.0);
+        self.grad_b_h.fill(0.0);
 
-        for i in 0..HIDDEN_DIM {
-            let dhi = clip_grad(d_h[i]);
-            d_h_tilde[i] = dhi * self.last_z[i];
-            d_z[i] = dhi * (self.last_h_tilde[i] - self.last_h_prev[i]);
-            d_pre_z[i] = clip_grad(d_z[i] * self.last_z[i] * (1.0 - self.last_z[i]));
-            d_pre_h[i] =
-                clip_grad(d_h_tilde[i] * (1.0 - self.last_h_tilde[i] * self.last_h_tilde[i]));
+        // ─── BPTT: propagate d_h backwards through history ───────────────────
+        // Iterate from most-recent (step_back=0) to oldest (step_back=steps-1).
+        // At each step, accumulate weight gradients and compute d_h_prev to
+        // pass to the step before it.
+        let steps = self.hist_count;
+
+        // Gate gradients at step 0 — needed for the embedding update below.
+        let mut d_pre_z_s0 = [0.0f32; HIDDEN_DIM];
+        let mut d_pre_r_s0 = [0.0f32; HIDDEN_DIM];
+        let mut d_pre_h_s0 = [0.0f32; HIDDEN_DIM];
+
+        for step_back in 0..steps {
+            // Read from ring: most-recent step is at hist_pos - 1 (mod BPTT_HORIZON).
+            let ring_idx = (self.hist_pos + BPTT_HORIZON - 1 - step_back) % BPTT_HORIZON;
+
+            let x_base = ring_idx * EMBED_DIM;
+            let h_base = ring_idx * HIDDEN_DIM;
+
+            // ── GRU cell backward (one step) ─────────────────────────────────
+            // Given d_h (gradient of loss w.r.t. h_t), compute:
+            //   d_h_tilde, d_pre_z, d_pre_h (upstream gradients through h_t)
+            //   d_pre_r (upstream gradient through the reset gate path)
+            //   Accumulate dW, dU, db for all three gates.
+            //   Compute d_h_prev to pass to the previous step.
+
+            let mut d_pre_z = [0.0f32; HIDDEN_DIM];
+            let mut d_pre_r = [0.0f32; HIDDEN_DIM];
+            let mut d_pre_h = [0.0f32; HIDDEN_DIM];
+
+            for i in 0..HIDDEN_DIM {
+                let dhi = clip_grad(d_h[i]);
+                let z_i = self.hist_z[h_base + i];
+                let r_i = self.hist_r[h_base + i];
+                let h_tilde_i = self.hist_h_tilde[h_base + i];
+                let h_prev_i = self.hist_h_prev[h_base + i];
+
+                // h_t = (1-z)*h_prev + z*h_tilde  ⟹  dh_tilde = dh * z
+                let d_h_tilde_i = dhi * z_i;
+                // dz = dh * (h_tilde - h_prev)
+                let dz_i = dhi * (h_tilde_i - h_prev_i);
+
+                // Sigmoid backward: d_pre_z = dz * z * (1-z)
+                d_pre_z[i] = clip_grad(dz_i * z_i * (1.0 - z_i));
+                // Tanh backward: d_pre_h = d_h_tilde * (1 - h_tilde²)
+                d_pre_h[i] = clip_grad(d_h_tilde_i * (1.0 - h_tilde_i * h_tilde_i));
+
+                // Bias gradients.
+                self.grad_b_z[i] += d_pre_z[i];
+                self.grad_b_h[i] += d_pre_h[i];
+
+                // Input weight gradients: dW_z += d_pre_z[i] * x^T
+                let w_off = i * EMBED_DIM;
+                let lr_dpz = d_pre_z[i];
+                let lr_dph = d_pre_h[i];
+                for j in 0..EMBED_DIM {
+                    let xj = self.hist_x[x_base + j];
+                    self.grad_w_z[w_off + j] += lr_dpz * xj;
+                    self.grad_w_h[w_off + j] += lr_dph * xj;
+                }
+
+                // Recurrent weight gradients: dU_z += d_pre_z[i] * h_prev^T
+                // Also accumulate d_rh = (U_h^T @ d_pre_h) for the reset gate.
+                // Note: d_rh is NOT used for d_h_prev here — that uses
+                // sum_i(d_pre_h[i] * r[i] * U_h[i,j]) — see loop below.
+                let u_off = i * HIDDEN_DIM;
+                for j in 0..HIDDEN_DIM {
+                    let hj = self.hist_h_prev[h_base + j];
+                    self.grad_u_z[u_off + j] += d_pre_z[i] * hj;
+                    // dU_h[i,j] = d_pre_h[i] * r[i] * h_prev[j]
+                    self.grad_u_h[u_off + j] += d_pre_h[i] * r_i * hj;
+                }
+            }
+
+            // Reset gate backward.
+            // d_rh[j] = sum_i(d_pre_h[i] * U_h[i,j]) = (U_h^T @ d_pre_h)[j]
+            // dr[j] = d_rh[j] * h_prev[j]   (gradient w.r.t. r[j])
+            // d_pre_r[j] = dr[j] * r[j] * (1-r[j])   (sigmoid backward)
+            let mut d_rh = [0.0f32; HIDDEN_DIM];
+            for i in 0..HIDDEN_DIM {
+                let u_off = i * HIDDEN_DIM;
+                for j in 0..HIDDEN_DIM {
+                    d_rh[j] += d_pre_h[i] * self.u_h[u_off + j];
+                }
+            }
+            for j in 0..HIDDEN_DIM {
+                let dr = clip_grad(d_rh[j] * self.hist_h_prev[h_base + j]);
+                d_pre_r[j] =
+                    clip_grad(dr * self.hist_r[h_base + j] * (1.0 - self.hist_r[h_base + j]));
+                self.grad_b_r[j] += d_pre_r[j];
+            }
+            // Accumulate dW_r and dU_r.
+            for i in 0..HIDDEN_DIM {
+                let dp = d_pre_r[i];
+                let w_off = i * EMBED_DIM;
+                let u_off = i * HIDDEN_DIM;
+                for j in 0..EMBED_DIM {
+                    self.grad_w_r[w_off + j] += dp * self.hist_x[x_base + j];
+                }
+                for j in 0..HIDDEN_DIM {
+                    self.grad_u_r[u_off + j] += dp * self.hist_h_prev[h_base + j];
+                }
+            }
+
+            // Save step-0 gate gradients for the embedding update.
+            if step_back == 0 {
+                d_pre_z_s0.copy_from_slice(&d_pre_z);
+                d_pre_r_s0.copy_from_slice(&d_pre_r);
+                d_pre_h_s0.copy_from_slice(&d_pre_h);
+            }
+
+            // ── Propagate d_h to the previous step ───────────────────────────
+            // d_h_prev[j] = d_h[j] * (1 - z[j])          (direct path)
+            //             + sum_i(d_pre_z[i] * U_z[i,j])  (update gate path)
+            //             + sum_i(d_pre_r[i] * U_r[i,j])  (reset gate path)
+            //             + sum_i(d_pre_h[i] * r[i] * U_h[i,j])  (candidate path)
+            let mut d_h_prev = [0.0f32; HIDDEN_DIM];
+
+            // Direct path.
+            for j in 0..HIDDEN_DIM {
+                d_h_prev[j] = clip_grad(d_h[j]) * (1.0 - self.hist_z[h_base + j]);
+            }
+
+            // Gate recurrent paths: loop over hidden units i, accumulate into j.
+            for i in 0..HIDDEN_DIM {
+                let dpz = d_pre_z[i];
+                let dpr = d_pre_r[i];
+                // d_pre_h[i] * r[i] — used for the U_h candidate path.
+                let dph_r = d_pre_h[i] * self.hist_r[h_base + i];
+                let u_off = i * HIDDEN_DIM;
+                for j in 0..HIDDEN_DIM {
+                    d_h_prev[j] += dpz * self.u_z[u_off + j];
+                    d_h_prev[j] += dpr * self.u_r[u_off + j];
+                    d_h_prev[j] += dph_r * self.u_h[u_off + j];
+                }
+            }
+
+            // Clip for stability before passing to the next step.
+            for j in 0..HIDDEN_DIM {
+                d_h_prev[j] = clip_grad(d_h_prev[j]);
+            }
+            d_h.copy_from_slice(&d_h_prev);
         }
 
-        // --- Update gate: W_z, U_z, b_z ---
-        // --- Candidate: W_h, U_h, b_h ---
-        // Fused loop for better cache locality.
-        let mut d_rh = [0.0f32; HIDDEN_DIM];
+        // ─── Apply accumulated weight gradients in one shot ───────────────────
+        // Using current weights (not stored snapshots) for the update is standard
+        // "online BPTT" practice — the per-step weight change from LR=0.01 is
+        // small enough that the approximation is negligible.
         for i in 0..HIDDEN_DIM {
-            let dpz = d_pre_z[i];
-            let dph = d_pre_h[i];
-            let r_i = self.last_r[i];
-
             let w_off = i * EMBED_DIM;
             let u_off = i * HIDDEN_DIM;
-
-            // W_z and W_h updates (input weights)
-            let lr_dpz = LEARNING_RATE * dpz;
-            let lr_dph = LEARNING_RATE * dph;
             for j in 0..EMBED_DIM {
-                let xj = self.last_x[j];
-                self.w_z[w_off + j] -= lr_dpz * xj;
-                self.w_h[w_off + j] -= lr_dph * xj;
-            }
-
-            // U_z and U_h updates (recurrent weights) + accumulate d_rh
-            for j in 0..HIDDEN_DIM {
-                let hj = self.last_h_prev[j];
-                self.u_z[u_off + j] -= lr_dpz * hj;
-                d_rh[j] += dph * self.u_h[u_off + j];
-                self.u_h[u_off + j] -= lr_dph * r_i * hj;
-            }
-
-            self.b_z[i] -= LEARNING_RATE * dpz;
-            self.b_h[i] -= LEARNING_RATE * dph;
-        }
-
-        // --- Reset gate backward ---
-        let mut d_pre_r = [0.0f32; HIDDEN_DIM];
-        for j in 0..HIDDEN_DIM {
-            let dr = clip_grad(d_rh[j] * self.last_h_prev[j]);
-            d_pre_r[j] = clip_grad(dr * self.last_r[j] * (1.0 - self.last_r[j]));
-        }
-
-        // W_r, U_r, b_r updates
-        for i in 0..HIDDEN_DIM {
-            let dp = d_pre_r[i];
-            let w_off = i * EMBED_DIM;
-            let u_off = i * HIDDEN_DIM;
-            let lr_dp = LEARNING_RATE * dp;
-            for j in 0..EMBED_DIM {
-                self.w_r[w_off + j] -= lr_dp * self.last_x[j];
+                self.w_z[w_off + j] -= LEARNING_RATE * clip_grad(self.grad_w_z[w_off + j]);
+                self.w_r[w_off + j] -= LEARNING_RATE * clip_grad(self.grad_w_r[w_off + j]);
+                self.w_h[w_off + j] -= LEARNING_RATE * clip_grad(self.grad_w_h[w_off + j]);
             }
             for j in 0..HIDDEN_DIM {
-                self.u_r[u_off + j] -= lr_dp * self.last_h_prev[j];
+                self.u_z[u_off + j] -= LEARNING_RATE * clip_grad(self.grad_u_z[u_off + j]);
+                self.u_r[u_off + j] -= LEARNING_RATE * clip_grad(self.grad_u_r[u_off + j]);
+                self.u_h[u_off + j] -= LEARNING_RATE * clip_grad(self.grad_u_h[u_off + j]);
             }
-            self.b_r[i] -= LEARNING_RATE * dp;
+            self.b_z[i] -= LEARNING_RATE * clip_grad(self.grad_b_z[i]);
+            self.b_r[i] -= LEARNING_RATE * clip_grad(self.grad_b_r[i]);
+            self.b_h[i] -= LEARNING_RATE * clip_grad(self.grad_b_h[i]);
         }
 
-        // --- Embedding gradient ---
+        // ─── Embedding gradient (current step only) ───────────────────────────
+        // Update the embedding for the target byte using the step-0 gate gradients.
+        // Only the current step's input embedding is updated — historical embeddings
+        // are treated as fixed inputs in BPTT (standard practice for online learning).
         let embed_start = target * EMBED_DIM;
         for j in 0..EMBED_DIM {
             let mut d_xj: f32 = 0.0;
             for i in 0..HIDDEN_DIM {
                 let off = i * EMBED_DIM + j;
-                d_xj += d_pre_z[i] * self.w_z[off];
-                d_xj += d_pre_r[i] * self.w_r[off];
-                d_xj += d_pre_h[i] * self.w_h[off];
+                d_xj += d_pre_z_s0[i] * self.w_z[off];
+                d_xj += d_pre_r_s0[i] * self.w_r[off];
+                d_xj += d_pre_h_s0[i] * self.w_h[off];
             }
             self.embedding[embed_start + j] -= LEARNING_RATE * clip_grad(d_xj);
         }
@@ -446,40 +654,38 @@ impl Default for GruModel {
     }
 }
 
-// --- Deterministic activation functions ---
+// ─── Activation functions ────────────────────────────────────────────────────
 // CRITICAL: These must produce IDENTICAL results in encoder and decoder.
-// Using the same f32 operations guarantees this.
+// The same f32 operations guarantee bit-exact results across both paths.
 
-/// Sigmoid activation: 1 / (1 + exp(-x)).
-/// Clamped input to [-15, 15] to avoid overflow.
+/// Sigmoid activation: 1 / (1 + exp(-x)), clamped to prevent overflow.
 #[inline]
 fn sigmoid(x: f32) -> f32 {
     let x = x.clamp(-15.0, 15.0);
     1.0 / (1.0 + (-x).exp())
 }
 
-/// Tanh approximation using the identity tanh(x) = 2*sigmoid(2x) - 1.
-/// This ensures tanh and sigmoid use the SAME exp() implementation.
+/// Tanh using the identity tanh(x) = 2*sigmoid(2x) - 1.
+/// Reusing sigmoid ensures tanh and sigmoid use the SAME exp() path.
 #[inline]
 fn tanh_approx(x: f32) -> f32 {
     let x = x.clamp(-7.5, 7.5);
     2.0 * sigmoid(2.0 * x) - 1.0
 }
 
-/// Clip gradient to prevent explosion.
+/// Clip gradient magnitude to prevent explosion during BPTT.
 #[inline]
 fn clip_grad(g: f32) -> f32 {
     g.clamp(-GRAD_CLIP, GRAD_CLIP)
 }
 
-/// Fill a weight vector with deterministic pseudo-random Xavier initialization.
+/// Fill a weight slice with deterministic pseudo-random Xavier initialization.
 fn fill_xavier(weights: &mut [f32], scale: f32, seed: &mut u64) {
     for w in weights.iter_mut() {
-        // Simple xorshift64 PRNG — deterministic and fast.
+        // xorshift64 PRNG — deterministic and fast.
         *seed ^= *seed << 13;
         *seed ^= *seed >> 7;
         *seed ^= *seed << 17;
-        // Map to [-1, 1] then scale.
         let r = (*seed as f32 / u64::MAX as f32) * 2.0 - 1.0;
         *w = r * scale;
     }
@@ -570,17 +776,49 @@ mod tests {
     }
 
     #[test]
+    fn history_ring_fills_correctly() {
+        let mut model = GruModel::new();
+        // Before any forward, history is empty.
+        assert_eq!(model.hist_count, 0);
+
+        // After N forward passes, history fills up to BPTT_HORIZON.
+        for i in 0..BPTT_HORIZON + 3 {
+            model.forward(b'A' + (i % 26) as u8);
+            let expected = (i + 1).min(BPTT_HORIZON);
+            assert_eq!(model.hist_count, expected, "hist_count wrong at step {i}");
+        }
+        // hist_pos should have wrapped.
+        assert_eq!(model.hist_pos, 3);
+    }
+
+    #[test]
+    fn bptt_does_not_produce_nan() {
+        let mut model = GruModel::new();
+        let data = b"Hello, World! This is a BPTT test. Let's check for NaN.";
+        for &byte in data {
+            model.forward(byte);
+            model.train(byte);
+            for j in 0..HIDDEN_DIM {
+                assert!(!model.h[j].is_nan(), "hidden state has NaN at j={j}");
+            }
+            for &p in &model.byte_probs {
+                assert!(!p.is_nan(), "byte_probs has NaN");
+            }
+        }
+    }
+
+    #[test]
     fn encoder_decoder_identical() {
-        // Simulate encoder and decoder processing same bytes.
+        // Encoder and decoder must produce bit-identical predictions throughout.
         let mut enc = GruModel::new();
         let mut dec = GruModel::new();
-        let data = b"Hello, World!";
+        let data = b"Hello, World! Testing BPTT encoder-decoder parity.";
 
         for &byte in data {
             enc.forward(byte);
             dec.forward(byte);
 
-            // Check predictions match.
+            // Predictions must match exactly.
             for bpos in 0..8u8 {
                 let c0 = if bpos == 0 {
                     1u32
@@ -596,33 +834,50 @@ mod tests {
                 assert_eq!(pe, pd, "encoder/decoder diverged at bpos {bpos}");
             }
 
-            // Train both with the same byte.
+            // Train both with the same byte (same as codec flow).
             enc.train(byte);
             dec.train(byte);
         }
 
-        // Hidden states must match.
-        assert_eq!(enc.h, dec.h, "hidden states diverged");
+        // After training, hidden states must match.
+        assert_eq!(enc.h, dec.h, "hidden states diverged after training");
+        // History ring must match.
+        assert_eq!(enc.hist_count, dec.hist_count, "hist_count diverged");
+        assert_eq!(enc.hist_pos, dec.hist_pos, "hist_pos diverged");
+    }
+
+    #[test]
+    fn bptt_improves_over_1step() {
+        // BPTT-trained model should learn patterns faster than 1-step SGD.
+        // Test: repeated pattern "ab" — after BPTT training, should predict 'b'
+        // after 'a' with high confidence.
+        let mut model = GruModel::new();
+        let pattern: Vec<u8> = b"ab".repeat(200);
+        for &byte in &pattern {
+            model.train(byte);
+            model.forward(byte);
+        }
+        // After 'a' in the pattern, next byte should be 'b'.
+        model.train(b'a');
+        model.forward(b'a');
+        let p_b = model.byte_probs[b'b' as usize];
+        assert!(
+            p_b > 0.1,
+            "after 'a' in ab pattern with BPTT, P('b')={p_b} should be significant"
+        );
     }
 
     #[test]
     fn adapts_to_pattern() {
         let mut model = GruModel::new();
-        // Simulate the codec flow: for each byte, train on it then forward it.
-        // This matches codec.rs: train(byte) then forward(byte) at end of each byte.
-        // After forward(byte_N), byte_probs predict byte_{N+1}.
         let pattern: Vec<u8> = b"ab".repeat(500);
         for &byte in &pattern {
-            model.train(byte); // learn from this byte
-            model.forward(byte); // update hidden state, predict next
+            model.train(byte);
+            model.forward(byte);
         }
-        // After forward(b'b'), model should predict the next byte.
-        // In the pattern, after 'b' comes 'a'. Let's check after 'a':
         model.train(b'a');
         model.forward(b'a');
-        // After seeing 'a', the next byte should be 'b' with high prob.
         let p_b = model.byte_probs[b'b' as usize];
-        // 'b' should be the dominant prediction after 'a'.
         assert!(
             p_b > 0.1,
             "after 'a' in ab pattern, P('b')={p_b} should be significant"

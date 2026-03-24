@@ -22,9 +22,10 @@ pub struct TransformChain {
     pub records: Vec<TransformRecord>,
 }
 
-// Transform IDs.
+// Transform IDs — all kept for backward-compat decoding of existing .dcx files.
 pub const TRANSFORM_JSON_KEY_INTERN: u8 = 1;
 pub const TRANSFORM_NDJSON_COLUMNAR: u8 = 2;
+// Legacy (non-JSON) transform IDs — needed for decoding old .dcx files.
 pub const TRANSFORM_WRT: u8 = 3;
 pub const TRANSFORM_LZP: u8 = 4;
 pub const TRANSFORM_CSV_COLUMNAR: u8 = 5;
@@ -35,6 +36,7 @@ pub const TRANSFORM_LOGFMT_COLUMNAR: u8 = 9;
 pub const TRANSFORM_PROMETHEUS_COLUMNAR: u8 = 10;
 pub const TRANSFORM_YAML_COLUMNAR: u8 = 11;
 pub const TRANSFORM_XML_COLUMNAR: u8 = 12;
+pub const TRANSFORM_VALUE_DICT: u8 = 13;
 
 impl TransformChain {
     pub fn new() -> Self {

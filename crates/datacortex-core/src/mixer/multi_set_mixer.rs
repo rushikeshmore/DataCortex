@@ -8,7 +8,7 @@
 //! - Set 2: (c1, bpos) — last byte + bit position
 //! - Set 3: (c1, c2_top4, bpos) — bigram history
 //! - Set 4: (match_q, bpos, c1_class) — match-dependent weighting
-//! - Set 5: (xml_state, bpos, c1_class) — XML structure-dependent
+//! - Set 5: (bpos, c1_class) — structure-dependent (xml_state removed)
 //! - Set 6: (byte_class(c1), run_q, bpos) — character type + run length
 //! - Set 7: (c1, c0, word_boundary_q) — word-level context
 //!
@@ -27,7 +27,7 @@ const SET1_SIZE: usize = 2048; // c0(256) * bpos(8) = 2K
 const SET2_SIZE: usize = 2048; // c1(256) * bpos(8) = 2K
 const SET3_SIZE: usize = 8192; // c1(256) * c2_top4(16) -- folded to 8K via bpos
 const SET4_SIZE: usize = 1024; // match_q(4) * bpos(8) * c1_class(12) -- folded to 1K
-const SET5_SIZE: usize = 512; // xml_state(8) * bpos(8) * c1_class(8) -- folded to 512
+const SET5_SIZE: usize = 512; // bpos(8) * c1_class(8) -- folded to 512
 const SET6_SIZE: usize = 1024; // bclass(12) * run_q(4) * bpos(8) -- folded to 1K
 const SET7_SIZE: usize = 4096; // c1(256) * c0_top4(16) -- folded to 4K
 
@@ -92,6 +92,7 @@ impl MixerSet {
 }
 
 /// Second-layer mixer: blends NUM_SETS outputs into one prediction.
+#[allow(dead_code)]
 struct Layer2Mixer {
     /// Weight tables: [LAYER2_SIZE][NUM_SETS].
     weights: Vec<[i32; NUM_SETS]>,
@@ -103,6 +104,7 @@ struct Layer2Mixer {
     last_p: u32,
 }
 
+#[allow(dead_code)]
 impl Layer2Mixer {
     fn new() -> Self {
         // Initialize with equal weights for all sets.
@@ -149,7 +151,8 @@ impl Layer2Mixer {
 pub struct MultiSetMixer {
     /// First-layer mixer sets, each with different context.
     sets: [MixerSet; NUM_SETS],
-    /// Second-layer blender.
+    /// Second-layer blender (reserved for future use).
+    #[allow(dead_code)]
     layer2: Layer2Mixer,
     /// Cached stretched predictions (shared across all sets).
     last_stretched: [i32; NUM_MODELS],
@@ -157,8 +160,7 @@ pub struct MultiSetMixer {
     last_p: u32,
 }
 
-/// Initial weights for first-layer sets.
-/// Same as the original mixer's initial weights.
+/// Initial weights for first-layer sets (28 inputs).
 const INITIAL_SET_WEIGHTS: [i32; NUM_MODELS] = [
     200, // O0
     300, 60, // O1 (state, run)
@@ -169,7 +171,7 @@ const INITIAL_SET_WEIGHTS: [i32; NUM_MODELS] = [
     300, 60, // O6
     250, 60, // O7
     200, 60, // O8
-    180, 60,  // O9
+    180, 60, // O9
     300, // match
     250, // word
     250, // sparse
@@ -213,7 +215,7 @@ impl MultiSetMixer {
         byte_class: u8,
         match_len_q: u8,
         run_q: u8,
-        xml_state: u8,
+        _xml_state: u8,
     ) -> u32 {
         // Stretch all predictions to log-odds (shared across all sets).
         for (i, &p) in predictions.iter().enumerate() {
@@ -237,9 +239,9 @@ impl MultiSetMixer {
         let ctx4 = (match_len_q as usize * 128 + byte_class as usize * 8 + bpos as usize)
             & (SET4_SIZE - 1);
 
-        // Set 5: (xml_state, bpos, byte_class) — structure-dependent
+        // Set 5: (bpos, byte_class) — structure-dependent (xml_state removed)
         let ctx5 =
-            (xml_state as usize * 128 + byte_class as usize * 8 + bpos as usize) & (SET5_SIZE - 1);
+            (byte_class as usize * 8 + bpos as usize) & (SET5_SIZE - 1);
 
         // Set 6: (byte_class, run_q, bpos) — character type + repetition
         let ctx6 =
@@ -260,12 +262,12 @@ impl MultiSetMixer {
         let d6 = self.sets[5].predict(&self.last_stretched, ctx6);
         let d7 = self.sets[6].predict(&self.last_stretched, ctx7);
 
-        let set_outputs = [d1, d2, d3, d4, d5, d6, d7];
-
-        // Second layer: blend set outputs.
-        let layer2_ctx =
-            (bpos as usize * 64 + byte_class as usize * 4 + run_q as usize) & (LAYER2_SIZE - 1);
-        let p = self.layer2.predict(&set_outputs, layer2_ctx);
+        // Fixed-weight average in log-odds space (no learned second layer).
+        // Sets 1-3 (byte context) get more weight than sets 4-7 (sparse context).
+        // Weights: 4,4,3,2,1,1,1 (total=16)
+        let blended_d = (d1 as i64 * 4 + d2 as i64 * 4 + d3 as i64 * 3
+            + d4 as i64 * 2 + d5 as i64 + d6 as i64 + d7 as i64) / 16;
+        let p = squash(blended_d as i32).clamp(1, 4095);
         self.last_p = p;
         p
     }
@@ -273,10 +275,7 @@ impl MultiSetMixer {
     /// Update all mixer sets after observing `bit`.
     #[inline(always)]
     pub fn update(&mut self, bit: u8) {
-        // Update second layer first.
-        self.layer2.update(bit);
-
-        // Update all first-layer sets with a shared error signal.
+        // Update all first-layer sets with individual error signals.
         // Each set computes its own error based on its own output.
         for set in &mut self.sets {
             let set_p = squash(set.last_d);

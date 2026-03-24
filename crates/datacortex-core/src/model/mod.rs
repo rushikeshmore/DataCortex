@@ -16,7 +16,6 @@ pub mod ppm_model;
 pub mod run_model;
 pub mod sparse_model;
 pub mod word_model;
-pub mod xml_model;
 
 pub use cm_model::{AssociativeContextModel, ChecksumContextModel, ContextModel};
 pub use dmc_model::DmcModel;
