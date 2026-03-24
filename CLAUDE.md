@@ -108,8 +108,8 @@ Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` in commit mess
 ## CodeCortex — Project Knowledge (auto-updated)
 
 ### Architecture
-**datacortex** — rust — 50 files, 897 symbols
-- **Modules (3):** datacortex-core (14279loc), datacortex-neural (773loc), datacortex-cli (635loc)
+**datacortex** — rust — 50 files, 918 symbols
+- **Modules (3):** datacortex-core (14909loc), datacortex-neural (773loc), datacortex-cli (635loc)
 
 ### Risk Map
 **High-risk files:**

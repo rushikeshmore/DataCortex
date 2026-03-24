@@ -7,6 +7,8 @@
 //!   - Boolean columns: bitmap packing (8 bools per byte)
 //!   - Timestamp columns: epoch-micros delta + zigzag + LEB128 varint
 //!   - Enum columns: dictionary + ordinal bytes
+//!   - String columns: quote-strip + length-prefix
+//!   - UUID columns: binary 16-byte packing
 //!   - Nullable columns: null bitmap + typed sub-encoding
 //!   - Everything else: raw passthrough (kept as \x01-separated text)
 //!
@@ -22,7 +24,7 @@
 //!
 //! [Per Column]
 //!   encoding_type: u8 (0=Raw, 1=DeltaVarint, 2=Bitmap, 3=NullBitmap+Typed,
-//!                       4=Timestamp, 5=Enum)
+//!                       4=Timestamp, 5=Enum, 6=String, 7=Uuid)
 //!   data_length: u32 LE
 //!   [column data bytes]
 //! ```
@@ -40,6 +42,8 @@ const ENC_BITMAP: u8 = 2;
 const ENC_NULL_TYPED: u8 = 3;
 const ENC_TIMESTAMP: u8 = 4;
 const ENC_ENUM: u8 = 5;
+const ENC_STRING: u8 = 6;
+const ENC_UUID: u8 = 7;
 
 // ─── ZigZag + LEB128 Primitives ─────────────────────────────────────────────
 
@@ -580,12 +584,189 @@ fn decode_enum_column(data: &[u8]) -> Vec<Vec<u8>> {
     result
 }
 
+// ─── String Encoder (Quote Strip + Length Prefix) ───────────────────────────
+
+/// Encode a string column by stripping surrounding quotes and length-prefixing.
+///
+/// Input: slices of quoted text bytes (e.g., b"\"hello\"").
+/// Output: count (u32 LE) + for each value: length (u16 LE) + bytes (without quotes).
+///
+/// Saves 2 bytes per value (the quotes) and makes the data more regular for zstd.
+fn encode_string_column(values: &[&[u8]]) -> Vec<u8> {
+    let count = values.len();
+    // Estimate: 4 (count) + per-value (2 + avg_len).
+    let mut out = Vec::with_capacity(4 + count * 10);
+
+    out.extend_from_slice(&(count as u32).to_le_bytes());
+
+    for val in values {
+        // Strip leading/trailing quote if present.
+        let inner = if val.len() >= 2 && val[0] == b'"' && val[val.len() - 1] == b'"' {
+            &val[1..val.len() - 1]
+        } else {
+            *val
+        };
+        let len = inner.len() as u16;
+        out.extend_from_slice(&len.to_le_bytes());
+        out.extend_from_slice(inner);
+    }
+
+    out
+}
+
+/// Decode a string column from length-prefixed bytes back to quoted text.
+///
+/// Returns a Vec of byte vectors, each containing the quoted string (e.g., b"\"hello\"").
+fn decode_string_column(data: &[u8]) -> Vec<Vec<u8>> {
+    if data.len() < 4 {
+        return decode_raw(data);
+    }
+
+    let count = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
+    let mut pos = 4;
+    let mut result = Vec::with_capacity(count);
+
+    for _ in 0..count {
+        if pos + 2 > data.len() {
+            break;
+        }
+        let len = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
+        pos += 2;
+        if pos + len > data.len() {
+            break;
+        }
+        // Re-add quotes around the content.
+        let mut val = Vec::with_capacity(len + 2);
+        val.push(b'"');
+        val.extend_from_slice(&data[pos..pos + len]);
+        val.push(b'"');
+        result.push(val);
+        pos += len;
+    }
+
+    result
+}
+
+// ─── UUID Encoder (Binary 16-byte Packing) ─────────────────────────────────
+
+/// Parse a single hex character to its nibble value.
+#[inline]
+fn hex_nibble(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// Parse a quoted UUID string to 16 raw bytes.
+/// Input: b"\"550e8400-e29b-41d4-a716-446655440000\"" (38 bytes)
+/// Output: 16 bytes
+fn parse_uuid_to_bytes(val: &[u8]) -> Option<[u8; 16]> {
+    // Must be exactly 38 bytes: quote + 8-4-4-4-12 hex with dashes + quote.
+    if val.len() != 38 || val[0] != b'"' || val[37] != b'"' {
+        return None;
+    }
+    let inner = &val[1..37]; // 36 bytes: 8-4-4-4-12
+
+    // Verify dash positions: 8, 13, 18, 23.
+    if inner[8] != b'-' || inner[13] != b'-' || inner[18] != b'-' || inner[23] != b'-' {
+        return None;
+    }
+
+    // Collect hex digits (skip dashes).
+    let hex_positions: &[usize] = &[
+        0, 1, 2, 3, 4, 5, 6, 7,       // 8 hex chars
+        9, 10, 11, 12,                  // 4 hex chars
+        14, 15, 16, 17,                 // 4 hex chars
+        19, 20, 21, 22,                 // 4 hex chars
+        24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, // 12 hex chars
+    ]; // 32 hex chars = 16 bytes
+
+    let mut bytes = [0u8; 16];
+    for (i, chunk) in hex_positions.chunks(2).enumerate() {
+        let hi = hex_nibble(inner[chunk[0]])?;
+        let lo = hex_nibble(inner[chunk[1]])?;
+        bytes[i] = (hi << 4) | lo;
+    }
+
+    Some(bytes)
+}
+
+/// Format 16 raw bytes as a quoted lowercase UUID string.
+/// Output: b"\"550e8400-e29b-41d4-a716-446655440000\""
+fn bytes_to_uuid(bytes: &[u8; 16]) -> Vec<u8> {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = Vec::with_capacity(38);
+    out.push(b'"');
+
+    for (i, &b) in bytes.iter().enumerate() {
+        out.push(HEX[(b >> 4) as usize]);
+        out.push(HEX[(b & 0x0F) as usize]);
+        // Insert dashes after bytes 4, 6, 8, 10 (positions 4, 6, 8, 10 in 0-indexed bytes).
+        if i == 3 || i == 5 || i == 7 || i == 9 {
+            out.push(b'-');
+        }
+    }
+
+    out.push(b'"');
+    out
+}
+
+/// Encode a UUID column by converting quoted UUID strings to raw 16-byte values.
+///
+/// Input: slices of quoted UUID strings (38 bytes each).
+/// Output: count (u32 LE) + raw 16-byte values concatenated.
+///
+/// Saves 22 bytes per UUID (38 → 16 = 58% reduction).
+fn encode_uuid_column(values: &[&[u8]]) -> Vec<u8> {
+    let count = values.len();
+    let mut out = Vec::with_capacity(4 + count * 16);
+
+    out.extend_from_slice(&(count as u32).to_le_bytes());
+
+    for val in values {
+        match parse_uuid_to_bytes(val) {
+            Some(bytes) => out.extend_from_slice(&bytes),
+            None => {
+                // If any UUID fails to parse, fall back to raw encoding.
+                return encode_raw(values);
+            }
+        }
+    }
+
+    out
+}
+
+/// Decode a UUID column from raw 16-byte values back to quoted UUID strings.
+fn decode_uuid_column(data: &[u8]) -> Vec<Vec<u8>> {
+    if data.len() < 4 {
+        return decode_raw(data);
+    }
+
+    let count = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
+    let mut pos = 4;
+    let mut result = Vec::with_capacity(count);
+
+    for _ in 0..count {
+        if pos + 16 > data.len() {
+            break;
+        }
+        let bytes: [u8; 16] = data[pos..pos + 16].try_into().unwrap();
+        result.push(bytes_to_uuid(&bytes));
+        pos += 16;
+    }
+
+    result
+}
+
 // ─── Null-Aware Encoder ─────────────────────────────────────────────────────
 
 /// Encode a nullable column: null bitmap + typed sub-encoding.
 ///
 /// Output format:
-///   sub_type: u8 (1=DeltaVarint, 2=Bitmap, 4=Timestamp, 5=Enum)
+///   sub_type: u8 (1=DeltaVarint, 2=Bitmap, 4=Timestamp, 5=Enum, 6=String, 7=Uuid)
 ///   count: u32 LE (total values including nulls)
 ///   null_bitmap_len: u32 LE
 ///   null_bitmap_bytes (1=present, 0=null, packed like boolean)
@@ -627,6 +808,14 @@ fn encode_nullable_column(values: &[&[u8]], sub_type: u8) -> Vec<u8> {
         }
         ENC_ENUM => {
             let encoded = encode_enum_column(&non_null_values);
+            out.extend_from_slice(&encoded);
+        }
+        ENC_STRING => {
+            let encoded = encode_string_column(&non_null_values);
+            out.extend_from_slice(&encoded);
+        }
+        ENC_UUID => {
+            let encoded = encode_uuid_column(&non_null_values);
             out.extend_from_slice(&encoded);
         }
         _ => {}
@@ -672,6 +861,8 @@ fn decode_nullable_column(data: &[u8]) -> Vec<Vec<u8>> {
         ENC_BITMAP => decode_boolean_column(typed_data),
         ENC_TIMESTAMP => decode_timestamp_column(typed_data),
         ENC_ENUM => decode_enum_column(typed_data),
+        ENC_STRING => decode_string_column(typed_data),
+        ENC_UUID => decode_uuid_column(typed_data),
         _ => Vec::new(),
     };
 
@@ -870,11 +1061,25 @@ fn encode_column(values: &[&[u8]], col_type: &ColumnType) -> (u8, Vec<u8>) {
                 (ENC_ENUM, encode_enum_column(values))
             }
         }
+        ColumnType::String { nullable } => {
+            if *nullable {
+                (ENC_NULL_TYPED, encode_nullable_column(values, ENC_STRING))
+            } else {
+                (ENC_STRING, encode_string_column(values))
+            }
+        }
+        ColumnType::Uuid { nullable } => {
+            if *nullable {
+                (ENC_NULL_TYPED, encode_nullable_column(values, ENC_UUID))
+            } else {
+                (ENC_UUID, encode_uuid_column(values))
+            }
+        }
         ColumnType::Null => {
             // All-null column: store as raw passthrough.
             (ENC_RAW, encode_raw(values))
         }
-        // Float, String, Uuid — raw passthrough.
+        // Float — raw passthrough (roundtrip risk).
         _ => (ENC_RAW, encode_raw(values)),
     }
 }
@@ -893,6 +1098,8 @@ fn decode_column(enc_type: u8, col_data: &[u8]) -> Vec<Vec<u8>> {
         ENC_NULL_TYPED => decode_nullable_column(col_data),
         ENC_TIMESTAMP => decode_timestamp_column(col_data),
         ENC_ENUM => decode_enum_column(col_data),
+        ENC_STRING => decode_string_column(col_data),
+        ENC_UUID => decode_uuid_column(col_data),
         _ => decode_raw(col_data),
     }
 }
@@ -1427,5 +1634,170 @@ mod tests {
             restored_ndjson, corpus,
             "full roundtrip (NDJSON -> columnar -> typed -> reverse) failed"
         );
+    }
+
+    // ─── String Encoder Tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_string_column_roundtrip() {
+        let values: &[&[u8]] = &[
+            b"\"hello world\"",
+            b"\"foo bar baz\"",
+            b"\"\"",  // Empty string (just quotes).
+            b"\"special chars: !@#$%^&*()\"",
+            b"\"unicode: \xc3\xa9\xc3\xa0\xc3\xbc\"",
+        ];
+        let encoded = encode_string_column(values);
+        let decoded = decode_string_column(&encoded);
+
+        assert_eq!(decoded.len(), values.len());
+        for (i, val) in values.iter().enumerate() {
+            assert_eq!(
+                decoded[i],
+                val.to_vec(),
+                "string mismatch at index {i}: expected {:?}, got {:?}",
+                String::from_utf8_lossy(val),
+                String::from_utf8_lossy(&decoded[i])
+            );
+        }
+    }
+
+    #[test]
+    fn test_string_preserves_content() {
+        // Verify no quote corruption: content with embedded backslashes,
+        // JSON-escaped quotes (already escaped by JSON parser), etc.
+        let values: &[&[u8]] = &[
+            b"\"simple\"",
+            b"\"has\\\"escaped\\\"quotes\"",
+            b"\"path/to/file.txt\"",
+            b"\"https://example.com/page?q=test&lang=en\"",
+            b"\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\"",
+        ];
+        let encoded = encode_string_column(values);
+        let decoded = decode_string_column(&encoded);
+
+        assert_eq!(decoded.len(), values.len());
+        for (i, val) in values.iter().enumerate() {
+            assert_eq!(
+                decoded[i],
+                val.to_vec(),
+                "content preservation failed at index {i}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_string_encoding_structure() {
+        // Verify the encoding structure: count header + length-prefixed values.
+        // Net byte savings: each value saves 2 bytes (quotes removed) but adds
+        // 2 bytes (u16 length prefix), so per-value cost is neutral. The 4-byte
+        // count header is overhead. The real win is regularity for zstd compression.
+        let values: &[&[u8]] = &[
+            b"\"hello\"",
+            b"\"world\"",
+            b"\"test\"",
+        ];
+        let encoded = encode_string_column(values);
+
+        // Expected: 4 (count) + (2+5) + (2+5) + (2+4) = 4 + 7 + 7 + 6 = 24 bytes.
+        // "hello" inner = 5 bytes, "world" inner = 5 bytes, "test" inner = 4 bytes.
+        assert_eq!(
+            encoded.len(),
+            4 + (2 + 5) + (2 + 5) + (2 + 4),
+            "string encoding should be count(4) + sum(2+inner_len), got {}",
+            encoded.len()
+        );
+    }
+
+    // ─── UUID Encoder Tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_uuid_column_roundtrip() {
+        let values: &[&[u8]] = &[
+            b"\"550e8400-e29b-41d4-a716-446655440000\"",
+            b"\"6ba7b810-9dad-11d1-80b4-00c04fd430c8\"",
+            b"\"f47ac10b-58cc-4372-a567-0e02b2c3d479\"",
+            b"\"00000000-0000-0000-0000-000000000000\"",
+            b"\"ffffffff-ffff-ffff-ffff-ffffffffffff\"",
+        ];
+        let encoded = encode_uuid_column(values);
+        let decoded = decode_uuid_column(&encoded);
+
+        assert_eq!(decoded.len(), values.len());
+        for (i, val) in values.iter().enumerate() {
+            assert_eq!(
+                decoded[i],
+                val.to_vec(),
+                "uuid mismatch at index {i}: expected {:?}, got {:?}",
+                String::from_utf8_lossy(val),
+                String::from_utf8_lossy(&decoded[i])
+            );
+        }
+    }
+
+    #[test]
+    fn test_uuid_encoding_size() {
+        // Each UUID: 38 bytes quoted text → 16 bytes binary = 58% reduction.
+        let values: &[&[u8]] = &[
+            b"\"550e8400-e29b-41d4-a716-446655440000\"",
+            b"\"6ba7b810-9dad-11d1-80b4-00c04fd430c8\"",
+            b"\"f47ac10b-58cc-4372-a567-0e02b2c3d479\"",
+        ];
+        let encoded = encode_uuid_column(values);
+
+        // Expected: 4 (count) + 3 * 16 (bytes) = 52 bytes.
+        assert_eq!(
+            encoded.len(),
+            4 + 3 * 16,
+            "UUID encoding should be exactly 4 + count*16 bytes, got {}",
+            encoded.len()
+        );
+
+        let raw = encode_raw(values);
+        // Raw: 3 * 38 + 2 (separators) = 116 bytes.
+        assert!(
+            encoded.len() < raw.len(),
+            "UUID encoding ({}) should be much smaller than raw ({})",
+            encoded.len(),
+            raw.len()
+        );
+    }
+
+    #[test]
+    fn test_uuid_uppercase_normalized_to_lowercase() {
+        // UUIDs with uppercase hex should decode as lowercase.
+        let val = b"\"550E8400-E29B-41D4-A716-446655440000\"";
+        let bytes = parse_uuid_to_bytes(val).unwrap();
+        let restored = bytes_to_uuid(&bytes);
+        assert_eq!(
+            restored,
+            b"\"550e8400-e29b-41d4-a716-446655440000\"".to_vec(),
+            "UUID should be normalized to lowercase"
+        );
+    }
+
+    #[test]
+    fn test_nullable_string_roundtrip() {
+        let values: &[&[u8]] = &[
+            b"\"hello\"",
+            b"null",
+            b"\"world\"",
+            b"null",
+            b"\"test value\"",
+            b"null",
+        ];
+        let encoded = encode_nullable_column(values, ENC_STRING);
+        let decoded = decode_nullable_column(&encoded);
+
+        assert_eq!(decoded.len(), values.len());
+        for (i, val) in values.iter().enumerate() {
+            assert_eq!(
+                decoded[i],
+                val.to_vec(),
+                "nullable string mismatch at index {i}: expected {:?}, got {:?}",
+                String::from_utf8_lossy(val),
+                String::from_utf8_lossy(&decoded[i])
+            );
+        }
     }
 }
