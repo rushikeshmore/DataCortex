@@ -1,28 +1,38 @@
 //! NDJSON columnar reorg — lossless transform that reorders row-oriented
 //! NDJSON data into column-oriented layout.
 //!
-//! Row-oriented (before):
-//!   {"ts":"2026-03-15T10:30:00.001Z","type":"page_view","user":"usr_a1b2c3d4"}
-//!   {"ts":"2026-03-15T10:30:00.234Z","type":"api_call","user":"usr_a1b2c3d4"}
+//! Two strategies:
 //!
-//! Column-oriented (after):
-//!   [ts values] "2026-03-15T10:30:00.001Z" \x01 "2026-03-15T10:30:00.234Z" \x00
-//!   [type values] "page_view" \x01 "api_call" \x00
-//!   [user values] "usr_a1b2c3d4" \x01 "usr_a1b2c3d4"
+//! **Strategy 1 (uniform):** All rows share the same schema (keys in same order).
+//!   Row-oriented (before):
+//!     {"ts":"2026-03-15T10:30:00.001Z","type":"page_view","user":"usr_a1b2c3d4"}
+//!     {"ts":"2026-03-15T10:30:00.234Z","type":"api_call","user":"usr_a1b2c3d4"}
+//!   Column-oriented (after):
+//!     [ts values] "2026-03-15T10:30:00.001Z" \x01 "2026-03-15T10:30:00.234Z" \x00
+//!     [type values] "page_view" \x01 "api_call" \x00
+//!     [user values] "usr_a1b2c3d4" \x01 "usr_a1b2c3d4"
 //!
-//! When similar values are adjacent, both LZ (zstd) and CM compress dramatically better.
+//! **Strategy 2 (grouped):** Rows have diverse schemas (e.g., GitHub Archive events).
+//!   Groups rows by schema, applies Strategy 1 per group, stores residual rows raw.
+//!   Metadata version byte distinguishes: 1 = uniform, 2 = grouped.
 //!
 //! Separators:
 //!   \x00 = column separator (cannot appear in valid JSON text)
 //!   \x01 = value separator within a column (cannot appear in valid JSON)
-//!
-//! Metadata stores the template parts for reconstruction.
 
 use super::transform::TransformResult;
+use std::collections::HashMap;
 
 const COL_SEP: u8 = 0x00;
 const VAL_SEP: u8 = 0x01;
-const METADATA_VERSION: u8 = 1;
+const METADATA_VERSION_UNIFORM: u8 = 1;
+const METADATA_VERSION_GROUPED: u8 = 2;
+
+/// Minimum rows in a schema group for it to be columnarized (not residual).
+const MIN_GROUP_ROWS: usize = 5;
+
+/// A schema group: template parts + list of (row_index, parsed_values).
+type SchemaGroup = (Vec<Vec<u8>>, Vec<(usize, Vec<Vec<u8>>)>);
 
 /// Extract the raw value bytes from a JSON line at a given position.
 /// `pos` should point to the first byte of the value (after `:`).
@@ -84,6 +94,9 @@ fn extract_value(line: &[u8], mut pos: usize) -> Option<(Vec<u8>, usize)> {
                 }
                 pos += 1;
             }
+            if depth != 0 || pos > line.len() {
+                return None; // Unterminated object.
+            }
             Some((line[start..pos].to_vec(), pos))
         }
         b'[' => {
@@ -111,6 +124,9 @@ fn extract_value(line: &[u8], mut pos: usize) -> Option<(Vec<u8>, usize)> {
                     _ => {}
                 }
                 pos += 1;
+            }
+            if depth != 0 || pos > line.len() {
+                return None; // Unterminated array.
             }
             Some((line[start..pos].to_vec(), pos))
         }
@@ -245,18 +261,8 @@ fn parse_line(line: &[u8]) -> Option<ParsedLine> {
     Some((parts, values))
 }
 
-/// Forward transform: NDJSON columnar reorg.
-///
-/// Returns None if the data is not suitable (not uniform schema, too few lines, etc).
-pub fn preprocess(data: &[u8]) -> Option<TransformResult> {
-    if data.is_empty() {
-        return None;
-    }
-
-    let has_trailing_newline = data.last() == Some(&b'\n');
-
-    // Split into lines. For NDJSON, each non-empty line is a JSON object.
-    // We need to preserve the exact line endings.
+/// Split NDJSON data into lines (without newline characters).
+fn split_lines(data: &[u8]) -> Vec<&[u8]> {
     let mut lines: Vec<&[u8]> = Vec::new();
     let mut start = 0;
     for i in 0..data.len() {
@@ -265,56 +271,24 @@ pub fn preprocess(data: &[u8]) -> Option<TransformResult> {
             start = i + 1;
         }
     }
-    // Handle last line if no trailing newline.
     if start < data.len() {
         lines.push(&data[start..]);
     }
+    lines
+}
 
-    // Filter out empty lines — but we need at least 2 non-empty lines for columnar to help.
-    let non_empty: Vec<&[u8]> = lines.iter().copied().filter(|l| !l.is_empty()).collect();
-    if non_empty.len() < 2 {
-        return None;
-    }
-
-    // Parse the first line to get the template.
-    let (template_parts, first_values) = parse_line(non_empty[0])?;
-    let num_cols = first_values.len();
-
-    // Validate that template parts count = num_cols + 1.
-    if template_parts.len() != num_cols + 1 {
-        return None;
-    }
-
-    // Collect all columns. columns[col_idx] = vec of value bytes per row.
-    let mut columns: Vec<Vec<Vec<u8>>> = Vec::with_capacity(num_cols);
-    for v in &first_values {
-        columns.push(vec![v.clone()]);
-    }
-
-    // Parse remaining lines — must all have the same template.
-    for &line in &non_empty[1..] {
-        let (parts, values) = parse_line(line)?;
-        if values.len() != num_cols {
-            return None; // Schema mismatch.
-        }
-        if parts.len() != template_parts.len() {
-            return None;
-        }
-        // Verify template parts match (keys and structure must be identical).
-        for (a, b) in parts.iter().zip(template_parts.iter()) {
-            if a != b {
-                return None; // Different key names or structure.
-            }
-        }
-        for (col, val) in values.iter().enumerate() {
-            columns[col].push(val.clone());
-        }
-    }
-
-    let num_rows = non_empty.len();
+/// Build columnar data from parsed lines that share the same template.
+/// Returns (col_data, metadata) for a uniform group.
+fn build_uniform_columnar(
+    template_parts: &[Vec<u8>],
+    columns: &[Vec<Vec<u8>>],
+    num_rows: usize,
+    has_trailing_newline: bool,
+) -> (Vec<u8>, Vec<u8>) {
+    let num_cols = columns.len();
 
     // Build column data: values separated by \x01, columns separated by \x00.
-    let mut col_data = Vec::with_capacity(data.len());
+    let mut col_data = Vec::new();
     for (ci, col) in columns.iter().enumerate() {
         for (ri, val) in col.iter().enumerate() {
             col_data.extend_from_slice(val);
@@ -329,34 +303,264 @@ pub fn preprocess(data: &[u8]) -> Option<TransformResult> {
 
     // Build metadata: version + num_rows + num_cols + trailing_newline + template parts.
     let mut metadata = Vec::new();
-    metadata.push(METADATA_VERSION);
+    metadata.push(METADATA_VERSION_UNIFORM);
     metadata.extend_from_slice(&(num_rows as u32).to_le_bytes());
     metadata.extend_from_slice(&(num_cols as u16).to_le_bytes());
     metadata.push(if has_trailing_newline { 1 } else { 0 });
     metadata.extend_from_slice(&(template_parts.len() as u16).to_le_bytes());
-    for part in &template_parts {
+    for part in template_parts {
         metadata.extend_from_slice(&(part.len() as u16).to_le_bytes());
         metadata.extend_from_slice(part);
     }
 
-    // Only apply if the transform is a net win: the column data + metadata should
-    // be smaller than the original input. Metadata stores keys once, which amortizes
-    // with more rows. With few rows or many long keys, skip the transform.
-    if col_data.len() + metadata.len() >= data.len() {
+    (col_data, metadata)
+}
+
+/// Strategy 1: Uniform schema — all rows must have the same template.
+/// Returns None if schemas differ.
+fn preprocess_uniform(non_empty: &[&[u8]], has_trailing_newline: bool) -> Option<(Vec<u8>, Vec<u8>)> {
+    if non_empty.len() < 2 {
         return None;
     }
 
-    Some(TransformResult {
-        data: col_data,
-        metadata,
-    })
+    let (template_parts, first_values) = parse_line(non_empty[0])?;
+    let num_cols = first_values.len();
+    if template_parts.len() != num_cols + 1 {
+        return None;
+    }
+
+    let mut columns: Vec<Vec<Vec<u8>>> = Vec::with_capacity(num_cols);
+    for v in &first_values {
+        columns.push(vec![v.clone()]);
+    }
+
+    for &line in &non_empty[1..] {
+        let (parts, values) = parse_line(line)?;
+        if values.len() != num_cols || parts.len() != template_parts.len() {
+            return None;
+        }
+        for (a, b) in parts.iter().zip(template_parts.iter()) {
+            if a != b {
+                return None;
+            }
+        }
+        for (col, val) in values.iter().enumerate() {
+            columns[col].push(val.clone());
+        }
+    }
+
+    Some(build_uniform_columnar(&template_parts, &columns, non_empty.len(), has_trailing_newline))
+}
+
+/// Strategy 2: Group-by-schema — group rows by template, columnarize each group.
+///
+/// Metadata format (version=2):
+///   version: u8 = 2
+///   has_trailing_newline: u8
+///   total_rows: u32 LE
+///   num_groups: u16 LE
+///   for each group:
+///     num_rows: u32 LE
+///     row_indices: [u32 LE * num_rows]
+///     group_metadata_len: u32 LE
+///     group_metadata: [bytes]  (Strategy 1 metadata for this group)
+///   residual_count: u32 LE
+///   residual_indices: [u32 LE * residual_count]
+///
+/// Data format:
+///   for each group:
+///     data_len: u32 LE
+///     data: [bytes]  (columnar data for this group)
+///   residual_data: [bytes]  (raw lines joined by \n)
+fn preprocess_grouped(non_empty: &[&[u8]], has_trailing_newline: bool) -> Option<(Vec<u8>, Vec<u8>)> {
+    if non_empty.len() < MIN_GROUP_ROWS {
+        return None;
+    }
+
+    // Parse all lines and group by template (the template parts identify the schema).
+    // We use the template parts as the group key.
+    let mut parsed: Vec<Option<ParsedLine>> = Vec::with_capacity(non_empty.len());
+    for &line in non_empty {
+        parsed.push(parse_line(line));
+    }
+
+    // Group rows by template. Key = template parts (as bytes for hashing).
+    // We store groups as: template_key -> (template_parts, vec of (row_index, values)).
+    let mut group_map: HashMap<Vec<u8>, SchemaGroup> = HashMap::new();
+    let mut residual_indices: Vec<usize> = Vec::new();
+
+    for (idx, parsed_line) in parsed.into_iter().enumerate() {
+        if let Some((parts, values)) = parsed_line {
+            // Build a hashable key from the template parts.
+            let mut key = Vec::new();
+            for part in &parts {
+                key.extend_from_slice(&(part.len() as u32).to_le_bytes());
+                key.extend_from_slice(part);
+            }
+            group_map
+                .entry(key)
+                .or_insert_with(|| (parts, Vec::new()))
+                .1
+                .push((idx, values));
+        } else {
+            // Unparseable line goes to residual.
+            residual_indices.push(idx);
+        }
+    }
+
+    // Separate groups into qualifying (>= MIN_GROUP_ROWS) and residual.
+    let mut groups: Vec<SchemaGroup> = Vec::new();
+    for (_key, (template_parts, rows)) in group_map {
+        if rows.len() >= MIN_GROUP_ROWS {
+            groups.push((template_parts, rows));
+        } else {
+            // Too few rows — send to residual.
+            for (idx, _) in &rows {
+                residual_indices.push(*idx);
+            }
+        }
+    }
+
+    // Need at least 1 qualifying group for this to be useful.
+    if groups.is_empty() {
+        return None;
+    }
+
+    // Sort groups by their first row index for deterministic output.
+    groups.sort_by_key(|(_, rows)| rows[0].0);
+    residual_indices.sort_unstable();
+
+    // Build per-group columnar data and metadata.
+    struct GroupOutput {
+        row_indices: Vec<u32>,
+        col_data: Vec<u8>,
+        group_metadata: Vec<u8>,
+    }
+
+    let mut group_outputs: Vec<GroupOutput> = Vec::with_capacity(groups.len());
+
+    for (template_parts, rows) in &groups {
+        let num_cols = template_parts.len() - 1;
+        let mut columns: Vec<Vec<Vec<u8>>> = (0..num_cols).map(|_| Vec::new()).collect();
+        let mut row_indices: Vec<u32> = Vec::with_capacity(rows.len());
+
+        for (idx, values) in rows {
+            row_indices.push(*idx as u32);
+            for (col, val) in values.iter().enumerate() {
+                columns[col].push(val.clone());
+            }
+        }
+
+        // Build columnar data for this group (trailing_newline=false for sub-groups).
+        let (col_data, group_metadata) =
+            build_uniform_columnar(template_parts, &columns, rows.len(), false);
+
+        group_outputs.push(GroupOutput {
+            row_indices,
+            col_data,
+            group_metadata,
+        });
+    }
+
+    // Build the combined data blob.
+    let mut data_out = Vec::new();
+    for group in &group_outputs {
+        data_out.extend_from_slice(&(group.col_data.len() as u32).to_le_bytes());
+        data_out.extend_from_slice(&group.col_data);
+    }
+
+    // Append residual lines (raw, separated by \n).
+    let residual_start = data_out.len();
+    for (i, &idx) in residual_indices.iter().enumerate() {
+        data_out.extend_from_slice(non_empty[idx]);
+        if i < residual_indices.len() - 1 {
+            data_out.push(b'\n');
+        }
+    }
+    let _residual_len = data_out.len() - residual_start;
+
+    // Build the combined metadata.
+    let mut metadata = Vec::new();
+    metadata.push(METADATA_VERSION_GROUPED);
+    metadata.push(if has_trailing_newline { 1 } else { 0 });
+    metadata.extend_from_slice(&(non_empty.len() as u32).to_le_bytes());
+    metadata.extend_from_slice(&(group_outputs.len() as u16).to_le_bytes());
+
+    for group in &group_outputs {
+        metadata.extend_from_slice(&(group.row_indices.len() as u32).to_le_bytes());
+        for &idx in &group.row_indices {
+            metadata.extend_from_slice(&idx.to_le_bytes());
+        }
+        metadata.extend_from_slice(&(group.group_metadata.len() as u32).to_le_bytes());
+        metadata.extend_from_slice(&group.group_metadata);
+    }
+
+    metadata.extend_from_slice(&(residual_indices.len() as u32).to_le_bytes());
+    for &idx in &residual_indices {
+        metadata.extend_from_slice(&(idx as u32).to_le_bytes());
+    }
+
+    Some((data_out, metadata))
+}
+
+/// Forward transform: NDJSON columnar reorg.
+///
+/// Tries Strategy 1 (uniform) first, then Strategy 2 (grouped) if schemas differ.
+/// Returns None if data is not suitable for columnar transform.
+pub fn preprocess(data: &[u8]) -> Option<TransformResult> {
+    if data.is_empty() {
+        return None;
+    }
+
+    let has_trailing_newline = data.last() == Some(&b'\n');
+    let lines = split_lines(data);
+    let non_empty: Vec<&[u8]> = lines.into_iter().filter(|l| !l.is_empty()).collect();
+
+    if non_empty.len() < 2 {
+        return None;
+    }
+
+    // Strategy 1: try uniform schema first.
+    if let Some((col_data, metadata)) = preprocess_uniform(&non_empty, has_trailing_newline) {
+        if col_data.len() + metadata.len() < data.len() {
+            return Some(TransformResult {
+                data: col_data,
+                metadata,
+            });
+        }
+    }
+
+    // Strategy 2: group by schema.
+    if let Some((grouped_data, grouped_metadata)) =
+        preprocess_grouped(&non_empty, has_trailing_newline)
+    {
+        if grouped_data.len() + grouped_metadata.len() < data.len() {
+            return Some(TransformResult {
+                data: grouped_data,
+                metadata: grouped_metadata,
+            });
+        }
+    }
+
+    None
 }
 
 /// Reverse transform: reconstruct NDJSON from columnar layout + metadata.
+/// Dispatches to the appropriate decoder based on metadata version byte.
 pub fn reverse(data: &[u8], metadata: &[u8]) -> Vec<u8> {
-    // Parse metadata.
+    if metadata.is_empty() {
+        return data.to_vec();
+    }
+    match metadata[0] {
+        METADATA_VERSION_UNIFORM => reverse_uniform(data, metadata),
+        METADATA_VERSION_GROUPED => reverse_grouped(data, metadata),
+        _ => data.to_vec(),
+    }
+}
+
+/// Reverse Strategy 1: uniform schema.
+fn reverse_uniform(data: &[u8], metadata: &[u8]) -> Vec<u8> {
     if metadata.len() < 10 {
-        // Not enough metadata — return data as-is (shouldn't happen).
         return data.to_vec();
     }
     let mut pos = 0;
@@ -389,7 +593,17 @@ pub fn reverse(data: &[u8], metadata: &[u8]) -> Vec<u8> {
         return data.to_vec();
     }
 
-    // Parse column data: split by \x00 into columns, each column split by \x01 into values.
+    reverse_uniform_from_parts(data, &parts, num_rows, num_cols, has_trailing_newline)
+}
+
+/// Core uniform reverse: given parsed parts, reconstruct lines from columnar data.
+fn reverse_uniform_from_parts(
+    data: &[u8],
+    parts: &[Vec<u8>],
+    num_rows: usize,
+    num_cols: usize,
+    has_trailing_newline: bool,
+) -> Vec<u8> {
     let col_chunks: Vec<&[u8]> = data.split(|&b| b == COL_SEP).collect();
     if col_chunks.len() != num_cols {
         return data.to_vec();
@@ -404,27 +618,220 @@ pub fn reverse(data: &[u8], metadata: &[u8]) -> Vec<u8> {
         columns.push(vals);
     }
 
-    // Reconstruct each line (row indexes across multiple column vectors).
     let mut output = Vec::with_capacity(data.len() * 2);
     #[allow(clippy::needless_range_loop)]
     for row in 0..num_rows {
-        // Part 0: e.g., {"timestamp":
         output.extend_from_slice(&parts[0]);
-        // Value 0
         output.extend_from_slice(columns[0][row]);
         for col in 1..num_cols {
-            // Part col: e.g., ,"event_type":
             output.extend_from_slice(&parts[col]);
-            // Value col
             output.extend_from_slice(columns[col][row]);
         }
-        // Final part: e.g., }\n or just }
-        // The last template part includes everything after the last value to end of line.
-        // But it does NOT include the newline — we add newlines between rows ourselves.
         output.extend_from_slice(&parts[num_cols]);
 
-        // Add newline between rows (and after last row if trailing newline).
         if row < num_rows - 1 || has_trailing_newline {
+            output.push(b'\n');
+        }
+    }
+
+    output
+}
+
+/// Parse Strategy 1 metadata and return (parts, num_rows, num_cols, has_trailing_newline).
+/// Used by reverse_grouped to decode per-group metadata.
+fn parse_uniform_metadata(metadata: &[u8]) -> Option<(Vec<Vec<u8>>, usize, usize, bool)> {
+    if metadata.len() < 10 {
+        return None;
+    }
+    let mut pos = 1; // Skip version byte.
+    let num_rows = u32::from_le_bytes(metadata[pos..pos + 4].try_into().unwrap()) as usize;
+    pos += 4;
+    let num_cols = u16::from_le_bytes(metadata[pos..pos + 2].try_into().unwrap()) as usize;
+    pos += 2;
+    let has_trailing_newline = metadata[pos] != 0;
+    pos += 1;
+    let num_parts = u16::from_le_bytes(metadata[pos..pos + 2].try_into().unwrap()) as usize;
+    pos += 2;
+
+    let mut parts = Vec::with_capacity(num_parts);
+    for _ in 0..num_parts {
+        if pos + 2 > metadata.len() {
+            return None;
+        }
+        let part_len = u16::from_le_bytes(metadata[pos..pos + 2].try_into().unwrap()) as usize;
+        pos += 2;
+        if pos + part_len > metadata.len() {
+            return None;
+        }
+        parts.push(metadata[pos..pos + part_len].to_vec());
+        pos += part_len;
+    }
+
+    if parts.len() != num_cols + 1 || num_rows == 0 || num_cols == 0 {
+        return None;
+    }
+
+    Some((parts, num_rows, num_cols, has_trailing_newline))
+}
+
+/// Reverse Strategy 2: grouped schema.
+fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
+    if metadata.len() < 8 {
+        return data.to_vec();
+    }
+
+    let mut mpos = 1; // Skip version byte.
+    let has_trailing_newline = metadata[mpos] != 0;
+    mpos += 1;
+    let total_rows =
+        u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+    mpos += 4;
+    let num_groups =
+        u16::from_le_bytes(metadata[mpos..mpos + 2].try_into().unwrap()) as usize;
+    mpos += 2;
+
+    // Allocate output slots.
+    let mut output_lines: Vec<Option<Vec<u8>>> = vec![None; total_rows];
+
+    // Data cursor.
+    let mut dpos: usize = 0;
+
+    for _ in 0..num_groups {
+        // Read row indices for this group.
+        if mpos + 4 > metadata.len() {
+            return data.to_vec();
+        }
+        let group_row_count =
+            u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+        mpos += 4;
+
+        let mut row_indices = Vec::with_capacity(group_row_count);
+        for _ in 0..group_row_count {
+            if mpos + 4 > metadata.len() {
+                return data.to_vec();
+            }
+            let idx = u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+            mpos += 4;
+            row_indices.push(idx);
+        }
+
+        // Read group metadata.
+        if mpos + 4 > metadata.len() {
+            return data.to_vec();
+        }
+        let gm_len =
+            u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+        mpos += 4;
+        if mpos + gm_len > metadata.len() {
+            return data.to_vec();
+        }
+        let group_metadata = &metadata[mpos..mpos + gm_len];
+        mpos += gm_len;
+
+        // Read group data from the data blob.
+        if dpos + 4 > data.len() {
+            return data.to_vec();
+        }
+        let gd_len =
+            u32::from_le_bytes(data[dpos..dpos + 4].try_into().unwrap()) as usize;
+        dpos += 4;
+        if dpos + gd_len > data.len() {
+            return data.to_vec();
+        }
+        let group_data = &data[dpos..dpos + gd_len];
+        dpos += gd_len;
+
+        // Decode this group using Strategy 1 reverse.
+        let (parts, num_rows, num_cols, _trailing) =
+            match parse_uniform_metadata(group_metadata) {
+                Some(v) => v,
+                None => return data.to_vec(),
+            };
+
+        if num_rows != group_row_count {
+            return data.to_vec();
+        }
+
+        // Split columnar data into columns and values.
+        let col_chunks: Vec<&[u8]> = group_data.split(|&b| b == COL_SEP).collect();
+        if col_chunks.len() != num_cols {
+            return data.to_vec();
+        }
+
+        let mut columns: Vec<Vec<&[u8]>> = Vec::with_capacity(num_cols);
+        for chunk in &col_chunks {
+            let vals: Vec<&[u8]> = chunk.split(|&b| b == VAL_SEP).collect();
+            if vals.len() != num_rows {
+                return data.to_vec();
+            }
+            columns.push(vals);
+        }
+
+        // Reconstruct each line for this group.
+        for (row_within_group, &original_idx) in row_indices.iter().enumerate() {
+            let mut line = Vec::new();
+            line.extend_from_slice(&parts[0]);
+            line.extend_from_slice(columns[0][row_within_group]);
+            for col in 1..num_cols {
+                line.extend_from_slice(&parts[col]);
+                line.extend_from_slice(columns[col][row_within_group]);
+            }
+            line.extend_from_slice(&parts[num_cols]);
+
+            if original_idx < total_rows {
+                output_lines[original_idx] = Some(line);
+            }
+        }
+    }
+
+    // Read residual indices from metadata.
+    if mpos + 4 > metadata.len() {
+        return data.to_vec();
+    }
+    let residual_count =
+        u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+    mpos += 4;
+
+    let mut residual_indices = Vec::with_capacity(residual_count);
+    for _ in 0..residual_count {
+        if mpos + 4 > metadata.len() {
+            return data.to_vec();
+        }
+        let idx = u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+        mpos += 4;
+        residual_indices.push(idx);
+    }
+
+    // Remaining data is residual lines.
+    let residual_data = &data[dpos..];
+    if residual_count > 0 {
+        let residual_lines: Vec<&[u8]> = if residual_data.is_empty() {
+            vec![]
+        } else {
+            residual_data.split(|&b| b == b'\n').collect()
+        };
+        // There should be exactly residual_count lines.
+        if residual_lines.len() != residual_count {
+            return data.to_vec();
+        }
+        for (i, &idx) in residual_indices.iter().enumerate() {
+            if idx < total_rows {
+                output_lines[idx] = Some(residual_lines[i].to_vec());
+            }
+        }
+    }
+
+    // Assemble final output.
+    let mut output = Vec::with_capacity(data.len() * 2);
+    for (i, slot) in output_lines.iter().enumerate() {
+        match slot {
+            Some(line) => output.extend_from_slice(line),
+            None => {
+                // Should not happen — missing row. Return data as-is.
+                return data.to_vec();
+            }
+        }
+        if i < total_rows - 1 || has_trailing_newline {
             output.push(b'\n');
         }
     }
@@ -557,8 +964,8 @@ mod tests {
     }
 
     #[test]
-    fn schema_mismatch_returns_none() {
-        // Different keys on different lines.
+    fn schema_mismatch_too_few_returns_none() {
+        // Different keys on different lines, but each group has < MIN_GROUP_ROWS.
         let data = br#"{"a":1,"b":2}
 {"a":1,"c":3}
 "#;
@@ -566,7 +973,7 @@ mod tests {
     }
 
     #[test]
-    fn different_num_keys_returns_none() {
+    fn different_num_keys_too_few_returns_none() {
         let data = br#"{"a":1,"b":2}
 {"a":1}
 "#;
@@ -656,5 +1063,166 @@ mod tests {
         let result = preprocess(&big_data).expect("should produce transform with 40 rows");
         let restored = reverse(&result.data, &result.metadata);
         assert_eq!(restored, big_data);
+    }
+
+    // --- Strategy 2 (grouped) tests ---
+
+    #[test]
+    fn grouped_roundtrip_two_schemas() {
+        // Two different schemas, each with >= MIN_GROUP_ROWS rows.
+        let mut data = Vec::new();
+        for i in 0..10 {
+            data.extend_from_slice(
+                format!(r#"{{"id":{},"type":"push","repo":"r{}"}}"#, i, i).as_bytes(),
+            );
+            data.push(b'\n');
+        }
+        for i in 10..20 {
+            data.extend_from_slice(
+                format!(
+                    r#"{{"id":{},"type":"watch","repo":"r{}","org":"o{}"}}"#,
+                    i, i, i
+                )
+                .as_bytes(),
+            );
+            data.push(b'\n');
+        }
+        let result = preprocess(&data).expect("should produce grouped transform");
+        // Should be version 2 (grouped).
+        assert_eq!(result.metadata[0], METADATA_VERSION_GROUPED);
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(restored, data);
+    }
+
+    #[test]
+    fn grouped_roundtrip_interleaved_schemas() {
+        // Interleaved schemas: alternating between two different key sets.
+        let mut data = Vec::new();
+        for i in 0..20 {
+            if i % 2 == 0 {
+                data.extend_from_slice(
+                    format!(r#"{{"id":{},"type":"push","repo":"r{}"}}"#, i, i).as_bytes(),
+                );
+            } else {
+                data.extend_from_slice(
+                    format!(
+                        r#"{{"id":{},"type":"watch","repo":"r{}","org":"o{}"}}"#,
+                        i, i, i
+                    )
+                    .as_bytes(),
+                );
+            }
+            data.push(b'\n');
+        }
+        let result = preprocess(&data).expect("should produce grouped transform");
+        assert_eq!(result.metadata[0], METADATA_VERSION_GROUPED);
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(restored, data);
+    }
+
+    #[test]
+    fn grouped_roundtrip_with_residuals() {
+        // Two large groups + a few unique-schema rows (residuals).
+        let mut data = Vec::new();
+        // Group A: 8 rows.
+        for i in 0..8 {
+            data.extend_from_slice(
+                format!(r#"{{"a":{},"b":"val{}"}}"#, i, i).as_bytes(),
+            );
+            data.push(b'\n');
+        }
+        // 2 unique rows (will be residual).
+        data.extend_from_slice(br#"{"x":1,"y":2,"z":3}"#);
+        data.push(b'\n');
+        data.extend_from_slice(br#"{"p":"q"}"#);
+        data.push(b'\n');
+        // Group B: 6 rows.
+        for i in 0..6 {
+            data.extend_from_slice(
+                format!(r#"{{"c":{},"d":"val{}","e":true}}"#, i, i).as_bytes(),
+            );
+            data.push(b'\n');
+        }
+        let result = preprocess(&data).expect("should produce grouped transform");
+        assert_eq!(result.metadata[0], METADATA_VERSION_GROUPED);
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(
+            String::from_utf8_lossy(&restored),
+            String::from_utf8_lossy(&data),
+        );
+        assert_eq!(restored, data);
+    }
+
+    #[test]
+    fn grouped_roundtrip_no_trailing_newline() {
+        let mut data = Vec::new();
+        for i in 0..6 {
+            data.extend_from_slice(
+                format!(r#"{{"id":{},"type":"push"}}"#, i).as_bytes(),
+            );
+            data.push(b'\n');
+        }
+        for i in 0..6 {
+            data.extend_from_slice(
+                format!(r#"{{"id":{},"type":"watch","org":"o{}"}}"#, i, i).as_bytes(),
+            );
+            if i < 5 {
+                data.push(b'\n');
+            }
+            // Last line: no trailing newline.
+        }
+        let result = preprocess(&data).expect("should produce grouped transform");
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(restored, data);
+    }
+
+    #[test]
+    fn uniform_still_preferred_over_grouped() {
+        // All rows same schema — should use Strategy 1 (version 1), not Strategy 2.
+        let data = br#"{"a":1,"b":"x"}
+{"a":2,"b":"y"}
+{"a":3,"b":"z"}
+{"a":4,"b":"w"}
+{"a":5,"b":"v"}
+"#;
+        let result = preprocess(data).expect("should produce transform");
+        assert_eq!(
+            result.metadata[0], METADATA_VERSION_UNIFORM,
+            "uniform schema should use Strategy 1"
+        );
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn grouped_gharchive_simulation() {
+        // Simulates GitHub Archive: most rows have 7 keys, some have 8.
+        let mut data = Vec::new();
+        for i in 0..50 {
+            if i % 5 == 0 {
+                // 8-key rows (with org).
+                data.extend_from_slice(
+                    format!(
+                        r#"{{"id":"{}","type":"WatchEvent","actor":{{"id":{}}},"repo":{{"id":{}}},"payload":{{}},"public":true,"created_at":"2026-03-20T12:00:00Z","org":{{"id":{}}}}}"#,
+                        i, i, i, i
+                    )
+                    .as_bytes(),
+                );
+            } else {
+                // 7-key rows (no org).
+                data.extend_from_slice(
+                    format!(
+                        r#"{{"id":"{}","type":"PushEvent","actor":{{"id":{}}},"repo":{{"id":{}}},"payload":{{}},"public":true,"created_at":"2026-03-20T12:00:00Z"}}"#,
+                        i, i, i
+                    )
+                    .as_bytes(),
+                );
+            }
+            data.push(b'\n');
+        }
+        let result = preprocess(&data).expect("should produce grouped transform");
+        assert_eq!(result.metadata[0], METADATA_VERSION_GROUPED);
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(restored, data);
     }
 }

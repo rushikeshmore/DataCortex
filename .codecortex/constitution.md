@@ -6,14 +6,14 @@
 - **Name:** datacortex
 - **Languages:** rust
 - **Files:** 50
-- **Symbols:** 918
+- **Symbols:** 935
 - **Modules:** 3
-- **Last updated:** 2026-03-24T18:55:54.586Z
+- **Last updated:** 2026-03-24T19:07:27.767Z
 
 ## Architecture
 
 **Modules (3):**
-- **datacortex-core** (45 files, 14909 lines) — rust
+- **datacortex-core** (45 files, 15281 lines) — rust
 - **datacortex-neural** (3 files, 773 lines) — rust
 - **datacortex-cli** (1 files, 635 lines) — rust
 

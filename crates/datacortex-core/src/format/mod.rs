@@ -57,20 +57,29 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
     let mut chain = TransformChain::new();
     let mut current = data.to_vec();
 
-    // Track whether a columnar transform was applied (for value dict chaining).
+    // Track whether a uniform columnar transform was applied (for value dict chaining).
+    // Uniform columnar = data is \x00/\x01-separated, downstream transforms are compatible.
     let mut columnar_applied = false;
+    // Track whether ANY ndjson transform was applied (uniform or grouped).
+    let mut ndjson_transform_applied = false;
 
     // NDJSON columnar reorg: ALL modes (dramatic improvement for uniform NDJSON).
+    // Strategy 1 (uniform, version=1) produces \x00/\x01 separated columnar data.
+    // Strategy 2 (grouped, version=2) produces a different format with per-group data.
+    // Only Strategy 1 output is compatible with downstream typed_encoding/value_dict.
     if format == FormatHint::Ndjson {
         if let Some(result) = ndjson::preprocess(&current) {
+            let is_uniform_columnar =
+                !result.metadata.is_empty() && result.metadata[0] == 1;
             chain.push(TRANSFORM_NDJSON_COLUMNAR, result.metadata);
             current = result.data;
-            columnar_applied = true;
+            ndjson_transform_applied = true;
+            columnar_applied = is_uniform_columnar;
         }
     }
 
     // JSON array columnar reorg: ALL modes.
-    if !columnar_applied && format == FormatHint::Json {
+    if !columnar_applied && !ndjson_transform_applied && format == FormatHint::Json {
         if let Some(result) = json_array::preprocess(&current) {
             chain.push(TRANSFORM_JSON_ARRAY_COLUMNAR, result.metadata);
             current = result.data;
@@ -102,7 +111,7 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
         }
     }
 
-    if columnar_applied {
+    if columnar_applied || ndjson_transform_applied {
         return (current, chain);
     }
 
