@@ -503,6 +503,440 @@ fn preprocess_grouped(non_empty: &[&[u8]], has_trailing_newline: bool) -> Option
     Some((data_out, metadata))
 }
 
+/// Metadata describing which columns were flattened from nested objects.
+struct NestedGroupInfo {
+    /// Index of the original column that was expanded.
+    original_col_index: u16,
+    /// Sub-key names for the expanded sub-columns.
+    sub_keys: Vec<Vec<u8>>,
+}
+
+/// Attempt to flatten nested JSON objects in columnar data (depth-1).
+///
+/// Takes columnar data (\x00/\x01 separated) and returns expanded columnar data
+/// with nested objects decomposed into sub-columns.
+/// Returns None if no nested objects found.
+fn flatten_nested_columns(
+    col_data: &[u8],
+    num_rows: usize,
+) -> Option<(Vec<u8>, Vec<NestedGroupInfo>)> {
+    // Split into columns.
+    let columns: Vec<&[u8]> = col_data.split(|&b| b == COL_SEP).collect();
+    if columns.is_empty() || num_rows == 0 {
+        return None;
+    }
+
+    let mut nested_groups: Vec<NestedGroupInfo> = Vec::new();
+    // Build the output columns: for non-nested cols, keep as-is.
+    // For nested cols, replace with sub-columns.
+    let mut output_columns: Vec<Vec<Vec<u8>>> = Vec::new();
+
+    for (col_idx, &col_chunk) in columns.iter().enumerate() {
+        let values: Vec<&[u8]> = col_chunk.split(|&b| b == VAL_SEP).collect();
+        if values.len() != num_rows {
+            return None;
+        }
+
+        // Check if ALL non-null values start with '{' (nested object).
+        let mut all_objects = true;
+        let mut has_non_null = false;
+        for val in &values {
+            if *val == b"null" {
+                continue;
+            }
+            has_non_null = true;
+            if !val.starts_with(b"{") {
+                all_objects = false;
+                break;
+            }
+        }
+
+        if !all_objects || !has_non_null {
+            // Not a nested-object column — keep as-is.
+            let col_values: Vec<Vec<u8>> = values.iter().map(|v| v.to_vec()).collect();
+            output_columns.push(col_values);
+            continue;
+        }
+
+        // This column contains nested objects — decompose depth-1.
+        // Parse all values and collect all unique sub-keys (preserving discovery order).
+        let mut all_sub_keys: Vec<Vec<u8>> = Vec::new();
+        type KvPairs = Vec<(Vec<u8>, Vec<u8>)>;
+        let mut parsed_rows: Vec<Option<KvPairs>> = Vec::with_capacity(num_rows);
+
+        for val in &values {
+            if *val == b"null" {
+                parsed_rows.push(None);
+                continue;
+            }
+            // Parse the nested object's key-value pairs.
+            match parse_nested_object_kv(val) {
+                Some(kv_pairs) => {
+                    for (key, _) in &kv_pairs {
+                        if !all_sub_keys.iter().any(|k| k == key) {
+                            all_sub_keys.push(key.clone());
+                        }
+                    }
+                    parsed_rows.push(Some(kv_pairs));
+                }
+                None => {
+                    // Failed to parse — bail out on this column entirely.
+                    // Put it back as-is.
+                    parsed_rows.push(None);
+                    // Actually, if any row fails to parse as an object, this
+                    // column is not fully decomposable. Bail.
+                    all_sub_keys.clear();
+                    break;
+                }
+            }
+        }
+
+        if all_sub_keys.is_empty() {
+            // Could not parse — keep column as-is.
+            let col_values: Vec<Vec<u8>> = values.iter().map(|v| v.to_vec()).collect();
+            output_columns.push(col_values);
+            continue;
+        }
+
+        // Build sub-columns: for each sub-key, extract values from parsed rows.
+        let num_sub_keys = all_sub_keys.len();
+        let mut sub_columns: Vec<Vec<Vec<u8>>> = vec![Vec::with_capacity(num_rows); num_sub_keys];
+
+        for parsed in &parsed_rows {
+            match parsed {
+                Some(kv_pairs) => {
+                    for (sk_idx, sk) in all_sub_keys.iter().enumerate() {
+                        let found = kv_pairs.iter().find(|(k, _)| k == sk);
+                        match found {
+                            Some((_, v)) => sub_columns[sk_idx].push(v.clone()),
+                            None => sub_columns[sk_idx].push(b"null".to_vec()),
+                        }
+                    }
+                }
+                None => {
+                    // null row — all sub-columns get null.
+                    for sc in sub_columns.iter_mut() {
+                        sc.push(b"null".to_vec());
+                    }
+                }
+            }
+        }
+
+        nested_groups.push(NestedGroupInfo {
+            original_col_index: col_idx as u16,
+            sub_keys: all_sub_keys,
+        });
+
+        for sc in sub_columns {
+            output_columns.push(sc);
+        }
+    }
+
+    if nested_groups.is_empty() {
+        return None;
+    }
+
+    // Build the flattened columnar data.
+    let num_out_cols = output_columns.len();
+    let mut out = Vec::new();
+    for (ci, col) in output_columns.iter().enumerate() {
+        for (ri, val) in col.iter().enumerate() {
+            out.extend_from_slice(val);
+            if ri < num_rows - 1 {
+                out.push(VAL_SEP);
+            }
+        }
+        if ci < num_out_cols - 1 {
+            out.push(COL_SEP);
+        }
+    }
+
+    Some((out, nested_groups))
+}
+
+/// Parse a nested JSON object into its key-value pairs (depth-1 only).
+/// Returns the exact bytes for each key and value.
+/// Keys are returned WITHOUT quotes. Values are the exact bytes from the JSON.
+fn parse_nested_object_kv(obj: &[u8]) -> Option<Vec<(Vec<u8>, Vec<u8>)>> {
+    let mut pos = 0;
+
+    // Skip whitespace.
+    while pos < obj.len() && obj[pos].is_ascii_whitespace() {
+        pos += 1;
+    }
+    if pos >= obj.len() || obj[pos] != b'{' {
+        return None;
+    }
+    pos += 1;
+
+    let mut pairs: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+
+    loop {
+        // Skip whitespace.
+        while pos < obj.len() && obj[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+        if pos >= obj.len() {
+            return None;
+        }
+        if obj[pos] == b'}' {
+            break;
+        }
+
+        // Expect a key string.
+        if obj[pos] != b'"' {
+            return None;
+        }
+        pos += 1;
+        let key_start = pos;
+        let mut escaped = false;
+        while pos < obj.len() {
+            if escaped {
+                escaped = false;
+            } else if obj[pos] == b'\\' {
+                escaped = true;
+            } else if obj[pos] == b'"' {
+                break;
+            }
+            pos += 1;
+        }
+        if pos >= obj.len() {
+            return None;
+        }
+        let key = obj[key_start..pos].to_vec();
+        pos += 1; // skip closing quote
+
+        // Skip whitespace, expect colon.
+        while pos < obj.len() && obj[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+        if pos >= obj.len() || obj[pos] != b':' {
+            return None;
+        }
+        pos += 1;
+
+        // Extract the value.
+        let (value, value_end) = extract_value(obj, pos)?;
+        pos = value_end;
+        pairs.push((key, value));
+
+        // Skip whitespace.
+        while pos < obj.len() && obj[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+        if pos >= obj.len() {
+            return None;
+        }
+        if obj[pos] == b',' {
+            pos += 1;
+        } else if obj[pos] == b'}' {
+            break;
+        } else {
+            return None;
+        }
+    }
+
+    if pairs.is_empty() {
+        return None;
+    }
+    Some(pairs)
+}
+
+/// Unflatten nested sub-columns back into JSON objects.
+///
+/// Takes flattened columnar data and nested group info, merges sub-columns
+/// back into the original nested object columns.
+fn unflatten_nested_columns(
+    flat_data: &[u8],
+    nested_groups: &[NestedGroupInfo],
+    num_rows: usize,
+    total_flat_cols: usize,
+) -> Vec<u8> {
+    let flat_columns: Vec<&[u8]> = flat_data.split(|&b| b == COL_SEP).collect();
+    if flat_columns.len() != total_flat_cols {
+        return flat_data.to_vec();
+    }
+
+    // Parse all flat column values.
+    let mut flat_col_values: Vec<Vec<&[u8]>> = Vec::with_capacity(total_flat_cols);
+    for chunk in &flat_columns {
+        let vals: Vec<&[u8]> = chunk.split(|&b| b == VAL_SEP).collect();
+        if vals.len() != num_rows {
+            return flat_data.to_vec();
+        }
+        flat_col_values.push(vals);
+    }
+
+    // Reconstruct original columns from flat columns.
+    // Walk through flat columns, merging sub-columns back where needed.
+    let mut output_columns: Vec<Vec<Vec<u8>>> = Vec::new();
+
+    // Build a set of original_col_index -> group for quick lookup.
+    // We need to know which flat columns map to which nested group.
+    // The flat columns are in order: non-nested cols keep their position,
+    // nested cols are replaced by their sub-columns at that position.
+    //
+    // To figure out which flat_idx corresponds to what, we replay the
+    // forward mapping.
+    // We need to know the ORIGINAL number of columns.
+    let original_num_cols = total_flat_cols
+        - nested_groups
+            .iter()
+            .map(|g| g.sub_keys.len())
+            .sum::<usize>()
+        + nested_groups.len();
+
+    // Build mapping: for each original col, is it nested or not?
+    let mut original_col_map: Vec<Option<usize>> = vec![None; original_num_cols];
+    for (gi, group) in nested_groups.iter().enumerate() {
+        if (group.original_col_index as usize) < original_num_cols {
+            original_col_map[group.original_col_index as usize] = Some(gi);
+        }
+    }
+
+    let mut flat_idx = 0;
+    for entry in original_col_map.iter().take(original_num_cols) {
+        if let Some(gi) = entry {
+            let group = &nested_groups[*gi];
+            let num_sub = group.sub_keys.len();
+
+            // Merge sub-columns back into nested objects.
+            let mut merged_col: Vec<Vec<u8>> = Vec::with_capacity(num_rows);
+            for row in 0..num_rows {
+                // Check if all sub-columns are null for this row.
+                let all_null = (0..num_sub).all(|si| {
+                    flat_idx + si < flat_col_values.len()
+                        && flat_col_values[flat_idx + si][row] == b"null"
+                });
+                if all_null {
+                    merged_col.push(b"null".to_vec());
+                } else {
+                    // Build a JSON object from the sub-keys and values.
+                    let mut obj = Vec::new();
+                    obj.push(b'{');
+                    let mut first = true;
+                    for si in 0..num_sub {
+                        if flat_idx + si >= flat_col_values.len() {
+                            break;
+                        }
+                        let val = flat_col_values[flat_idx + si][row];
+                        if val == b"null" {
+                            continue; // skip null sub-keys in reconstruction
+                        }
+                        if !first {
+                            obj.push(b',');
+                        }
+                        first = false;
+                        obj.push(b'"');
+                        obj.extend_from_slice(&group.sub_keys[si]);
+                        obj.push(b'"');
+                        obj.push(b':');
+                        obj.extend_from_slice(val);
+                    }
+                    obj.push(b'}');
+                    merged_col.push(obj);
+                }
+            }
+            output_columns.push(merged_col);
+            flat_idx += num_sub;
+        } else {
+            // Non-nested column — copy as-is.
+            if flat_idx < flat_col_values.len() {
+                let col: Vec<Vec<u8>> = flat_col_values[flat_idx]
+                    .iter()
+                    .map(|v| v.to_vec())
+                    .collect();
+                output_columns.push(col);
+            }
+            flat_idx += 1;
+        }
+    }
+
+    // Rebuild columnar data.
+    let num_out_cols = output_columns.len();
+    let mut out = Vec::new();
+    for (ci, col) in output_columns.iter().enumerate() {
+        for (ri, val) in col.iter().enumerate() {
+            out.extend_from_slice(val);
+            if ri < num_rows - 1 {
+                out.push(VAL_SEP);
+            }
+        }
+        if ci < num_out_cols - 1 {
+            out.push(COL_SEP);
+        }
+    }
+
+    out
+}
+
+/// Serialize nested group info into bytes for storage in metadata.
+fn serialize_nested_info(groups: &[NestedGroupInfo]) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.push(1u8); // has_nested = 1
+    out.push(groups.len() as u8);
+    for group in groups {
+        out.extend_from_slice(&group.original_col_index.to_le_bytes());
+        out.extend_from_slice(&(group.sub_keys.len() as u16).to_le_bytes());
+        for key in &group.sub_keys {
+            out.extend_from_slice(&(key.len() as u16).to_le_bytes());
+            out.extend_from_slice(key);
+        }
+    }
+    out
+}
+
+/// Deserialize nested group info from metadata bytes.
+/// Returns (nested_groups, bytes_consumed).
+fn deserialize_nested_info(data: &[u8]) -> Option<(Vec<NestedGroupInfo>, usize)> {
+    if data.is_empty() {
+        return None;
+    }
+    let mut pos = 0;
+    let has_nested = data[pos];
+    pos += 1;
+    if has_nested != 1 {
+        return None;
+    }
+    if pos >= data.len() {
+        return None;
+    }
+    let num_groups = data[pos] as usize;
+    pos += 1;
+
+    let mut groups = Vec::with_capacity(num_groups);
+    for _ in 0..num_groups {
+        if pos + 4 > data.len() {
+            return None;
+        }
+        let original_col_index = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap());
+        pos += 2;
+        let num_sub_cols = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
+        pos += 2;
+
+        let mut sub_keys = Vec::with_capacity(num_sub_cols);
+        for _ in 0..num_sub_cols {
+            if pos + 2 > data.len() {
+                return None;
+            }
+            let key_len = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
+            pos += 2;
+            if pos + key_len > data.len() {
+                return None;
+            }
+            sub_keys.push(data[pos..pos + key_len].to_vec());
+            pos += key_len;
+        }
+
+        groups.push(NestedGroupInfo {
+            original_col_index,
+            sub_keys,
+        });
+    }
+
+    Some((groups, pos))
+}
+
 /// Forward transform: NDJSON columnar reorg.
 ///
 /// Tries Strategy 1 (uniform) first, then Strategy 2 (grouped) if schemas differ.
@@ -521,8 +955,26 @@ pub fn preprocess(data: &[u8]) -> Option<TransformResult> {
     }
 
     // Strategy 1: try uniform schema first.
-    if let Some((col_data, metadata)) = preprocess_uniform(&non_empty, has_trailing_newline) {
+    if let Some((col_data, mut metadata)) = preprocess_uniform(&non_empty, has_trailing_newline) {
         if col_data.len() + metadata.len() < data.len() {
+            // Try depth-1 nested decomposition on the columnar output.
+            // Even if the flattened data is slightly larger raw, the downstream
+            // typed encoding + compression benefits are significant: null bitmaps
+            // are compact and type-homogeneous columns compress much better.
+            let num_rows = non_empty.len();
+            if let Some((flat_data, nested_groups)) =
+                flatten_nested_columns(&col_data, num_rows)
+            {
+                // Append nested info to metadata.
+                let nested_bytes = serialize_nested_info(&nested_groups);
+                metadata.extend_from_slice(&nested_bytes);
+                return Some(TransformResult {
+                    data: flat_data,
+                    metadata,
+                });
+            }
+            // No nested objects found — append has_nested=0.
+            metadata.push(0u8); // has_nested = 0
             return Some(TransformResult {
                 data: col_data,
                 metadata,
@@ -591,6 +1043,18 @@ fn reverse_uniform(data: &[u8], metadata: &[u8]) -> Vec<u8> {
 
     if parts.len() != num_cols + 1 || num_rows == 0 || num_cols == 0 {
         return data.to_vec();
+    }
+
+    // Check for nested metadata after template parts.
+    let remaining_metadata = &metadata[pos..];
+    if !remaining_metadata.is_empty() && remaining_metadata[0] == 1 {
+        // has_nested == 1: unflatten before reconstructing rows.
+        if let Some((nested_groups, _)) = deserialize_nested_info(remaining_metadata) {
+            // Calculate total number of flat columns.
+            let total_flat_cols = data.split(|&b| b == COL_SEP).count();
+            let unflattened = unflatten_nested_columns(data, &nested_groups, num_rows, total_flat_cols);
+            return reverse_uniform_from_parts(&unflattened, &parts, num_rows, num_cols, has_trailing_newline);
+        }
     }
 
     reverse_uniform_from_parts(data, &parts, num_rows, num_cols, has_trailing_newline)
@@ -1224,5 +1688,140 @@ mod tests {
         assert_eq!(result.metadata[0], METADATA_VERSION_GROUPED);
         let restored = reverse(&result.data, &result.metadata);
         assert_eq!(restored, data);
+    }
+
+    // --- Nested decomposition tests ---
+
+    #[test]
+    fn test_nested_decomposition_basic() {
+        // Simple nested object decomposed correctly.
+        let data = br#"{"id":1,"meta":{"x":10,"y":20}}
+{"id":2,"meta":{"x":30,"y":40}}
+{"id":3,"meta":{"x":50,"y":60}}
+"#;
+        let result = preprocess(data).expect("should produce transform");
+        assert_eq!(result.metadata[0], METADATA_VERSION_UNIFORM);
+
+        // The columnar data should have expanded columns.
+        let cols: Vec<&[u8]> = result.data.split(|&b| b == COL_SEP).collect();
+        // Original: 2 cols (id, meta). After flattening: 3 cols (id, meta.x, meta.y).
+        assert_eq!(cols.len(), 3, "should have 3 columns after flattening: got {}", cols.len());
+
+        // Verify sub-columns contain the extracted values.
+        let meta_x_vals: Vec<&[u8]> = cols[1].split(|&b| b == VAL_SEP).collect();
+        assert_eq!(meta_x_vals, vec![b"10".as_slice(), b"30", b"50"]);
+
+        let meta_y_vals: Vec<&[u8]> = cols[2].split(|&b| b == VAL_SEP).collect();
+        assert_eq!(meta_y_vals, vec![b"20".as_slice(), b"40", b"60"]);
+    }
+
+    #[test]
+    fn test_nested_roundtrip() {
+        // Flatten -> unflatten produces byte-exact original.
+        let data = br#"{"id":1,"meta":{"x":10,"y":20}}
+{"id":2,"meta":{"x":30,"y":40}}
+{"id":3,"meta":{"x":50,"y":60}}
+"#;
+        let result = preprocess(data).expect("should produce transform");
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(
+            String::from_utf8_lossy(&restored),
+            String::from_utf8_lossy(data),
+        );
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn test_nested_mixed_schemas() {
+        // Different nested objects per row (some keys missing -> null).
+        let data = br#"{"ts":"a","meta":{"query":"benchmark","results_count":14}}
+{"ts":"b","meta":{"element_id":"btn_5","x":450,"y":230}}
+{"ts":"c","meta":{"query":"pricing","results_count":25}}
+{"ts":"d","meta":{"element_id":"btn_2","x":100,"y":200}}
+{"ts":"e","meta":{"query":"api docs","results_count":41}}
+"#;
+        let result = preprocess(data).expect("should produce transform");
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(
+            String::from_utf8_lossy(&restored),
+            String::from_utf8_lossy(data),
+        );
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn test_nested_no_nested_objects() {
+        // Returns None when no nested objects — flat data should still work.
+        let data = br#"{"a":1,"b":"x"}
+{"a":2,"b":"y"}
+{"a":3,"b":"z"}
+"#;
+        let result = preprocess(data).expect("should produce transform");
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(restored, data.to_vec());
+
+        // Verify the metadata has has_nested=0 since no nested objects.
+        // The nested flag is appended after template parts.
+        // For uniform, metadata starts with version(1) + num_rows(4) + num_cols(2) +
+        // trailing_newline(1) + num_parts(2) + parts.
+        // After those parts, there should be a 0 byte (has_nested=0).
+        let meta = &result.metadata;
+        let last_byte = meta[meta.len() - 1];
+        assert_eq!(last_byte, 0, "should have has_nested=0 for flat data");
+    }
+
+    #[test]
+    fn test_nested_real_corpus() {
+        // Test with data shaped like the test-ndjson.ndjson corpus.
+        let data = br#"{"ts":"a","type":"search","meta":{"query":"benchmark","results_count":14}}
+{"ts":"b","type":"click","meta":{"element_id":"btn_5","x":450,"y":230}}
+{"ts":"c","type":"scroll","meta":{"scroll_depth":0.27,"scroll_direction":"down","max_scroll":0.27}}
+{"ts":"d","type":"api_call","meta":{"endpoint":"/api/v1/docs","method":"GET","status_code":200,"response_bytes":20460}}
+{"ts":"e","type":"page_view","meta":{"viewport_width":1920,"viewport_height":1080,"color_depth":30,"timezone":"Asia/Tokyo","language":"ja-JP"}}
+"#;
+        let result = preprocess(data).expect("should produce transform");
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(
+            String::from_utf8_lossy(&restored),
+            String::from_utf8_lossy(data),
+        );
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn test_nested_roundtrip_with_null_values() {
+        // Some rows have null for the nested field.
+        let data = br#"{"id":1,"meta":{"x":10}}
+{"id":2,"meta":null}
+{"id":3,"meta":{"x":30}}
+{"id":4,"meta":null}
+{"id":5,"meta":{"x":50}}
+"#;
+        let result = preprocess(data).expect("should produce transform");
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn test_nested_string_values_preserved_exact() {
+        // Verify that string values in nested objects preserve exact bytes (with quotes).
+        let data = br#"{"id":1,"meta":{"name":"Alice","score":100}}
+{"id":2,"meta":{"name":"Bob","score":200}}
+{"id":3,"meta":{"name":"Charlie","score":300}}
+"#;
+        let result = preprocess(data).expect("should produce transform");
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn test_parse_nested_object_kv() {
+        let obj = br#"{"query":"benchmark","results_count":14}"#;
+        let pairs = parse_nested_object_kv(obj).unwrap();
+        assert_eq!(pairs.len(), 2);
+        assert_eq!(pairs[0].0, b"query");
+        assert_eq!(pairs[0].1, br#""benchmark""#.to_vec());
+        assert_eq!(pairs[1].0, b"results_count");
+        assert_eq!(pairs[1].1, b"14");
     }
 }

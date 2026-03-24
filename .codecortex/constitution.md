@@ -8,7 +8,7 @@
 - **Files:** 50
 - **Symbols:** 953
 - **Modules:** 3
-- **Last updated:** 2026-03-24T19:29:42.570Z
+- **Last updated:** 2026-03-24T19:30:41.860Z
 
 ## Architecture
 
@@ -22,16 +22,16 @@
 **Hottest files (most changes):**
 - `crates/datacortex-core/src/format/mod.rs` — 14 changes, VOLATILE
 - `crates/datacortex-core/src/model/engine.rs` — 13 changes, VOLATILE
+- `CLAUDE.md` — 11 changes, VOLATILE
+- `crates/datacortex-core/src/codec.rs` — 11 changes, VOLATILE
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` — 11 changes, VOLATILE
-- `crates/datacortex-core/src/model/mod.rs` — 11 changes, VOLATILE
-- `CLAUDE.md` — 10 changes, VOLATILE
 
 **Hidden dependencies (co-change but no import):**
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` — 11 co-changes (85%)
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` — 10 co-changes (71%)
 - `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` — 8 co-changes (62%)
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/mod.rs` — 6 co-changes (55%)
-- `crates/datacortex-core/src/codec.rs` ↔ `crates/datacortex-core/src/mixer/mod.rs` — 5 co-changes (50%)
+- `Cargo.toml` ↔ `crates/datacortex-core/Cargo.toml` — 5 co-changes (100%)
 
 ## Available Knowledge
 

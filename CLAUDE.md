@@ -115,9 +115,9 @@ Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` in commit mess
 **High-risk files:**
 - `crates/datacortex-core/src/format/mod.rs` — 14 changes, volatile, coupled to: transform.rs ⚠, dcx.rs ⚠
 - `crates/datacortex-core/src/model/engine.rs` — 13 changes, volatile, coupled to: dual_mixer.rs ⚠, mod.rs ⚠
+- `CLAUDE.md` — 11 changes, volatile
+- `crates/datacortex-core/src/codec.rs` — 11 changes, volatile, coupled to: mod.rs ⚠, mod.rs ⚠
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` — 11 changes, volatile, coupled to: engine.rs ⚠, mod.rs ⚠
-- `crates/datacortex-core/src/model/mod.rs` — 11 changes, volatile, coupled to: engine.rs ⚠, dual_mixer.rs ⚠
-- `CLAUDE.md` — 10 changes, volatile
 
 **Hidden couplings (co-change, no import):**
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` (85% co-change)
