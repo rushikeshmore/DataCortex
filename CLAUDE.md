@@ -93,15 +93,15 @@ Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` i
 ## CodeCortex — Project Knowledge (auto-updated)
 
 ### Architecture
-**datacortex** — rust — 50 files, 984 symbols
-- **Modules (3):** datacortex-core (16860loc), datacortex-neural (773loc), datacortex-cli (635loc)
+**datacortex** — rust — 50 files, 1003 symbols
+- **Modules (3):** datacortex-core (17365loc), datacortex-neural (773loc), datacortex-cli (642loc)
 
 ### Risk Map
 **High-risk files:**
-- `CLAUDE.md` — 14 changes, volatile
+- `CLAUDE.md` — 15 changes, volatile
 - `crates/datacortex-core/src/format/mod.rs` — 14 changes, volatile, coupled to: transform.rs ⚠, dcx.rs ⚠
+- `crates/datacortex-core/src/codec.rs` — 13 changes, volatile, coupled to: lib.rs ⚠, main.rs ⚠
 - `crates/datacortex-core/src/model/engine.rs` — 13 changes, volatile, coupled to: dual_mixer.rs ⚠, mod.rs ⚠
-- `crates/datacortex-core/src/codec.rs` — 12 changes, volatile, coupled to: mod.rs ⚠, mod.rs ⚠
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` — 11 changes, volatile, coupled to: engine.rs ⚠, mod.rs ⚠
 
 **Hidden couplings (co-change, no import):**

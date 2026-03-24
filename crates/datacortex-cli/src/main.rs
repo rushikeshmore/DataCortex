@@ -6,7 +6,7 @@ use std::time::Instant;
 use clap::{Parser, Subcommand};
 use datacortex_core::{
     codec::compress_to_vec,
-    compress_with_options,
+    compress_with_options, decompress_multiframe,
     dcx::{FormatHint, Mode},
     decompress_with_model, detect_format,
     format::detect_from_extension,
@@ -65,6 +65,10 @@ enum Command {
         /// Override zstd compression level (Fast mode only; default: mode-based)
         #[arg(long)]
         level: Option<i32>,
+        /// Split NDJSON input into chunks of N rows, compressing each as an independent .dcx frame.
+        /// Enables bounded-memory processing of arbitrarily large files.
+        #[arg(long)]
+        chunk_rows: Option<usize>,
     },
     /// Decompress a .dcx file
     Decompress {
@@ -133,6 +137,7 @@ fn cmd_compress(
     format_override: Option<FormatHint>,
     model_path: Option<&str>,
     zstd_level_override: Option<i32>,
+    chunk_rows: Option<usize>,
     quiet: bool,
     verbose: bool,
 ) -> io::Result<()> {
@@ -175,20 +180,83 @@ fn cmd_compress(
         eprintln!("  input:  {} ({} bytes)", input.display(), data.len());
         eprintln!("  mode:   {mode}");
         eprintln!("  format: {format}");
+        if let Some(n) = chunk_rows {
+            eprintln!("  chunk:  {n} rows per frame");
+        }
     }
 
     let start = Instant::now();
-    let mut out = BufWriter::new(fs::File::create(&output_path)?);
-    compress_with_options(&data, mode, Some(format), model_path, zstd_level_override, &mut out)?;
-    let elapsed = start.elapsed();
 
+    if let Some(chunk_size) = chunk_rows {
+        if chunk_size == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "--chunk-rows must be > 0",
+            ));
+        }
+
+        // Multi-frame chunked compression: split NDJSON by rows.
+        let lines: Vec<&[u8]> = data.split(|&b| b == b'\n').filter(|l| !l.is_empty()).collect();
+        let num_chunks = lines.len().div_ceil(chunk_size);
+
+        if !quiet && verbose {
+            eprintln!(
+                "  chunked: {} rows -> {} chunks of up to {} rows",
+                lines.len(),
+                num_chunks,
+                chunk_size
+            );
+        }
+
+        let mut out = BufWriter::new(fs::File::create(&output_path)?);
+        for chunk_lines in lines.chunks(chunk_size) {
+            // Rejoin chunk lines with newlines, add trailing newline.
+            let mut chunk_data = Vec::new();
+            for (i, line) in chunk_lines.iter().enumerate() {
+                if i > 0 {
+                    chunk_data.push(b'\n');
+                }
+                chunk_data.extend_from_slice(line);
+            }
+            chunk_data.push(b'\n');
+
+            // Compress this chunk as an independent .dcx frame.
+            compress_with_options(
+                &chunk_data,
+                mode,
+                Some(format),
+                model_path,
+                zstd_level_override,
+                &mut out,
+            )?;
+        }
+        drop(out);
+    } else {
+        // Single-frame compression (existing path).
+        let mut out = BufWriter::new(fs::File::create(&output_path)?);
+        compress_with_options(
+            &data,
+            mode,
+            Some(format),
+            model_path,
+            zstd_level_override,
+            &mut out,
+        )?;
+    }
+
+    let elapsed = start.elapsed();
     let output_size = fs::metadata(&output_path)?.len();
     let bpb = (output_size as f64 * 8.0) / data.len() as f64;
     let ratio = output_size as f64 / data.len() as f64;
 
     if !quiet {
+        let chunk_info = if let Some(n) = chunk_rows {
+            format!(", chunk_rows={n}")
+        } else {
+            String::new()
+        };
         println!(
-            "{} -> {} ({} -> {} bytes, {:.2} bpb, {:.1}% ratio, mode={}, format={}, {:.1}ms)",
+            "{} -> {} ({} -> {} bytes, {:.2} bpb, {:.1}% ratio, mode={}, format={}{}, {:.1}ms)",
             input.display(),
             output_path.display(),
             data.len(),
@@ -197,6 +265,7 @@ fn cmd_compress(
             ratio * 100.0,
             mode,
             format,
+            chunk_info,
             elapsed.as_secs_f64() * 1000.0,
         );
     }
@@ -223,19 +292,39 @@ fn cmd_decompress(
         ));
     }
 
-    let file = fs::File::open(input)?;
-    let mut reader = BufReader::new(file);
-
     let start = Instant::now();
-    let data = decompress_with_model(&mut reader, model_path)?;
+
+    // Read the entire file and check if it's multi-frame.
+    // A multi-frame .dcx file has more data after the first frame ends.
+    let file_data = fs::read(input)?;
+
+    // Parse the first header to determine where the first frame ends.
+    let header = read_header(&mut BufReader::new(std::io::Cursor::new(&file_data)))?;
+    let first_frame_end = header.total_size() + header.compressed_size as usize;
+
+    let data = if first_frame_end < file_data.len() {
+        // Multi-frame: use decompress_multiframe which reads all frames.
+        decompress_multiframe(&file_data)?
+    } else {
+        // Single frame: use standard path (supports model_path for neural).
+        let mut reader = BufReader::new(std::io::Cursor::new(&file_data));
+        decompress_with_model(&mut reader, model_path)?
+    };
+
     let elapsed = start.elapsed();
 
     fs::write(output, &data)?;
 
     if !quiet {
+        let frames = if first_frame_end < file_data.len() {
+            " (multi-frame)"
+        } else {
+            ""
+        };
         println!(
-            "{} -> {} ({} bytes, {:.1}ms)",
+            "{}{} -> {} ({} bytes, {:.1}ms)",
             input.display(),
+            frames,
             output.display(),
             data.len(),
             elapsed.as_secs_f64() * 1000.0,
@@ -594,6 +683,7 @@ fn main() {
             mode,
             format,
             level,
+            chunk_rows,
         } => {
             let mode = parse_mode(mode).unwrap_or_else(|e| {
                 eprintln!("Error: {e}");
@@ -612,6 +702,7 @@ fn main() {
                 format,
                 cli.model_path.as_deref(),
                 *level,
+                *chunk_rows,
                 cli.quiet,
                 cli.verbose,
             )

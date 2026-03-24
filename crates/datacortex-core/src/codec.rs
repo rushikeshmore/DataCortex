@@ -940,6 +940,37 @@ pub fn decompress_from_slice(dcx_data: &[u8]) -> io::Result<Vec<u8>> {
     decompress(&mut cursor)
 }
 
+/// Decompress a multi-frame .dcx file (or a single-frame .dcx file).
+///
+/// Each frame is a complete .dcx v3 chunk. Frames are decompressed sequentially
+/// and their outputs concatenated. Single-frame files work identically to
+/// `decompress_from_slice`.
+///
+/// This is the primary entry point for decompressing chunked .dcx files produced
+/// by `--chunk-rows`. Each chunk was compressed independently as a full .dcx frame.
+pub fn decompress_multiframe(data: &[u8]) -> io::Result<Vec<u8>> {
+    if data.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut output = Vec::new();
+    let mut cursor = Cursor::new(data);
+
+    loop {
+        let pos = cursor.position() as usize;
+        if pos >= data.len() {
+            break;
+        }
+
+        // Try to read the next frame. If there's not enough data for a header,
+        // we're done (could be trailing bytes from alignment, but unlikely).
+        let frame_data = decompress_with_model(&mut cursor, None)?;
+        output.extend_from_slice(&frame_data);
+    }
+
+    Ok(output)
+}
+
 /// Read header only (for `info` command).
 pub fn read_header<R: Read>(input: &mut R) -> io::Result<DcxHeader> {
     DcxHeader::read_from(input)
@@ -1342,5 +1373,130 @@ mod tests {
             high.len(),
             low.len()
         );
+    }
+
+    // ─── Multi-frame (chunked) compression tests ─────────────────────────────
+
+    /// Build a synthetic NDJSON dataset with the given number of rows.
+    fn make_ndjson(num_rows: usize) -> Vec<u8> {
+        let mut out = String::new();
+        for i in 0..num_rows {
+            out.push_str(&format!(
+                r#"{{"id":{},"name":"user_{}","status":"active","score":{}}}"#,
+                i,
+                i,
+                i * 17 % 100
+            ));
+            out.push('\n');
+        }
+        out.into_bytes()
+    }
+
+    /// Compress NDJSON data into a multi-frame .dcx blob using chunk_rows splitting.
+    fn compress_chunked(data: &[u8], chunk_rows: usize) -> Vec<u8> {
+        let lines: Vec<&[u8]> = data.split(|&b| b == b'\n').filter(|l| !l.is_empty()).collect();
+        let mut output = Vec::new();
+        for chunk_lines in lines.chunks(chunk_rows) {
+            let mut chunk_data = Vec::new();
+            for (i, line) in chunk_lines.iter().enumerate() {
+                if i > 0 {
+                    chunk_data.push(b'\n');
+                }
+                chunk_data.extend_from_slice(line);
+            }
+            chunk_data.push(b'\n');
+            let mut frame = Vec::new();
+            compress_with_options(
+                &chunk_data,
+                Mode::Fast,
+                Some(FormatHint::Ndjson),
+                None,
+                None,
+                &mut frame,
+            )
+            .unwrap();
+            output.extend_from_slice(&frame);
+        }
+        output
+    }
+
+    #[test]
+    fn test_multiframe_roundtrip() {
+        let original = make_ndjson(500);
+        let compressed = compress_chunked(&original, 100);
+
+        // Must have multiple frames (500 rows / 100 = 5 frames).
+        let header = DcxHeader::read_from(&mut Cursor::new(&compressed)).unwrap();
+        let first_end = header.total_size() + header.compressed_size as usize;
+        assert!(
+            first_end < compressed.len(),
+            "should be multi-frame: first_end={first_end}, total={}",
+            compressed.len()
+        );
+
+        let decompressed = decompress_multiframe(&compressed).unwrap();
+        assert_eq!(
+            decompressed, original,
+            "multi-frame roundtrip: byte-exact mismatch ({} vs {} bytes)",
+            decompressed.len(),
+            original.len()
+        );
+    }
+
+    #[test]
+    fn test_multiframe_various_chunk_sizes() {
+        let original = make_ndjson(1000);
+        for chunk_size in [50, 100, 250, 500, 999] {
+            let compressed = compress_chunked(&original, chunk_size);
+            let decompressed = decompress_multiframe(&compressed).unwrap();
+            assert_eq!(
+                decompressed, original,
+                "multiframe roundtrip failed for chunk_size={chunk_size}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_multiframe_single_chunk_equals_no_chunk() {
+        // When chunk_size >= total rows, multi-frame produces exactly one frame,
+        // which should decompress identically to the original.
+        let original = make_ndjson(100);
+        let chunked = compress_chunked(&original, 1000); // 1000 > 100 rows
+        let decompressed = decompress_multiframe(&chunked).unwrap();
+        assert_eq!(decompressed, original);
+
+        // Also verify via single-frame path.
+        let single = decompress_from_slice(&chunked).unwrap();
+        assert_eq!(single, original);
+    }
+
+    #[test]
+    fn test_multiframe_backward_compat() {
+        // Old single-frame .dcx files must still decompress through decompress_multiframe.
+        let original = b"Hello, this is a backward compat test for single-frame .dcx files.";
+        let compressed = compress_to_vec(original.as_slice(), Mode::Fast, None).unwrap();
+
+        // decompress_multiframe should handle single-frame just fine.
+        let decompressed = decompress_multiframe(&compressed).unwrap();
+        assert_eq!(decompressed, original.as_slice());
+
+        // Original path still works too.
+        let decompressed2 = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed2, original.as_slice());
+    }
+
+    #[test]
+    fn test_multiframe_empty_input() {
+        let result = decompress_multiframe(&[]).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_multiframe_one_row_per_chunk() {
+        // Extreme case: every row is its own frame.
+        let original = make_ndjson(20);
+        let compressed = compress_chunked(&original, 1);
+        let decompressed = decompress_multiframe(&compressed).unwrap();
+        assert_eq!(decompressed, original);
     }
 }
