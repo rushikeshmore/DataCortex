@@ -8,12 +8,14 @@ pub mod json_array;
 pub mod ndjson;
 pub mod schema;
 pub mod transform;
+pub mod typed_encoding;
 pub mod value_dict;
 
 use crate::dcx::{FormatHint, Mode};
 use transform::{
     TRANSFORM_JSON_ARRAY_COLUMNAR, TRANSFORM_JSON_KEY_INTERN,
-    TRANSFORM_NDJSON_COLUMNAR, TRANSFORM_VALUE_DICT, TransformChain,
+    TRANSFORM_NDJSON_COLUMNAR, TRANSFORM_TYPED_ENCODING, TRANSFORM_VALUE_DICT,
+    TransformChain,
 };
 
 /// Detect file format from content bytes.
@@ -76,9 +78,23 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
         }
     }
 
+    // Typed encoding: Fast mode ONLY. CM mode doesn't benefit (gotcha #35 confirmed).
+    // Binary encoding disrupts CM's learned text patterns. But zstd benefits from
+    // smaller raw data (delta varints, boolean bitmaps).
+    if columnar_applied && mode == Mode::Fast {
+        if let Some(result) = typed_encoding::preprocess(&current) {
+            chain.push(TRANSFORM_TYPED_ENCODING, result.metadata);
+            current = result.data;
+        }
+    }
+
     // Value dictionary: chain AFTER any columnar transform.
     // Replaces repeated multi-byte values with single-byte codes.
     // Only applies to columnar data (uses \x00/\x01 separators).
+    // NOTE: value dict only operates on \x00/\x01-separated data.
+    // If typed encoding was applied, the data is now binary (no separators),
+    // so value dict will naturally not apply (it won't find separators to split on,
+    // or its size check will fail).
     if columnar_applied {
         if let Some(result) = value_dict::preprocess(&current) {
             chain.push(TRANSFORM_VALUE_DICT, result.metadata);
@@ -120,6 +136,9 @@ pub fn reverse_preprocess(data: &[u8], chain: &TransformChain) -> Vec<u8> {
             }
             TRANSFORM_VALUE_DICT => {
                 current = value_dict::reverse(&current, &record.metadata);
+            }
+            TRANSFORM_TYPED_ENCODING => {
+                current = typed_encoding::reverse(&current, &record.metadata);
             }
             _ => {} // Unknown/legacy transform — skip.
         }

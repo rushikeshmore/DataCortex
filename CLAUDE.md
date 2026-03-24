@@ -108,21 +108,21 @@ Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` in commit mess
 ## CodeCortex — Project Knowledge (auto-updated)
 
 ### Architecture
-**datacortex** — rust — 47 files, 807 symbols
-- **Modules (3):** datacortex-core (12314loc), datacortex-neural (773loc), datacortex-cli (635loc)
+**datacortex** — rust — 49 files, 860 symbols
+- **Modules (3):** datacortex-core (13457loc), datacortex-neural (773loc), datacortex-cli (635loc)
 
 ### Risk Map
 **High-risk files:**
-- `crates/datacortex-core/src/model/engine.rs` — 12 changes, stabilizing, coupled to: dual_mixer.rs ⚠, mod.rs ⚠
-- `crates/datacortex-core/src/codec.rs` — 10 changes, stabilizing, coupled to: mod.rs ⚠, mod.rs ⚠
-- `crates/datacortex-core/src/model/mod.rs` — 10 changes, stabilizing, coupled to: engine.rs ⚠, codec.rs ⚠
-- `crates/datacortex-core/src/format/mod.rs` — 10 changes, stabilizing, coupled to: transform.rs ⚠, codec.rs ⚠
-- `crates/datacortex-core/src/mixer/dual_mixer.rs` — 10 changes, stabilizing, coupled to: engine.rs ⚠, mod.rs ⚠
+- `crates/datacortex-core/src/model/engine.rs` — 13 changes, volatile, coupled to: dual_mixer.rs ⚠, mod.rs ⚠
+- `crates/datacortex-core/src/format/mod.rs` — 12 changes, volatile, coupled to: transform.rs ⚠, dcx.rs ⚠
+- `crates/datacortex-core/src/mixer/dual_mixer.rs` — 11 changes, volatile, coupled to: engine.rs ⚠, mod.rs ⚠
+- `crates/datacortex-core/src/model/mod.rs` — 11 changes, volatile, coupled to: engine.rs ⚠, dual_mixer.rs ⚠
+- `crates/datacortex-core/src/codec.rs` — 10 changes, stabilizing, coupled to: mod.rs ⚠, lib.rs ⚠
 
 **Hidden couplings (co-change, no import):**
-- `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` (83% co-change)
-- `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (80% co-change)
-- `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` (58% co-change)
+- `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` (85% co-change)
+- `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (75% co-change)
+- `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` (62% co-change)
 
 ### Before Editing
 Check `.codecortex/hotspots.md` for risk-ranked files before editing.

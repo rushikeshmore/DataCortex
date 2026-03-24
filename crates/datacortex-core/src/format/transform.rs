@@ -37,6 +37,7 @@ pub const TRANSFORM_PROMETHEUS_COLUMNAR: u8 = 10;
 pub const TRANSFORM_YAML_COLUMNAR: u8 = 11;
 pub const TRANSFORM_XML_COLUMNAR: u8 = 12;
 pub const TRANSFORM_VALUE_DICT: u8 = 13;
+pub const TRANSFORM_TYPED_ENCODING: u8 = 14;
 
 impl TransformChain {
     pub fn new() -> Self {
