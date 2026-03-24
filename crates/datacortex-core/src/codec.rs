@@ -19,7 +19,7 @@ use crate::model::{CMConfig, CMEngine};
 /// zstd compression level per mode (for Fast mode).
 fn zstd_level(mode: Mode) -> i32 {
     match mode {
-        Mode::Fast => 3,
+        Mode::Fast => 9,
         Mode::Balanced => 19,
         Mode::Max => 22,
     }
