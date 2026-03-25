@@ -93,21 +93,21 @@ Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` i
 ## CodeCortex — Project Knowledge (auto-updated)
 
 ### Architecture
-**datacortex** — rust — 50 files, 1050 symbols
-- **Modules (3):** datacortex-core (19594loc), datacortex-neural (773loc), datacortex-cli (646loc)
+**datacortex** — rust — 49 files, 1049 symbols
+- **Modules (3):** datacortex-core (19602loc), datacortex-neural (773loc), datacortex-cli (653loc)
 
 ### Risk Map
 **High-risk files:**
-- `CLAUDE.md` — 21 changes, volatile
-- `crates/datacortex-core/src/codec.rs` — 17 changes, volatile, coupled to: main.rs ⚠, lib.rs ⚠
-- `.codecortex/constitution.md` — 16 changes, volatile
-- `.codecortex/cortex.yaml` — 16 changes, volatile
-- `.codecortex/graph.json` — 16 changes, volatile
+- `CLAUDE.md` — 22 changes, volatile
+- `crates/datacortex-core/src/codec.rs` — 18 changes, volatile, coupled to: main.rs ⚠, lib.rs ⚠
+- `.codecortex/constitution.md` — 17 changes, volatile
+- `.codecortex/cortex.yaml` — 17 changes, volatile
+- `.codecortex/graph.json` — 17 changes, volatile
 
 **Hidden couplings (co-change, no import):**
-- `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (69% co-change)
-- `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` (85% co-change)
-- `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` (62% co-change)
+- `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (71% co-change)
+- `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` (86% co-change)
+- `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` (57% co-change)
 
 ### Before Editing
 Check `.codecortex/hotspots.md` for risk-ranked files before editing.

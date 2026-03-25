@@ -5,33 +5,33 @@
 ## Project
 - **Name:** datacortex
 - **Languages:** rust
-- **Files:** 50
-- **Symbols:** 1050
+- **Files:** 49
+- **Symbols:** 1049
 - **Modules:** 3
-- **Last updated:** 2026-03-25T12:18:27.588Z
+- **Last updated:** 2026-03-25T13:37:54.797Z
 
 ## Architecture
 
 **Modules (3):**
-- **datacortex-core** (45 files, 19594 lines) — rust
+- **datacortex-core** (44 files, 19602 lines) — rust
 - **datacortex-neural** (3 files, 773 lines) — rust
-- **datacortex-cli** (1 files, 646 lines) — rust
+- **datacortex-cli** (1 files, 653 lines) — rust
 
 ## Risk Map
 
 **Hottest files (most changes):**
-- `CLAUDE.md` — 21 changes, VOLATILE
-- `crates/datacortex-core/src/codec.rs` — 17 changes, VOLATILE
-- `.codecortex/constitution.md` — 16 changes, VOLATILE
-- `.codecortex/cortex.yaml` — 16 changes, VOLATILE
-- `.codecortex/graph.json` — 16 changes, VOLATILE
+- `CLAUDE.md` — 22 changes, VOLATILE
+- `crates/datacortex-core/src/codec.rs` — 18 changes, VOLATILE
+- `.codecortex/constitution.md` — 17 changes, VOLATILE
+- `.codecortex/cortex.yaml` — 17 changes, VOLATILE
+- `.codecortex/graph.json` — 17 changes, VOLATILE
 
 **Hidden dependencies (co-change but no import):**
-- `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` — 11 co-changes (69%)
-- `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` — 11 co-changes (85%)
-- `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` — 8 co-changes (62%)
+- `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` — 12 co-changes (71%)
+- `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` — 12 co-changes (86%)
+- `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` — 8 co-changes (57%)
+- `crates/datacortex-cli/src/main.rs` ↔ `crates/datacortex-core/src/lib.rs` — 6 co-changes (75%)
 - `Cargo.toml` ↔ `crates/datacortex-core/Cargo.toml` — 6 co-changes (100%)
-- `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/mod.rs` — 6 co-changes (55%)
 
 ## Available Knowledge
 
