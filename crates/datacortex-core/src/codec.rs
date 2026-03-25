@@ -238,6 +238,26 @@ fn decompress_with_dict(payload: &[u8], capacity: usize) -> std::io::Result<Vec<
     Ok(output)
 }
 
+// ─── Brotli helpers (Fast mode auto-fallback) ─────────────────────────────────
+
+/// Compress `data` with brotli at the given quality (0-11).
+fn brotli_compress(data: &[u8], quality: u32) -> io::Result<Vec<u8>> {
+    let mut output = Vec::new();
+    let params = brotli::enc::BrotliEncoderParams {
+        quality: quality as i32,
+        ..Default::default()
+    };
+    brotli::BrotliCompress(&mut io::Cursor::new(data), &mut output, &params)?;
+    Ok(output)
+}
+
+/// Decompress a brotli stream. `max_size` is a capacity hint for the output buffer.
+fn brotli_decompress(data: &[u8]) -> io::Result<Vec<u8>> {
+    let mut output = Vec::new();
+    brotli::BrotliDecompress(&mut io::Cursor::new(data), &mut output)?;
+    Ok(output)
+}
+
 /// Compress data using the CM engine with the given configuration.
 /// Returns the compressed byte stream.
 fn cm_compress(data: &[u8], config: CMConfig) -> Vec<u8> {
@@ -663,18 +683,21 @@ pub fn compress_with_options<W: Write>(
 
     // Step 2: Compress with engine.
     let mut use_dict = false;
+    let mut use_brotli = false;
     // Track whether raw fallback won (empty transform chain).
     let mut use_raw_fallback = false;
     let compressed = match mode {
-        // Fast mode: auto-fallback — try both preprocessed and raw, keep smaller.
+        // Fast mode: auto-fallback — try preprocessed+zstd, raw+zstd, raw+brotli,
+        // and preprocessed+brotli. Keep whichever produces the smallest output
+        // (including header and metadata overhead).
         //
         // Preprocessing (columnar + typed encoding) usually helps zstd by grouping
         // similar values. But for some files (e.g. citm_catalog.json with extreme
         // repetition), raw zstd without preprocessing gives MUCH better results
         // because preprocessing removes the repetition patterns zstd's LZ77 exploits.
         //
-        // Strategy: compress both ways, keep whichever is smaller (including header
-        // and metadata overhead).
+        // Brotli at quality 11 can beat zstd on some JSON files (e.g. twitter.json)
+        // because its context modeling handles certain data patterns better.
         Mode::Fast => {
             let level = adaptive_fast_level(preprocessed.len(), zstd_level_override);
 
@@ -720,15 +743,46 @@ pub fn compress_with_options<W: Write>(
             // Total size for Path B: header(32) + 0 (empty metadata) + compressed_b.
             let total_b = 32 + compressed_b.len();
 
-            if total_b < total_a {
-                // Raw wins — use empty transform chain.
-                use_raw_fallback = true;
-                compressed_b
-            } else {
-                // Preprocessed wins — use current behavior.
-                use_dict = dict_a;
-                compressed_a
+            // Start with best of zstd paths.
+            let (mut best_compressed, mut best_total, mut best_dict, mut best_raw, mut best_brotli) =
+                if total_b < total_a {
+                    (compressed_b, total_b, false, true, false)
+                } else {
+                    (compressed_a, total_a, dict_a, false, false)
+                };
+
+            // Path C: raw + brotli.
+            // Use quality 11 for files <= 1MB, 9 for larger (speed tradeoff).
+            let brotli_quality = if data.len() <= 1_048_576 { 11 } else { 9 };
+            if let Ok(brotli_raw) = brotli_compress(data, brotli_quality) {
+                let brotli_raw_total = 32 + brotli_raw.len();
+                if brotli_raw_total < best_total {
+                    best_compressed = brotli_raw;
+                    best_total = brotli_raw_total;
+                    best_dict = false;
+                    best_raw = true;
+                    best_brotli = true;
+                }
             }
+
+            // Path D: preprocessed + brotli.
+            let brotli_prep_quality = if preprocessed.len() <= 1_048_576 { 11 } else { 9 };
+            if let Ok(brotli_prep) = brotli_compress(&preprocessed, brotli_prep_quality) {
+                let brotli_prep_total = 32 + meta_size_for_comparison + brotli_prep.len();
+                if brotli_prep_total < best_total {
+                    best_compressed = brotli_prep;
+                    best_total = brotli_prep_total;
+                    best_dict = false;
+                    best_raw = false;
+                    best_brotli = true;
+                }
+            }
+
+            let _ = best_total; // used only for comparisons
+            use_dict = best_dict;
+            use_raw_fallback = best_raw;
+            use_brotli = best_brotli;
+            best_compressed
         }
         // Balanced mode: dual-path CM + GRU byte predictor.
         Mode::Balanced => {
@@ -828,6 +882,7 @@ pub fn compress_with_options<W: Write>(
         transform_metadata: header_metadata,
         has_dict: use_dict,
         meta_compressed,
+        use_brotli,
     };
 
     header.write_to(output)?;
@@ -854,12 +909,16 @@ pub fn decompress_with_model<R: Read>(
     // Step 1: Decompress with engine.
     let preprocessed = match header.mode {
         Mode::Fast => {
-            let capacity = header.original_size as usize * 2 + 65536;
-            if header.has_dict {
-                decompress_with_dict(&compressed, capacity)?
+            if header.use_brotli {
+                brotli_decompress(&compressed)?
             } else {
-                zstd::bulk::decompress(&compressed, capacity)
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
+                let capacity = header.original_size as usize * 2 + 65536;
+                if header.has_dict {
+                    decompress_with_dict(&compressed, capacity)?
+                } else {
+                    zstd::bulk::decompress(&compressed, capacity)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
+                }
             }
         }
         Mode::Balanced => {
@@ -1630,9 +1689,9 @@ mod tests {
     }
 
     #[test]
-    fn test_twitter_json_preprocessed_wins() {
-        // twitter.json should now use the preprocessed path (non-empty metadata)
-        // because compressed metadata reduces overhead enough to beat raw zstd.
+    fn test_twitter_json_brotli_wins() {
+        // twitter.json should use brotli — raw brotli-11 beats both preprocessed+zstd
+        // and raw+zstd on this file.
         let data = std::fs::read(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../corpus/json-bench/twitter.json"
@@ -1644,13 +1703,12 @@ mod tests {
         let decompressed = decompress_from_slice(&compressed).unwrap();
         assert_eq!(decompressed, data, "twitter.json roundtrip failed");
 
-        // Check that preprocessed path was used (non-empty transform metadata).
+        // Check that brotli was selected.
         let mut cursor = Cursor::new(&compressed);
         let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
         assert!(
-            !header.transform_metadata.is_empty(),
-            "twitter.json should use preprocessed path with compressed metadata \
-             (non-empty transform metadata in header), but got empty metadata (RAW fallback)"
+            header.use_brotli,
+            "twitter.json should use brotli (FLAG_BROTLI set in header)"
         );
     }
 
@@ -1676,5 +1734,87 @@ mod tests {
                 "compressed metadata roundtrip failed for mode {mode}"
             );
         }
+    }
+
+    // ─── Brotli auto-fallback tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_brotli_compress_roundtrip() {
+        // Direct brotli compress/decompress helper roundtrip.
+        let data = b"Hello, brotli! This is a test of the brotli compression helpers.";
+        let compressed = brotli_compress(data, 11).unwrap();
+        let decompressed = brotli_decompress(&compressed).unwrap();
+        assert_eq!(decompressed, data.to_vec());
+    }
+
+    #[test]
+    fn test_brotli_auto_fallback_twitter() {
+        // twitter.json should select brotli and roundtrip correctly.
+        let data = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../corpus/json-bench/twitter.json"
+        ))
+        .unwrap();
+
+        let compressed =
+            compress_to_vec(&data, Mode::Fast, Some(FormatHint::Json)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed, data, "twitter.json brotli roundtrip failed");
+
+        let mut cursor = Cursor::new(&compressed);
+        let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
+        assert!(
+            header.use_brotli,
+            "twitter.json should use brotli in auto-fallback"
+        );
+    }
+
+    #[test]
+    fn test_brotli_ndjson_roundtrip() {
+        // NDJSON with uniform schema — regardless of which entropy coder wins,
+        // the roundtrip must be byte-exact.
+        let data = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../corpus/test-ndjson.ndjson"
+        ))
+        .unwrap();
+
+        let compressed =
+            compress_to_vec(&data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed, data, "ndjson roundtrip failed");
+    }
+
+    #[test]
+    fn test_brotli_backward_compat() {
+        // Old .dcx files without the brotli flag (bit 3 = 0) must still decompress.
+        // We simulate an old file by manually crafting a .dcx with FLAG_BROTLI unset.
+        // Compress with zstd directly and build a minimal .dcx header.
+        let original = b"backward compatibility test: this data was compressed without brotli";
+        let crc = crc32fast::hash(original);
+        let zstd_compressed = zstd::bulk::compress(original, 19).unwrap();
+
+        let header = crate::dcx::DcxHeader {
+            mode: Mode::Fast,
+            format_hint: crate::dcx::FormatHint::Generic,
+            original_size: original.len() as u64,
+            compressed_size: zstd_compressed.len() as u64,
+            crc32: crc,
+            transform_metadata: vec![],
+            has_dict: false,
+            meta_compressed: false,
+            use_brotli: false,
+        };
+
+        let mut buf = Vec::new();
+        header.write_to(&mut buf).unwrap();
+        buf.extend_from_slice(&zstd_compressed);
+
+        // Verify the brotli flag is NOT set in the serialized header.
+        assert_eq!(buf[7] & crate::dcx::FLAG_BROTLI, 0);
+
+        // Decompress — must work even though brotli path exists.
+        let decompressed = decompress_from_slice(&buf).unwrap();
+        assert_eq!(decompressed, original.to_vec());
     }
 }

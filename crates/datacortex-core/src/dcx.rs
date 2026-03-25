@@ -5,7 +5,7 @@
 //!   Byte   4:    Version (3)
 //!   Byte   5:    Mode (0=Max, 1=Balanced, 2=Fast)
 //!   Byte   6:    Format hint (0-10)
-//!   Byte   7:    Flags (bit 0: has_transform_metadata, bit 1: has_zstd_dictionary, bit 2: metadata is zstd-compressed)
+//!   Byte   7:    Flags (bit 0: has_transform_metadata, bit 1: has_zstd_dictionary, bit 2: metadata is zstd-compressed, bit 3: brotli entropy coder)
 //!   Bytes  8-15: Original size (u64 LE)
 //!   Bytes 16-23: Compressed data size (u64 LE)
 //!   Bytes 24-27: CRC-32 of original data (u32 LE)
@@ -123,9 +123,11 @@ impl std::fmt::Display for FormatHint {
 ///   bit 0: has_transform_metadata
 ///   bit 1: has_zstd_dictionary (Fast mode only)
 ///   bit 2: metadata is zstd-compressed
+///   bit 3: compressed with brotli (vs zstd)
 pub const FLAG_HAS_TRANSFORM: u8 = 1 << 0;
 pub const FLAG_HAS_DICT: u8 = 1 << 1;
 pub const FLAG_META_COMPRESSED: u8 = 1 << 2;
+pub const FLAG_BROTLI: u8 = 1 << 3;
 
 /// .dcx file header.
 #[derive(Debug, Clone)]
@@ -140,6 +142,8 @@ pub struct DcxHeader {
     pub has_dict: bool,
     /// True if transform_metadata is zstd-compressed (bit 2 of flags).
     pub meta_compressed: bool,
+    /// True if compressed with brotli instead of zstd (bit 3 of flags).
+    pub use_brotli: bool,
 }
 
 impl DcxHeader {
@@ -158,6 +162,9 @@ impl DcxHeader {
         }
         if self.meta_compressed {
             flags |= FLAG_META_COMPRESSED;
+        }
+        if self.use_brotli {
+            flags |= FLAG_BROTLI;
         }
         w.write_all(&[flags])?;
         w.write_all(&self.original_size.to_le_bytes())?;
@@ -193,6 +200,7 @@ impl DcxHeader {
         let flags = buf[7];
         let has_dict = flags & FLAG_HAS_DICT != 0;
         let meta_compressed = flags & FLAG_META_COMPRESSED != 0;
+        let use_brotli = flags & FLAG_BROTLI != 0;
         let original_size = u64::from_le_bytes(buf[8..16].try_into().unwrap());
         let compressed_size = u64::from_le_bytes(buf[16..24].try_into().unwrap());
         let crc32 = u32::from_le_bytes(buf[24..28].try_into().unwrap());
@@ -215,6 +223,7 @@ impl DcxHeader {
             transform_metadata,
             has_dict,
             meta_compressed,
+            use_brotli,
         })
     }
 
@@ -239,6 +248,7 @@ mod tests {
             transform_metadata: vec![],
             has_dict: false,
             meta_compressed: false,
+            use_brotli: false,
         };
 
         let mut buf = Vec::new();
@@ -268,6 +278,7 @@ mod tests {
             transform_metadata: meta.clone(),
             has_dict: false,
             meta_compressed: false,
+            use_brotli: false,
         };
 
         let mut buf = Vec::new();
@@ -291,6 +302,7 @@ mod tests {
             transform_metadata: vec![10, 20],
             has_dict: true,
             meta_compressed: false,
+            use_brotli: false,
         };
 
         let mut buf = Vec::new();
@@ -317,6 +329,7 @@ mod tests {
             transform_metadata: meta.clone(),
             has_dict: false,
             meta_compressed: true,
+            use_brotli: false,
         };
 
         let mut buf = Vec::new();
@@ -344,6 +357,7 @@ mod tests {
             transform_metadata: vec![42],
             has_dict: false,
             meta_compressed: false,
+            use_brotli: false,
         };
 
         let mut buf = Vec::new();
@@ -360,7 +374,7 @@ mod tests {
 
     #[test]
     fn header_all_flags_roundtrip() {
-        // All three flags set simultaneously.
+        // All four flags set simultaneously.
         let header = DcxHeader {
             mode: Mode::Fast,
             format_hint: FormatHint::Ndjson,
@@ -370,6 +384,7 @@ mod tests {
             transform_metadata: vec![1, 2, 3],
             has_dict: true,
             meta_compressed: true,
+            use_brotli: true,
         };
 
         let mut buf = Vec::new();
@@ -377,13 +392,14 @@ mod tests {
 
         assert_eq!(
             buf[7],
-            FLAG_HAS_TRANSFORM | FLAG_HAS_DICT | FLAG_META_COMPRESSED
+            FLAG_HAS_TRANSFORM | FLAG_HAS_DICT | FLAG_META_COMPRESSED | FLAG_BROTLI
         );
 
         let mut cursor = io::Cursor::new(&buf);
         let decoded = DcxHeader::read_from(&mut cursor).unwrap();
         assert!(decoded.has_dict);
         assert!(decoded.meta_compressed);
+        assert!(decoded.use_brotli);
         assert_eq!(decoded.transform_metadata, vec![1, 2, 3]);
     }
 
