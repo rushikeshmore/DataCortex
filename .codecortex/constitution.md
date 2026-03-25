@@ -6,25 +6,25 @@
 - **Name:** datacortex
 - **Languages:** rust
 - **Files:** 49
-- **Symbols:** 1049
+- **Symbols:** 1061
 - **Modules:** 3
-- **Last updated:** 2026-03-25T13:37:54.797Z
+- **Last updated:** 2026-03-25T15:56:52.543Z
 
 ## Architecture
 
 **Modules (3):**
-- **datacortex-core** (44 files, 19602 lines) — rust
+- **datacortex-core** (44 files, 20076 lines) — rust
 - **datacortex-neural** (3 files, 773 lines) — rust
 - **datacortex-cli** (1 files, 653 lines) — rust
 
 ## Risk Map
 
 **Hottest files (most changes):**
-- `CLAUDE.md` — 22 changes, VOLATILE
-- `crates/datacortex-core/src/codec.rs` — 18 changes, VOLATILE
-- `.codecortex/constitution.md` — 17 changes, VOLATILE
-- `.codecortex/cortex.yaml` — 17 changes, VOLATILE
-- `.codecortex/graph.json` — 17 changes, VOLATILE
+- `CLAUDE.md` — 24 changes, VOLATILE
+- `crates/datacortex-core/src/codec.rs` — 20 changes, VOLATILE
+- `.codecortex/constitution.md` — 19 changes, VOLATILE
+- `.codecortex/cortex.yaml` — 19 changes, VOLATILE
+- `.codecortex/graph.json` — 19 changes, VOLATILE
 
 **Hidden dependencies (co-change but no import):**
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` — 12 co-changes (71%)
