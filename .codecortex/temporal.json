@@ -1,13 +1,20 @@
 {
-  "generated": "2026-03-25T07:34:02.446Z",
+  "generated": "2026-03-25T08:03:28.670Z",
   "periodDays": 90,
-  "totalCommits": 44,
+  "totalCommits": 45,
   "hotspots": [
     {
       "file": "CLAUDE.md",
+      "changes": 16,
+      "stability": "volatile",
+      "lastChanged": "2026-03-25T13:33:27+05:30",
+      "daysSinceChange": 0
+    },
+    {
+      "file": "crates/datacortex-core/src/format/mod.rs",
       "changes": 15,
       "stability": "volatile",
-      "lastChanged": "2026-03-25T03:33:23+05:30",
+      "lastChanged": "2026-03-25T13:33:27+05:30",
       "daysSinceChange": 0
     },
     {
@@ -18,17 +25,59 @@
       "daysSinceChange": 0
     },
     {
-      "file": "crates/datacortex-core/src/format/mod.rs",
-      "changes": 14,
-      "stability": "volatile",
-      "lastChanged": "2026-03-25T00:59:41+05:30",
-      "daysSinceChange": 0
-    },
-    {
       "file": "crates/datacortex-core/src/model/engine.rs",
       "changes": 13,
       "stability": "volatile",
       "lastChanged": "2026-03-24T22:12:27+05:30",
+      "daysSinceChange": 0
+    },
+    {
+      "file": ".codecortex/constitution.md",
+      "changes": 11,
+      "stability": "volatile",
+      "lastChanged": "2026-03-25T13:33:27+05:30",
+      "daysSinceChange": 0
+    },
+    {
+      "file": ".codecortex/cortex.yaml",
+      "changes": 11,
+      "stability": "volatile",
+      "lastChanged": "2026-03-25T13:33:27+05:30",
+      "daysSinceChange": 0
+    },
+    {
+      "file": ".codecortex/graph.json",
+      "changes": 11,
+      "stability": "volatile",
+      "lastChanged": "2026-03-25T13:33:27+05:30",
+      "daysSinceChange": 0
+    },
+    {
+      "file": ".codecortex/hotspots.md",
+      "changes": 11,
+      "stability": "volatile",
+      "lastChanged": "2026-03-25T13:33:27+05:30",
+      "daysSinceChange": 0
+    },
+    {
+      "file": ".codecortex/symbols.json",
+      "changes": 11,
+      "stability": "volatile",
+      "lastChanged": "2026-03-25T13:33:27+05:30",
+      "daysSinceChange": 0
+    },
+    {
+      "file": ".codecortex/temporal.json",
+      "changes": 11,
+      "stability": "volatile",
+      "lastChanged": "2026-03-25T13:33:27+05:30",
+      "daysSinceChange": 0
+    },
+    {
+      "file": "crates/datacortex-core/src/format/transform.rs",
+      "changes": 11,
+      "stability": "volatile",
+      "lastChanged": "2026-03-25T13:33:27+05:30",
       "daysSinceChange": 0
     },
     {
@@ -43,55 +92,6 @@
       "changes": 11,
       "stability": "volatile",
       "lastChanged": "2026-03-24T22:12:27+05:30",
-      "daysSinceChange": 0
-    },
-    {
-      "file": ".codecortex/constitution.md",
-      "changes": 10,
-      "stability": "volatile",
-      "lastChanged": "2026-03-25T03:33:23+05:30",
-      "daysSinceChange": 0
-    },
-    {
-      "file": ".codecortex/cortex.yaml",
-      "changes": 10,
-      "stability": "volatile",
-      "lastChanged": "2026-03-25T03:33:23+05:30",
-      "daysSinceChange": 0
-    },
-    {
-      "file": ".codecortex/graph.json",
-      "changes": 10,
-      "stability": "volatile",
-      "lastChanged": "2026-03-25T03:33:23+05:30",
-      "daysSinceChange": 0
-    },
-    {
-      "file": ".codecortex/hotspots.md",
-      "changes": 10,
-      "stability": "volatile",
-      "lastChanged": "2026-03-25T03:33:23+05:30",
-      "daysSinceChange": 0
-    },
-    {
-      "file": ".codecortex/symbols.json",
-      "changes": 10,
-      "stability": "volatile",
-      "lastChanged": "2026-03-25T03:33:23+05:30",
-      "daysSinceChange": 0
-    },
-    {
-      "file": ".codecortex/temporal.json",
-      "changes": 10,
-      "stability": "volatile",
-      "lastChanged": "2026-03-25T03:33:23+05:30",
-      "daysSinceChange": 0
-    },
-    {
-      "file": "crates/datacortex-core/src/format/transform.rs",
-      "changes": 10,
-      "stability": "volatile",
-      "lastChanged": "2026-03-25T00:15:06+05:30",
       "daysSinceChange": 0
     },
     {
@@ -151,6 +151,13 @@
       "daysSinceChange": 9
     },
     {
+      "file": "crates/datacortex-core/src/format/ndjson.rs",
+      "changes": 4,
+      "stability": "moderate",
+      "lastChanged": "2026-03-25T13:33:27+05:30",
+      "daysSinceChange": 0
+    },
+    {
       "file": "crates/datacortex-core/src/dcx.rs",
       "changes": 4,
       "stability": "moderate",
@@ -184,13 +191,6 @@
       "stability": "moderate",
       "lastChanged": "2026-03-15T18:54:54+05:30",
       "daysSinceChange": 9
-    },
-    {
-      "file": "crates/datacortex-core/src/format/ndjson.rs",
-      "changes": 3,
-      "stability": "moderate",
-      "lastChanged": "2026-03-25T02:19:46+05:30",
-      "daysSinceChange": 0
     },
     {
       "file": "crates/datacortex-core/src/model/gru_model.rs",
@@ -436,6 +436,20 @@
       "stability": "stable",
       "lastChanged": "2026-03-15T17:41:34+05:30",
       "daysSinceChange": 9
+    },
+    {
+      "file": ".codecortex/sessions/2026-03-25T07-12-22.md",
+      "changes": 1,
+      "stability": "stable",
+      "lastChanged": "2026-03-25T13:33:27+05:30",
+      "daysSinceChange": 0
+    },
+    {
+      "file": ".codecortex/sessions/2026-03-25T07-34-02.md",
+      "changes": 1,
+      "stability": "stable",
+      "lastChanged": "2026-03-25T13:33:27+05:30",
+      "daysSinceChange": 0
     },
     {
       "file": ".codecortex/sessions/2026-03-24T22-25-21.md",
@@ -804,20 +818,20 @@
   ],
   "coupling": [
     {
+      "fileA": "crates/datacortex-core/src/format/mod.rs",
+      "fileB": "crates/datacortex-core/src/format/transform.rs",
+      "cochanges": 11,
+      "strength": 0.73,
+      "hasImport": false,
+      "warning": "HIDDEN DEPENDENCY — 73% co-change rate"
+    },
+    {
       "fileA": "crates/datacortex-core/src/mixer/dual_mixer.rs",
       "fileB": "crates/datacortex-core/src/model/engine.rs",
       "cochanges": 11,
       "strength": 0.85,
       "hasImport": false,
       "warning": "HIDDEN DEPENDENCY — 85% co-change rate"
-    },
-    {
-      "fileA": "crates/datacortex-core/src/format/mod.rs",
-      "fileB": "crates/datacortex-core/src/format/transform.rs",
-      "cochanges": 10,
-      "strength": 0.71,
-      "hasImport": false,
-      "warning": "HIDDEN DEPENDENCY — 71% co-change rate"
     },
     {
       "fileA": "crates/datacortex-core/src/model/engine.rs",
@@ -963,38 +977,45 @@
       "hasImport": false
     },
     {
+      "fileA": "crates/datacortex-core/src/format/mod.rs",
+      "fileB": "crates/datacortex-core/src/format/ndjson.rs",
+      "cochanges": 3,
+      "strength": 0.2,
+      "hasImport": false
+    },
+    {
       "fileA": "crates/datacortex-core/src/dcx.rs",
       "fileB": "crates/datacortex-core/src/format/mod.rs",
       "cochanges": 3,
-      "strength": 0.21,
+      "strength": 0.2,
       "hasImport": false
     },
     {
       "fileA": "crates/datacortex-core/src/format/mod.rs",
       "fileB": "crates/datacortex-core/src/mixer/dual_mixer.rs",
       "cochanges": 3,
-      "strength": 0.21,
+      "strength": 0.2,
       "hasImport": false
     },
     {
       "fileA": "crates/datacortex-core/src/format/mod.rs",
       "fileB": "crates/datacortex-core/src/model/engine.rs",
       "cochanges": 3,
-      "strength": 0.21,
+      "strength": 0.2,
       "hasImport": false
     },
     {
       "fileA": "crates/datacortex-core/src/format/mod.rs",
       "fileB": "crates/datacortex-core/src/model/mod.rs",
       "cochanges": 3,
-      "strength": 0.21,
+      "strength": 0.2,
       "hasImport": false
     },
     {
       "fileA": "crates/datacortex-core/src/codec.rs",
       "fileB": "crates/datacortex-core/src/format/mod.rs",
       "cochanges": 3,
-      "strength": 0.21,
+      "strength": 0.2,
       "hasImport": false
     },
     {

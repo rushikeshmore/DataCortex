@@ -26,10 +26,9 @@ fn adaptive_fast_level(data_size: usize, level_override: Option<i32>) -> i32 {
         return level; // User explicitly set level, respect it
     }
     match data_size {
-        0..=262_144 => 19,         // <256KB: instant at level 19
-        262_145..=1_048_576 => 15,  // 256KB-1MB: fast at level 15
-        1_048_577..=10_485_760 => 11, // 1MB-10MB: reasonable at level 11
-        _ => 9,                     // >10MB: use level 9 for speed
+        0..=1_048_576 => 19,          // <1MB: zstd-19 is <50ms, use best ratio
+        1_048_577..=10_485_760 => 13, // 1MB-10MB: good balance
+        _ => 9,                       // >10MB: use level 9 for speed
     }
 }
 
@@ -1486,26 +1485,19 @@ mod tests {
 
     #[test]
     fn test_adaptive_level_small_data() {
-        // <256KB should use level 19.
+        // <1MB should use level 19 (zstd-19 is <50ms on small data).
         assert_eq!(adaptive_fast_level(100_000, None), 19);
-        assert_eq!(adaptive_fast_level(262_144, None), 19);
+        assert_eq!(adaptive_fast_level(500_000, None), 19);
+        assert_eq!(adaptive_fast_level(1_048_576, None), 19);
         assert_eq!(adaptive_fast_level(0, None), 19);
     }
 
     #[test]
-    fn test_adaptive_level_medium_data() {
-        // 256KB-1MB should use level 15.
-        assert_eq!(adaptive_fast_level(262_145, None), 15);
-        assert_eq!(adaptive_fast_level(500_000, None), 15);
-        assert_eq!(adaptive_fast_level(1_048_576, None), 15);
-    }
-
-    #[test]
     fn test_adaptive_level_large_data() {
-        // 1MB-10MB should use level 11, >10MB should use level 9.
-        assert_eq!(adaptive_fast_level(1_048_577, None), 11);
-        assert_eq!(adaptive_fast_level(5_000_000, None), 11);
-        assert_eq!(adaptive_fast_level(10_485_760, None), 11);
+        // 1MB-10MB should use level 13, >10MB should use level 9.
+        assert_eq!(adaptive_fast_level(1_048_577, None), 13);
+        assert_eq!(adaptive_fast_level(5_000_000, None), 13);
+        assert_eq!(adaptive_fast_level(10_485_760, None), 13);
         assert_eq!(adaptive_fast_level(10_485_761, None), 9);
         assert_eq!(adaptive_fast_level(100_000_000, None), 9);
     }

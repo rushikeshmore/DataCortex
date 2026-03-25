@@ -79,11 +79,17 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
     }
 
     // JSON array columnar reorg: ALL modes.
+    // Strategy 1 (uniform, version=1) produces \x00/\x01 separated columnar data.
+    // Strategy 2 (grouped, version=2) produces a different format with per-group data.
+    // Only Strategy 1 output is compatible with downstream typed_encoding/value_dict/nested_flatten.
+    let mut json_array_applied = false;
     if !columnar_applied && !ndjson_transform_applied && format == FormatHint::Json {
         if let Some(result) = json_array::preprocess(&current) {
+            let is_uniform = !result.metadata.is_empty() && result.metadata[0] == 1;
             chain.push(TRANSFORM_JSON_ARRAY_COLUMNAR, result.metadata);
             current = result.data;
-            columnar_applied = true;
+            json_array_applied = true;
+            columnar_applied = is_uniform;
         }
     }
 
@@ -137,7 +143,7 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
         }
     }
 
-    if columnar_applied || ndjson_transform_applied {
+    if columnar_applied || ndjson_transform_applied || json_array_applied {
         return (current, chain);
     }
 
