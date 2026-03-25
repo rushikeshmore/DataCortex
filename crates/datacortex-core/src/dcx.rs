@@ -5,7 +5,7 @@
 //!   Byte   4:    Version (3)
 //!   Byte   5:    Mode (0=Max, 1=Balanced, 2=Fast)
 //!   Byte   6:    Format hint (0-10)
-//!   Byte   7:    Flags (bit 0: has_transform_metadata, bit 1: has_zstd_dictionary)
+//!   Byte   7:    Flags (bit 0: has_transform_metadata, bit 1: has_zstd_dictionary, bit 2: metadata is zstd-compressed)
 //!   Bytes  8-15: Original size (u64 LE)
 //!   Bytes 16-23: Compressed data size (u64 LE)
 //!   Bytes 24-27: CRC-32 of original data (u32 LE)
@@ -122,8 +122,10 @@ impl std::fmt::Display for FormatHint {
 /// Flags byte layout:
 ///   bit 0: has_transform_metadata
 ///   bit 1: has_zstd_dictionary (Fast mode only)
+///   bit 2: metadata is zstd-compressed
 pub const FLAG_HAS_TRANSFORM: u8 = 1 << 0;
 pub const FLAG_HAS_DICT: u8 = 1 << 1;
+pub const FLAG_META_COMPRESSED: u8 = 1 << 2;
 
 /// .dcx file header.
 #[derive(Debug, Clone)]
@@ -136,6 +138,8 @@ pub struct DcxHeader {
     pub transform_metadata: Vec<u8>,
     /// True if the compressed payload embeds a zstd dictionary.
     pub has_dict: bool,
+    /// True if transform_metadata is zstd-compressed (bit 2 of flags).
+    pub meta_compressed: bool,
 }
 
 impl DcxHeader {
@@ -151,6 +155,9 @@ impl DcxHeader {
         }
         if self.has_dict {
             flags |= FLAG_HAS_DICT;
+        }
+        if self.meta_compressed {
+            flags |= FLAG_META_COMPRESSED;
         }
         w.write_all(&[flags])?;
         w.write_all(&self.original_size.to_le_bytes())?;
@@ -185,6 +192,7 @@ impl DcxHeader {
         let format_hint = FormatHint::from_u8(buf[6])?;
         let flags = buf[7];
         let has_dict = flags & FLAG_HAS_DICT != 0;
+        let meta_compressed = flags & FLAG_META_COMPRESSED != 0;
         let original_size = u64::from_le_bytes(buf[8..16].try_into().unwrap());
         let compressed_size = u64::from_le_bytes(buf[16..24].try_into().unwrap());
         let crc32 = u32::from_le_bytes(buf[24..28].try_into().unwrap());
@@ -206,6 +214,7 @@ impl DcxHeader {
             crc32,
             transform_metadata,
             has_dict,
+            meta_compressed,
         })
     }
 
@@ -229,6 +238,7 @@ mod tests {
             crc32: 0xDEADBEEF,
             transform_metadata: vec![],
             has_dict: false,
+            meta_compressed: false,
         };
 
         let mut buf = Vec::new();
@@ -257,6 +267,7 @@ mod tests {
             crc32: 0x12345678,
             transform_metadata: meta.clone(),
             has_dict: false,
+            meta_compressed: false,
         };
 
         let mut buf = Vec::new();
@@ -279,6 +290,7 @@ mod tests {
             crc32: 0xCAFEBABE,
             transform_metadata: vec![10, 20],
             has_dict: true,
+            meta_compressed: false,
         };
 
         let mut buf = Vec::new();
@@ -291,6 +303,88 @@ mod tests {
         let decoded = DcxHeader::read_from(&mut cursor).unwrap();
         assert!(decoded.has_dict);
         assert_eq!(decoded.transform_metadata, vec![10, 20]);
+    }
+
+    #[test]
+    fn header_meta_compressed_flag_roundtrip() {
+        let meta = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let header = DcxHeader {
+            mode: Mode::Fast,
+            format_hint: FormatHint::Json,
+            original_size: 10000,
+            compressed_size: 5000,
+            crc32: 0xAABBCCDD,
+            transform_metadata: meta.clone(),
+            has_dict: false,
+            meta_compressed: true,
+        };
+
+        let mut buf = Vec::new();
+        header.write_to(&mut buf).unwrap();
+
+        // Flags byte at offset 7 should have bit 0 (transform) and bit 2 (meta_compressed) set.
+        assert_eq!(buf[7], FLAG_HAS_TRANSFORM | FLAG_META_COMPRESSED);
+
+        let mut cursor = io::Cursor::new(&buf);
+        let decoded = DcxHeader::read_from(&mut cursor).unwrap();
+        assert!(decoded.meta_compressed);
+        assert!(!decoded.has_dict);
+        assert_eq!(decoded.transform_metadata, meta);
+    }
+
+    #[test]
+    fn header_old_file_no_meta_compressed() {
+        // Simulate an old file with bit 2 = 0: meta_compressed should be false.
+        let header = DcxHeader {
+            mode: Mode::Fast,
+            format_hint: FormatHint::Json,
+            original_size: 1000,
+            compressed_size: 500,
+            crc32: 0x11223344,
+            transform_metadata: vec![42],
+            has_dict: false,
+            meta_compressed: false,
+        };
+
+        let mut buf = Vec::new();
+        header.write_to(&mut buf).unwrap();
+
+        // Only bit 0 should be set, NOT bit 2.
+        assert_eq!(buf[7], FLAG_HAS_TRANSFORM);
+
+        let mut cursor = io::Cursor::new(&buf);
+        let decoded = DcxHeader::read_from(&mut cursor).unwrap();
+        assert!(!decoded.meta_compressed);
+        assert_eq!(decoded.transform_metadata, vec![42]);
+    }
+
+    #[test]
+    fn header_all_flags_roundtrip() {
+        // All three flags set simultaneously.
+        let header = DcxHeader {
+            mode: Mode::Fast,
+            format_hint: FormatHint::Ndjson,
+            original_size: 9000,
+            compressed_size: 4000,
+            crc32: 0xDEADC0DE,
+            transform_metadata: vec![1, 2, 3],
+            has_dict: true,
+            meta_compressed: true,
+        };
+
+        let mut buf = Vec::new();
+        header.write_to(&mut buf).unwrap();
+
+        assert_eq!(
+            buf[7],
+            FLAG_HAS_TRANSFORM | FLAG_HAS_DICT | FLAG_META_COMPRESSED
+        );
+
+        let mut cursor = io::Cursor::new(&buf);
+        let decoded = DcxHeader::read_from(&mut cursor).unwrap();
+        assert!(decoded.has_dict);
+        assert!(decoded.meta_compressed);
+        assert_eq!(decoded.transform_metadata, vec![1, 2, 3]);
     }
 
     #[test]
