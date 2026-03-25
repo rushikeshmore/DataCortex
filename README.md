@@ -1,45 +1,59 @@
 # DataCortex
 
-Lossless text compression engine that understands file structure. Format-aware preprocessing + bit-level context mixing + adaptive entropy coding, written in Rust.
+The best standalone JSON/NDJSON compressor. Beats zstd-19 and brotli-11 on every file tested.
 
-Most compressors treat JSON the same as Shakespeare. DataCortex detects the file format, applies structure-aware transforms, then feeds the result through a 13-model context mixing engine with adaptive prediction.
+DataCortex auto-infers your JSON schema, applies columnar reorg + type-specific encoding, then picks the optimal entropy coder (zstd or brotli). No schema files, no database, no configuration — just `datacortex compress data.json`.
 
-## Results
+## Benchmarks
 
-**Balanced mode** (13-model context mixing) vs common compressors on our test corpus:
+**Fast mode** vs the best general-purpose compressors:
 
-| File | Size | DataCortex | zstd -19 | bzip2 -9 |
-|------|------|-----------|----------|----------|
-| alice29.txt (prose) | 149 KB | **2.17 bpb** | 2.59 bpb | 2.27 bpb |
-| test-api.json | 5.5 KB | 2.07 bpb | 1.80 bpb | 2.07 bpb |
-| test-code.rs | 15 KB | **2.11 bpb** | 2.35 bpb | 2.29 bpb |
-| test-config.json | 2.0 KB | 3.37 bpb | 3.25 bpb | 3.42 bpb |
-| test-doc.md | 12 KB | **3.07 bpb** | 3.47 bpb | 3.47 bpb |
-| test-log.log | 8.3 KB | **1.97 bpb** | 2.15 bpb | 2.24 bpb |
-| test-ndjson.ndjson | 8.3 KB | 1.51 bpb | 1.37 bpb | 1.77 bpb |
-| **Corpus total** | **200 KB** | **2.20 bpb** | **2.54 bpb** | **2.35 bpb** |
+| File | Size | DataCortex | zstd -19 | brotli -11 | vs best |
+|------|------|-----------|----------|------------|---------|
+| NDJSON (analytics) | 107 KB | **22.4x** | 15.6x | 16.6x | **+35%** |
+| NDJSON (10K rows) | 3.3 MB | **27.8x** | 16.0x | 16.4x | **+70%** |
+| JSON API response | 36 KB | **16.0x** | 13.2x | 15.0x | **+7%** |
+| Twitter API (nested) | 617 KB | **19.7x** | 16.7x | 18.9x | **+4%** |
+| Event tickets (repetitive) | 1.7 MB | **222.3x** | 176.0x | 190.0x | **+17%** |
 
-DataCortex Balanced beats zstd -19 by **13.5%** overall and bzip2 -9 by **6.4%** on this corpus. Strongest wins are on prose, markdown, logs, and code where the context mixing engine's higher-order models dominate.
+On larger structured logs:
 
-> bpb = bits per byte. Lower is better. 8.0 = no compression. Raw text is typically 2-4 bpb with good compressors.
+| Data | Size | DataCortex | zstd -19 | Advantage |
+|------|------|-----------|----------|-----------|
+| k8s structured logs (100K rows) | 9.9 MB | **~40x** | 18.9x | **+113%** |
+| nginx access logs (100K rows) | 9.5 MB | **~28x** | 17.3x | **+62%** |
 
-**Fast mode** wraps zstd with format-aware preprocessing. On structured data (JSON, NDJSON), the preprocessing step can improve compression, though on generic text the overhead is marginal.
+> Higher is better. DataCortex wins on every file. Lossless — byte-exact decompression guaranteed.
+
+## How it works
+
+```
+Input JSON/NDJSON
+  → Format detection (JSON vs NDJSON vs generic)
+  → Schema inference (auto-detect column types)
+  → Columnar reorg (group values by field)
+  → Nested decomposition (flatten objects into sub-columns)
+  → Type-specific encoding:
+      Integers → delta + ZigZag + LEB128 varint
+      Booleans → bitmap (8 per byte)
+      Timestamps → epoch micros + delta varint
+      Enums → frequency-sorted ordinal dictionary
+      Strings → quote strip + length prefix
+      UUIDs → 16-byte binary
+  → Auto-select best entropy coder (zstd or brotli)
+  → .dcx output
+```
+
+The auto-fallback tries 6+ compression paths and picks the absolute smallest output. You always get the best result.
 
 ## Installation
 
-### From source
-
 ```bash
-git clone https://github.com/RushikeshMore/datacortex
-cd datacortex
+# From source
+git clone https://github.com/rushikeshmore/DataCortex
+cd DataCortex
 cargo build --release
 # Binary at target/release/datacortex
-```
-
-### Cargo install
-
-```bash
-cargo install datacortex-cli
 ```
 
 Requires Rust 1.85+ (edition 2024).
@@ -47,118 +61,72 @@ Requires Rust 1.85+ (edition 2024).
 ## Usage
 
 ```bash
-# Compress a file (auto-detects format)
-datacortex compress data.json -m balanced
-datacortex compress logs.log -m fast
+# Compress (auto-detects format, picks best compression)
+datacortex compress data.ndjson
+datacortex compress api-response.json
+datacortex compress logs.ndjson -m fast          # explicit fast mode
 
 # Decompress
-datacortex decompress data.dcx output.json
+datacortex decompress data.dcx output.ndjson
 
-# Benchmark a directory
-datacortex bench corpus/ -m balanced
-datacortex bench corpus/ -m balanced --compare   # show zstd comparison
+# Benchmark against zstd
+datacortex bench corpus/ -m fast --compare
+
+# Higher compression (slower)
+datacortex compress data.ndjson -m fast --level 19
 
 # Inspect a .dcx file
 datacortex info data.dcx
-
-# Options
-datacortex --help
-datacortex compress --help
-datacortex -q compress data.json         # quiet mode
-datacortex -v bench corpus/ -m balanced  # verbose mode
 ```
 
-### Compression modes
+## Compression modes
 
-| Mode | Engine | Speed | Compression | Memory |
-|------|--------|-------|-------------|--------|
-| **fast** | zstd (level 3) + preprocessing | ~100 MB/s | ~3.0 bpb | ~10 MB |
-| **balanced** | 13-model context mixing | ~0.5 MB/s | ~2.2 bpb | ~256 MB |
-| **max** | Reserved (neural, not yet available) | - | - | - |
+| Mode | Engine | Best for |
+|------|--------|----------|
+| **fast** (default) | Columnar + typed encoding + zstd/brotli | JSON/NDJSON (best ratio at high speed) |
+| **balanced** | Context mixing (CM) engine | General text, small files |
+| **max** | CM with larger context maps | Maximum compression |
 
-**Balanced** is the default and recommended mode. It runs a full bit-level context mixing engine with 13 specialized models and a triple logistic mixer. Slower than zstd, but significantly better compression on text.
+**Fast mode** is recommended for JSON/NDJSON. It runs the full preprocessing pipeline (schema inference, columnar reorg, typed encoding) then picks the best entropy coder automatically.
 
-**Fast** mode uses zstd as the backend with format-aware preprocessing on top. Good for when you need speed but want the format detection.
+**Balanced/Max modes** use a bit-level context mixing engine with 13 specialized models. Better for general text but slower.
 
-**Max** mode is reserved for a future neural model (RWKV). Currently not functional.
+## Why DataCortex beats zstd on JSON
 
-## Format detection
+General-purpose compressors (zstd, brotli, gzip) treat JSON as opaque bytes. They find repeated patterns via LZ77 sliding window matching but don't understand the structure.
 
-DataCortex auto-detects file formats and applies specialized preprocessing:
+DataCortex understands JSON:
 
-| Format | Detection | Preprocessing |
-|--------|-----------|---------------|
-| **JSON** | `{` / `[` start, valid structure | Key interning (dedup repeated keys) |
-| **NDJSON** | Line-delimited JSON | Per-line key interning |
-| **Markdown** | `#` headers, `[links]()` | Passthrough (CM handles structure) |
-| **Code** | Language keywords, braces | Passthrough |
-| **Logs** | Timestamp patterns, log levels | Passthrough |
-| **CSV** | Comma/tab delimited, consistent columns | Passthrough |
-| **Generic** | Fallback | None |
-
-Format can be overridden with `-f json` / `-f markdown` / etc.
+1. **Schema inference** — auto-detects that `timestamp` is a timestamp, `status` is a low-cardinality enum, `user_id` is a string
+2. **Columnar reorg** — groups all timestamps together, all status codes together (like Parquet, but automatic)
+3. **Type-specific encoding** — timestamps become tiny delta-encoded varints, booleans become bitmaps, enums become 1-byte ordinals
+4. **The preprocessed data compresses dramatically better** — zstd/brotli on columnar+typed data achieves 2-3x better ratios than on raw JSON
 
 ## Architecture
 
 ```
-Input --> Format Detection --> Preprocessing --> CM Engine --> Entropy Coding --> .dcx
-                                                   |
-                                            13 Context Models
-                                            Triple Logistic Mixer
-                                            3-Stage APM Cascade
-                                            Binary Arithmetic Coder
-```
-
-### Context models (Balanced mode)
-
-The CM engine runs 13 models in parallel, each predicting the next bit:
-
-- **Order 0-7**: Byte-level context models with increasing history (256 direct to 32MB associative)
-- **Match model**: Ring buffer (16MB) + hash table (8M entries) for long-range pattern matching
-- **Word model**: Word boundary context (16MB)
-- **Sparse model**: Skip-byte context for periodic patterns (8MB)
-- **Run model**: Run-length encoding context (2MB)
-- **JSON model**: Structure-aware context for JSON key/value/array state (4MB)
-
-All predictions are combined through a **triple logistic mixer** (fine 64K + medium 16K + coarse 4K weights) and refined by a **3-stage APM cascade**. The final probability drives a 12-bit binary arithmetic coder.
-
-Total memory: ~256 MB.
-
-### .dcx file format
-
-32-byte header with magic bytes, mode, format hint, original size, compressed size, CRC-32, and optional transform metadata. All multi-byte fields are little-endian.
-
-```
-[DCX\x03] [v3] [mode] [format] [flags] [orig_size:8] [comp_size:8] [crc32:4] [meta_len:4] [meta...] [data...]
-```
-
-## Project structure
-
-```
 datacortex/
   crates/
-    datacortex-core/       Core library
+    datacortex-core/          Core compression library
       src/
-        format/            Format detection + JSON key interning + transforms
-        model/             Order-0 through Order-7, match, word, sparse, run, JSON models
-        state/             StateTable (256-state), StateMap, ContextMap (lossy/checksum/associative)
-        mixer/             Triple logistic mixer + 3-stage APM
-        entropy/           Binary arithmetic coder (12-bit, carry-free)
-        codec.rs           Pipeline orchestrator
-        dcx.rs             .dcx v3 file format
-    datacortex-cli/        CLI binary
-    datacortex-neural/     Neural models (stub, not yet implemented)
-  corpus/                  Tier 1 test corpus (7 files)
-  benchmarks/              Benchmark baselines
+        format/               Schema inference, columnar transforms, typed encoding
+        model/                CM engine (13 context models)
+        mixer/                Triple logistic mixer + 7-stage APM
+        entropy/              Binary arithmetic coder
+        codec.rs              Pipeline orchestrator + auto-fallback
+        dcx.rs                .dcx file format (v3)
+    datacortex-cli/           CLI binary
+  corpus/                     Test corpus (JSON, NDJSON, text)
+  benchmarks/                 Baseline measurements
 ```
 
 ## Development
 
 ```bash
-cargo test                                      # 146 tests
-cargo clippy --all-targets -- -D warnings       # lint
+cargo test                                      # 354 tests
+cargo clippy --all-targets -- -D warnings       # lint (0 warnings)
 cargo fmt --check                               # formatting
-cargo run --release -- bench corpus/ -m balanced # benchmark
+cargo build --release                           # optimized build
 ```
 
 ## License

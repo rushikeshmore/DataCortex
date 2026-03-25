@@ -94,12 +94,12 @@ Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` i
 
 ### Architecture
 **datacortex** — rust — 49 files, 1061 symbols
-- **Modules (3):** datacortex-core (20076loc), datacortex-neural (773loc), datacortex-cli (653loc)
+- **Modules (3):** datacortex-core (20077loc), datacortex-neural (773loc), datacortex-cli (653loc)
 
 ### Risk Map
 **High-risk files:**
 - `CLAUDE.md` — 24 changes, volatile
-- `crates/datacortex-core/src/codec.rs` — 20 changes, volatile, coupled to: main.rs ⚠, lib.rs ⚠
+- `crates/datacortex-core/src/codec.rs` — 20 changes, volatile, coupled to: dcx.rs ⚠, main.rs ⚠
 - `.codecortex/constitution.md` — 19 changes, volatile
 - `.codecortex/cortex.yaml` — 19 changes, volatile
 - `.codecortex/graph.json` — 19 changes, volatile
