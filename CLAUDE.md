@@ -98,11 +98,11 @@ Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` i
 
 ### Risk Map
 **High-risk files:**
-- `CLAUDE.md` — 19 changes, volatile
+- `CLAUDE.md` — 20 changes, volatile
 - `crates/datacortex-core/src/codec.rs` — 17 changes, volatile, coupled to: main.rs ⚠, lib.rs ⚠
 - `crates/datacortex-core/src/format/mod.rs` — 16 changes, volatile, coupled to: transform.rs ⚠, codec.rs ⚠
-- `.codecortex/constitution.md` — 14 changes, volatile
-- `.codecortex/cortex.yaml` — 14 changes, volatile
+- `.codecortex/constitution.md` — 15 changes, volatile
+- `.codecortex/cortex.yaml` — 15 changes, volatile
 
 **Hidden couplings (co-change, no import):**
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (69% co-change)

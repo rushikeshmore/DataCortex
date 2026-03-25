@@ -38,6 +38,7 @@
 //!   \x00 = column separator
 //!   \x01 = value separator within a column
 
+use super::ndjson;
 use super::transform::TransformResult;
 use std::collections::HashMap;
 
@@ -46,6 +47,9 @@ const VAL_SEP: u8 = 0x01;
 const METADATA_VERSION_UNIFORM: u8 = 1;
 const METADATA_VERSION_GROUPED: u8 = 2;
 const MIN_ROWS: usize = 5;
+/// Sentinel for absent keys in grouped nested flatten.
+/// Safe to use here because grouped data is NOT processed by typed_encoding.
+const ABSENT_KEY: &[u8] = b"\x02";
 /// Minimum elements in a schema group for it to be columnarized (not residual).
 const MIN_GROUP_ELEMENTS: usize = 3;
 
@@ -547,6 +551,336 @@ fn preprocess_uniform(data: &[u8], span: &ArraySpan) -> Option<TransformResult> 
     })
 }
 
+/// Flatten nested objects in a group's columnar data, using ABSENT_KEY sentinel
+/// for keys that are absent from some rows. This is safe because grouped data
+/// is NOT processed by typed_encoding (only uniform columnar is).
+///
+/// Returns Some((flattened_data, nested_groups)) if any columns were flattened.
+fn flatten_group_nested(
+    col_data: &[u8],
+    num_rows: usize,
+) -> Option<(Vec<u8>, Vec<ndjson::NestedGroupInfo>)> {
+    let columns: Vec<&[u8]> = col_data.split(|&b| b == COL_SEP).collect();
+    if columns.is_empty() || num_rows == 0 {
+        return None;
+    }
+
+    let mut nested_groups: Vec<ndjson::NestedGroupInfo> = Vec::new();
+    let mut output_columns: Vec<Vec<Vec<u8>>> = Vec::new();
+
+    for (col_idx, &col_chunk) in columns.iter().enumerate() {
+        let values: Vec<&[u8]> = col_chunk.split(|&b| b == VAL_SEP).collect();
+        if values.len() != num_rows {
+            return None;
+        }
+
+        // Check if ALL non-null values start with '{' (nested object).
+        let mut all_objects = true;
+        let mut has_non_null = false;
+        for val in &values {
+            if *val == b"null" {
+                continue;
+            }
+            has_non_null = true;
+            if !val.starts_with(b"{") {
+                all_objects = false;
+                break;
+            }
+        }
+
+        if !all_objects || !has_non_null {
+            let col_values: Vec<Vec<u8>> = values.iter().map(|v| v.to_vec()).collect();
+            output_columns.push(col_values);
+            continue;
+        }
+
+        // Parse all nested objects and collect all unique sub-keys.
+        let mut all_sub_keys: Vec<Vec<u8>> = Vec::new();
+        let mut nested_template: Vec<Vec<u8>> = Vec::new();
+        type KvPairs = Vec<(Vec<u8>, Vec<u8>)>;
+        let mut parsed_rows: Vec<Option<KvPairs>> = Vec::with_capacity(num_rows);
+        let mut parse_failed = false;
+
+        for val in &values {
+            if *val == b"null" {
+                parsed_rows.push(None);
+                continue;
+            }
+            if nested_template.is_empty() {
+                match ndjson::parse_nested_object_with_template(val) {
+                    Some((template, kv_pairs)) => {
+                        for (key, _) in &kv_pairs {
+                            if !all_sub_keys.iter().any(|k| k == key) {
+                                all_sub_keys.push(key.clone());
+                            }
+                        }
+                        nested_template = template;
+                        parsed_rows.push(Some(kv_pairs));
+                    }
+                    None => {
+                        parse_failed = true;
+                        break;
+                    }
+                }
+            } else {
+                match ndjson::parse_nested_object_kv(val) {
+                    Some(kv_pairs) => {
+                        for (key, _) in &kv_pairs {
+                            if !all_sub_keys.iter().any(|k| k == key) {
+                                all_sub_keys.push(key.clone());
+                            }
+                        }
+                        parsed_rows.push(Some(kv_pairs));
+                    }
+                    None => {
+                        parse_failed = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if parse_failed || all_sub_keys.is_empty() {
+            let col_values: Vec<Vec<u8>> = values.iter().map(|v| v.to_vec()).collect();
+            output_columns.push(col_values);
+            continue;
+        }
+
+        // Build sub-columns using ABSENT_KEY sentinel for missing keys.
+        let num_sub_keys = all_sub_keys.len();
+        let mut sub_columns: Vec<Vec<Vec<u8>>> = vec![Vec::with_capacity(num_rows); num_sub_keys];
+
+        for parsed in &parsed_rows {
+            match parsed {
+                Some(kv_pairs) => {
+                    for (sk_idx, sk) in all_sub_keys.iter().enumerate() {
+                        let found = kv_pairs.iter().find(|(k, _)| k == sk);
+                        match found {
+                            Some((_, v)) => sub_columns[sk_idx].push(v.clone()),
+                            None => sub_columns[sk_idx].push(ABSENT_KEY.to_vec()),
+                        }
+                    }
+                }
+                None => {
+                    for sc in sub_columns.iter_mut() {
+                        sc.push(b"null".to_vec());
+                    }
+                }
+            }
+        }
+
+        nested_groups.push(ndjson::NestedGroupInfo {
+            original_col_index: col_idx as u16,
+            sub_keys: all_sub_keys,
+            nested_template,
+        });
+
+        for sc in sub_columns {
+            output_columns.push(sc);
+        }
+    }
+
+    if nested_groups.is_empty() {
+        return None;
+    }
+
+    // Build the flattened columnar data.
+    let num_out_cols = output_columns.len();
+    let mut out = Vec::new();
+    for (ci, col) in output_columns.iter().enumerate() {
+        for (ri, val) in col.iter().enumerate() {
+            out.extend_from_slice(val);
+            if ri < num_rows - 1 {
+                out.push(VAL_SEP);
+            }
+        }
+        if ci < num_out_cols - 1 {
+            out.push(COL_SEP);
+        }
+    }
+
+    Some((out, nested_groups))
+}
+
+/// Unflatten nested columns for grouped json_array, handling ABSENT_KEY sentinel.
+/// Reconstructs original columnar data from flattened data + nested info.
+fn unflatten_group_nested(
+    flat_data: &[u8],
+    nested_groups: &[ndjson::NestedGroupInfo],
+    num_rows: usize,
+    total_flat_cols: usize,
+) -> Vec<u8> {
+    let flat_columns: Vec<&[u8]> = flat_data.split(|&b| b == COL_SEP).collect();
+    if flat_columns.len() != total_flat_cols {
+        return flat_data.to_vec();
+    }
+
+    let mut flat_col_values: Vec<Vec<&[u8]>> = Vec::with_capacity(total_flat_cols);
+    for chunk in &flat_columns {
+        let vals: Vec<&[u8]> = chunk.split(|&b| b == VAL_SEP).collect();
+        if vals.len() != num_rows {
+            return flat_data.to_vec();
+        }
+        flat_col_values.push(vals);
+    }
+
+    let original_num_cols = total_flat_cols
+        - nested_groups.iter().map(|g| g.sub_keys.len()).sum::<usize>()
+        + nested_groups.len();
+
+    let mut original_col_map: Vec<Option<usize>> = vec![None; original_num_cols];
+    for (gi, group) in nested_groups.iter().enumerate() {
+        if (group.original_col_index as usize) < original_num_cols {
+            original_col_map[group.original_col_index as usize] = Some(gi);
+        }
+    }
+
+    let mut output_columns: Vec<Vec<Vec<u8>>> = Vec::new();
+    let mut flat_idx = 0;
+
+    for entry in original_col_map.iter().take(original_num_cols) {
+        if let Some(gi) = entry {
+            let group = &nested_groups[*gi];
+            let num_sub = group.sub_keys.len();
+
+            let mut merged_col: Vec<Vec<u8>> = Vec::with_capacity(num_rows);
+            for row in 0..num_rows {
+                // Check if all sub-columns are null for this row (true null row).
+                let all_null = (0..num_sub).all(|si| {
+                    flat_idx + si < flat_col_values.len()
+                        && flat_col_values[flat_idx + si][row] == b"null"
+                });
+                if all_null {
+                    merged_col.push(b"null".to_vec());
+                } else if !group.nested_template.is_empty()
+                    && group.nested_template.len() == num_sub + 1
+                {
+                    // Template-based reconstruction with absent key handling.
+                    let has_absent = (0..num_sub).any(|si| {
+                        flat_idx + si < flat_col_values.len()
+                            && flat_col_values[flat_idx + si][row] == ABSENT_KEY
+                    });
+                    if !has_absent {
+                        // Fast path: no absent keys, use template directly.
+                        let mut obj = Vec::new();
+                        obj.extend_from_slice(&group.nested_template[0]);
+                        if flat_idx < flat_col_values.len() {
+                            obj.extend_from_slice(flat_col_values[flat_idx][row]);
+                        }
+                        for si in 1..num_sub {
+                            obj.extend_from_slice(&group.nested_template[si]);
+                            if flat_idx + si < flat_col_values.len() {
+                                obj.extend_from_slice(flat_col_values[flat_idx + si][row]);
+                            }
+                        }
+                        obj.extend_from_slice(&group.nested_template[num_sub]);
+                        merged_col.push(obj);
+                    } else {
+                        // Some keys absent: skip their template parts.
+                        // Template[0] = opening (e.g., '{\n  "first_key": ')
+                        // Template[i>0] = separator + key (e.g., ',\n  "key_i": ')
+                        // Template[num_sub] = closing (e.g., '\n}')
+                        let mut obj = Vec::new();
+                        let mut first_written = false;
+                        for si in 0..num_sub {
+                            if flat_idx + si >= flat_col_values.len() {
+                                break;
+                            }
+                            let val = flat_col_values[flat_idx + si][row];
+                            if val == ABSENT_KEY {
+                                continue;
+                            }
+                            if !first_written {
+                                if si == 0 {
+                                    // First key is present: use template[0] directly.
+                                    obj.extend_from_slice(&group.nested_template[0]);
+                                } else {
+                                    // First key(s) absent: use opening brace from
+                                    // template[0] + key part from template[si] sans comma.
+                                    let t0 = &group.nested_template[0];
+                                    let ti = &group.nested_template[si];
+                                    // t0 = '{\n        "first_key": '
+                                    // ti = ',\n        "key_si": '
+                                    // Want: '{\n        "key_si": '
+                                    if let Some(brace_pos) = t0.iter().position(|&b| b == b'{') {
+                                        obj.extend_from_slice(&t0[..brace_pos + 1]);
+                                        if let Some(comma_pos) = ti.iter().position(|&b| b == b',') {
+                                            obj.extend_from_slice(&ti[comma_pos + 1..]);
+                                        } else {
+                                            obj.extend_from_slice(ti);
+                                        }
+                                    } else {
+                                        obj.extend_from_slice(ti);
+                                    }
+                                }
+                                first_written = true;
+                            } else {
+                                obj.extend_from_slice(&group.nested_template[si]);
+                            }
+                            obj.extend_from_slice(val);
+                        }
+                        obj.extend_from_slice(&group.nested_template[num_sub]);
+                        merged_col.push(obj);
+                    }
+                } else {
+                    // Compact reconstruction.
+                    let mut obj = Vec::new();
+                    obj.push(b'{');
+                    let mut first = true;
+                    for si in 0..num_sub {
+                        if flat_idx + si >= flat_col_values.len() {
+                            break;
+                        }
+                        let val = flat_col_values[flat_idx + si][row];
+                        if val == b"null" || val == ABSENT_KEY {
+                            continue;
+                        }
+                        if !first {
+                            obj.push(b',');
+                        }
+                        first = false;
+                        obj.push(b'"');
+                        obj.extend_from_slice(&group.sub_keys[si]);
+                        obj.push(b'"');
+                        obj.push(b':');
+                        obj.extend_from_slice(val);
+                    }
+                    obj.push(b'}');
+                    merged_col.push(obj);
+                }
+            }
+            output_columns.push(merged_col);
+            flat_idx += num_sub;
+        } else {
+            if flat_idx < flat_col_values.len() {
+                let col: Vec<Vec<u8>> = flat_col_values[flat_idx]
+                    .iter()
+                    .map(|v| v.to_vec())
+                    .collect();
+                output_columns.push(col);
+            }
+            flat_idx += 1;
+        }
+    }
+
+    // Rebuild columnar data.
+    let num_out_cols = output_columns.len();
+    let mut out = Vec::new();
+    for (ci, col) in output_columns.iter().enumerate() {
+        for (ri, val) in col.iter().enumerate() {
+            out.extend_from_slice(val);
+            if ri < num_rows - 1 {
+                out.push(VAL_SEP);
+            }
+        }
+        if ci < num_out_cols - 1 {
+            out.push(COL_SEP);
+        }
+    }
+
+    out
+}
+
 /// Strategy 2: Group-by-schema — group elements by template, columnarize each group.
 ///
 /// Metadata format (version=2):
@@ -632,6 +966,8 @@ fn preprocess_grouped(data: &[u8], span: &ArraySpan) -> Option<TransformResult> 
         element_indices: Vec<u32>,
         col_data: Vec<u8>,
         group_metadata: Vec<u8>,
+        /// Serialized nested flatten info for this group, if nested flatten was applied.
+        nested_meta: Option<Vec<u8>>,
     }
 
     let mut group_outputs: Vec<GroupOutput> = Vec::with_capacity(groups.len());
@@ -651,10 +987,47 @@ fn preprocess_grouped(data: &[u8], span: &ArraySpan) -> Option<TransformResult> 
         let (col_data, group_metadata) =
             build_uniform_columnar(template_parts, &columns, rows.len());
 
+        // Try nested flatten on this group's columnar data.
+        // Uses json_array-specific flatten that handles absent keys with sentinel.
+        let num_rows = rows.len();
+        let (final_col_data, nested_meta) =
+            if let Some((flattened, nested_groups)) =
+                flatten_group_nested(&col_data, num_rows)
+            {
+                if flattened.len() < col_data.len() {
+                    // Verify roundtrip: unflatten must produce the exact original.
+                    let total_flat_cols =
+                        flattened.split(|&b| b == COL_SEP).count() as u16;
+                    let unflattened = unflatten_group_nested(
+                        &flattened,
+                        &nested_groups,
+                        num_rows,
+                        total_flat_cols as usize,
+                    );
+                    if unflattened == col_data {
+                        // Nested flatten is byte-exact — serialize the nested info.
+                        let serialized = ndjson::serialize_nested_info(&nested_groups);
+                        let mut meta = Vec::new();
+                        meta.extend_from_slice(&(num_rows as u32).to_le_bytes());
+                        meta.extend_from_slice(&total_flat_cols.to_le_bytes());
+                        meta.extend_from_slice(&serialized);
+                        (flattened, Some(meta))
+                    } else {
+                        // Roundtrip not exact — skip nested flatten for this group.
+                        (col_data, None)
+                    }
+                } else {
+                    (col_data, None)
+                }
+            } else {
+                (col_data, None)
+            };
+
         group_outputs.push(GroupOutput {
             element_indices,
-            col_data,
+            col_data: final_col_data,
             group_metadata,
+            nested_meta,
         });
     }
 
@@ -783,7 +1156,7 @@ fn preprocess_grouped(data: &[u8], span: &ArraySpan) -> Option<TransformResult> 
     // Number of groups.
     metadata.extend_from_slice(&(group_outputs.len() as u16).to_le_bytes());
 
-    // Per-group: indices + group_metadata only (data is in the data blob).
+    // Per-group: indices + group_metadata + nested info (data is in the data blob).
     for group in &group_outputs {
         metadata.extend_from_slice(&(group.element_indices.len() as u32).to_le_bytes());
         for &idx in &group.element_indices {
@@ -791,6 +1164,14 @@ fn preprocess_grouped(data: &[u8], span: &ArraySpan) -> Option<TransformResult> 
         }
         metadata.extend_from_slice(&(group.group_metadata.len() as u32).to_le_bytes());
         metadata.extend_from_slice(&group.group_metadata);
+        // Nested flatten info for this group.
+        if let Some(ref nested) = group.nested_meta {
+            metadata.push(1u8); // has_nested = true
+            metadata.extend_from_slice(&(nested.len() as u32).to_le_bytes());
+            metadata.extend_from_slice(nested);
+        } else {
+            metadata.push(0u8); // has_nested = false
+        }
     }
 
     // Residual.
@@ -1131,6 +1512,44 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
         let group_metadata = &metadata[mpos..mpos + gm_len];
         mpos += gm_len;
 
+        // Read nested flatten info for this group.
+        if mpos >= metadata.len() {
+            return data.to_vec();
+        }
+        let has_nested = metadata[mpos];
+        mpos += 1;
+
+        let nested_info: Option<(usize, u16, Vec<ndjson::NestedGroupInfo>)> = if has_nested == 1 {
+            if mpos + 4 > metadata.len() {
+                return data.to_vec();
+            }
+            let nested_meta_len =
+                u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+            mpos += 4;
+            if mpos + nested_meta_len > metadata.len() {
+                return data.to_vec();
+            }
+            let nested_meta_bytes = &metadata[mpos..mpos + nested_meta_len];
+            mpos += nested_meta_len;
+
+            // Parse nested meta: num_rows (u32 LE) + total_flat_cols (u16 LE) + nested_info
+            if nested_meta_bytes.len() < 6 {
+                return data.to_vec();
+            }
+            let nested_num_rows = u32::from_le_bytes(
+                nested_meta_bytes[0..4].try_into().unwrap(),
+            ) as usize;
+            let total_flat_cols = u16::from_le_bytes(
+                nested_meta_bytes[4..6].try_into().unwrap(),
+            );
+            match ndjson::deserialize_nested_info(&nested_meta_bytes[6..]) {
+                Some((groups, _)) => Some((nested_num_rows, total_flat_cols, groups)),
+                None => return data.to_vec(),
+            }
+        } else {
+            None
+        };
+
         // Read group data from the data blob.
         if dpos + 4 > data.len() {
             return data.to_vec();
@@ -1141,8 +1560,22 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
         if dpos + gd_len > data.len() {
             return data.to_vec();
         }
-        let group_data = &data[dpos..dpos + gd_len];
+        let group_data_raw = &data[dpos..dpos + gd_len];
         dpos += gd_len;
+
+        // If nested flatten was applied, unflatten first.
+        let group_data_owned: Vec<u8>;
+        let group_data: &[u8] = if let Some((nested_num_rows, total_flat_cols, ref nested_groups)) = nested_info {
+            group_data_owned = unflatten_group_nested(
+                group_data_raw,
+                nested_groups,
+                nested_num_rows,
+                total_flat_cols as usize,
+            );
+            &group_data_owned
+        } else {
+            group_data_raw
+        };
 
         // Decode this group using the uniform metadata parser.
         let (parts, num_rows, num_cols) = match parse_group_metadata(group_metadata) {
@@ -1588,6 +2021,85 @@ mod tests {
             "grouped transform should be smaller: {} vs {}",
             compressed_size,
             data.len()
+        );
+    }
+
+    #[test]
+    fn test_grouped_with_nested_flatten() {
+        // Grouped array where at least one schema has nested objects.
+        // Schema A (with nested): id, name, user:{role, level, verified}
+        // Schema B (flat): id, tag, active
+        let mut json = String::from(r#"{"data": ["#);
+        for i in 0..30 {
+            if i > 0 {
+                json.push_str(", ");
+            }
+            if i % 3 == 0 {
+                // Schema B: flat, 10 elements
+                json.push_str(&format!(
+                    r#"{{"id": {}, "tag": "tag_{}", "active": {}}}"#,
+                    i, i, if i % 2 == 0 { "true" } else { "false" }
+                ));
+            } else {
+                // Schema A: nested, 20 elements
+                json.push_str(&format!(
+                    r#"{{"id": {}, "name": "user_{}", "user": {{"role": "admin", "level": {}, "verified": {}}}}}"#,
+                    i, i, i % 5, if i % 2 == 0 { "true" } else { "false" }
+                ));
+            }
+        }
+        json.push_str(r#"], "meta": {"count": 30}}"#);
+
+        let data = json.as_bytes();
+        let result = preprocess(data).expect("should produce grouped transform with nested flatten");
+
+        // Should be grouped.
+        assert_eq!(result.metadata[0], METADATA_VERSION_GROUPED);
+
+        // Verify byte-exact roundtrip.
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(
+            String::from_utf8_lossy(&restored),
+            String::from_utf8_lossy(data),
+        );
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn test_twitter_json_improved() {
+        // Verify twitter.json gets better pre-transform ratio with nested flatten in groups.
+        let twitter_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../corpus/json-bench/twitter.json"
+        );
+        let data = match std::fs::read(twitter_path) {
+            Ok(d) => d,
+            Err(_) => {
+                eprintln!("Skipping test_twitter_json_improved: twitter.json not found");
+                return;
+            }
+        };
+
+        let result = preprocess(&data).expect("twitter.json should transform");
+
+        // Verify roundtrip first.
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(restored, data, "roundtrip must be byte-exact");
+
+        // The pre-transform output should be smaller than before (nested flatten helps).
+        let pre_transform_size = result.data.len() + result.metadata.len();
+        let ratio = data.len() as f64 / pre_transform_size as f64;
+        eprintln!(
+            "twitter.json: original={} pre_transform={} ratio={:.2}x",
+            data.len(),
+            pre_transform_size,
+            ratio
+        );
+        // With nested flatten, pre-transform ratio should be > 1.0 (it's a net win).
+        assert!(
+            ratio > 1.0,
+            "pre-transform should be smaller than original: ratio={:.2}x",
+            ratio,
         );
     }
 }

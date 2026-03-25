@@ -28,6 +28,7 @@ const VAL_SEP: u8 = 0x01;
 const METADATA_VERSION_UNIFORM: u8 = 1;
 const METADATA_VERSION_GROUPED: u8 = 2;
 
+
 /// Minimum rows in a schema group for it to be columnarized (not residual).
 const MIN_GROUP_ROWS: usize = 5;
 
@@ -679,7 +680,7 @@ pub(crate) fn flatten_nested_columns(
 /// preserving the original formatting so the object can be reconstructed exactly.
 /// Keys are returned WITHOUT quotes. Values are the exact bytes from the JSON.
 #[allow(clippy::type_complexity)]
-fn parse_nested_object_with_template(
+pub(crate) fn parse_nested_object_with_template(
     obj: &[u8],
 ) -> Option<(Vec<Vec<u8>>, Vec<(Vec<u8>, Vec<u8>)>)> {
     let mut pos = 0;
@@ -785,7 +786,7 @@ fn parse_nested_object_with_template(
 /// Parse a nested JSON object into its key-value pairs (depth-1 only).
 /// Returns the exact bytes for each key and value.
 /// Keys are returned WITHOUT quotes. Values are the exact bytes from the JSON.
-fn parse_nested_object_kv(obj: &[u8]) -> Option<Vec<(Vec<u8>, Vec<u8>)>> {
+pub(crate) fn parse_nested_object_kv(obj: &[u8]) -> Option<Vec<(Vec<u8>, Vec<u8>)>> {
     let mut pos = 0;
 
     // Skip whitespace.
