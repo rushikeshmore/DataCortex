@@ -523,6 +523,12 @@ pub(crate) struct NestedGroupInfo {
     /// Template parts for reconstructing nested objects (preserves original formatting).
     /// If empty, compact format `{"key":val,...}` is used (NDJSON compatibility).
     pub(crate) nested_template: Vec<Vec<u8>>,
+    /// Absence bitmap: one bit per (sub_key, row). Bit=1 means the key was ABSENT
+    /// in the original object (not present at all), vs bit=0 means key was present
+    /// (possibly with explicit `null`). Packed LSB-first.
+    /// Length = ceil(num_sub_keys * num_rows / 8).
+    /// Empty if all rows had all keys (no absences).
+    pub(crate) absence_bitmap: Vec<u8>,
 }
 
 /// Attempt to flatten nested JSON objects in columnar data (depth-1).
@@ -629,22 +635,36 @@ pub(crate) fn flatten_nested_columns(
         }
 
         // Build sub-columns: for each sub-key, extract values from parsed rows.
+        // Also build an absence bitmap: bit=1 where a key was absent from the
+        // original row (as opposed to being present with explicit `null`).
         let num_sub_keys = all_sub_keys.len();
         let mut sub_columns: Vec<Vec<Vec<u8>>> = vec![Vec::with_capacity(num_rows); num_sub_keys];
+        let total_bits = num_sub_keys * num_rows;
+        let bitmap_bytes = (total_bits + 7) / 8;
+        let mut absence_bitmap = vec![0u8; bitmap_bytes];
+        let mut has_any_absent = false;
 
-        for parsed in &parsed_rows {
+        for (row_idx, parsed) in parsed_rows.iter().enumerate() {
             match parsed {
                 Some(kv_pairs) => {
                     for (sk_idx, sk) in all_sub_keys.iter().enumerate() {
                         let found = kv_pairs.iter().find(|(k, _)| k == sk);
                         match found {
                             Some((_, v)) => sub_columns[sk_idx].push(v.clone()),
-                            None => sub_columns[sk_idx].push(b"null".to_vec()),
+                            None => {
+                                sub_columns[sk_idx].push(b"null".to_vec());
+                                // Mark this (sub_key, row) as absent.
+                                let bit_idx = sk_idx * num_rows + row_idx;
+                                absence_bitmap[bit_idx / 8] |= 1 << (bit_idx % 8);
+                                has_any_absent = true;
+                            }
                         }
                     }
                 }
                 None => {
                     // null row — all sub-columns get null.
+                    // These are NOT marked as absent (the whole column was null,
+                    // not individual keys missing).
                     for sc in sub_columns.iter_mut() {
                         sc.push(b"null".to_vec());
                     }
@@ -656,6 +676,11 @@ pub(crate) fn flatten_nested_columns(
             original_col_index: col_idx as u16,
             sub_keys: all_sub_keys,
             nested_template,
+            absence_bitmap: if has_any_absent {
+                absence_bitmap
+            } else {
+                Vec::new()
+            },
         });
 
         for sc in sub_columns {
@@ -939,20 +964,56 @@ pub(crate) fn unflatten_nested_columns(
             let group = &nested_groups[*gi];
             let num_sub = group.sub_keys.len();
 
+            // Helper: check if sub-key `si` at `row` is absent using bitmap.
+            let is_absent = |si: usize, row: usize| -> bool {
+                if group.absence_bitmap.is_empty() {
+                    return false; // no absences in this group
+                }
+                let bit_idx = si * num_rows + row;
+                let byte_idx = bit_idx / 8;
+                if byte_idx >= group.absence_bitmap.len() {
+                    return false;
+                }
+                (group.absence_bitmap[byte_idx] >> (bit_idx % 8)) & 1 == 1
+            };
+
             // Merge sub-columns back into nested objects.
             let mut merged_col: Vec<Vec<u8>> = Vec::with_capacity(num_rows);
             for row in 0..num_rows {
-                // Check if all sub-columns are null for this row.
+                // Check if all sub-columns are null or absent for this row
+                // (meaning the whole nested column was null).
                 let all_null = (0..num_sub).all(|si| {
                     flat_idx + si < flat_col_values.len()
                         && flat_col_values[flat_idx + si][row] == b"null"
                 });
-                if all_null {
+                if all_null && !group.absence_bitmap.is_empty() {
+                    // If all values are null but some are "absent" and some are
+                    // "explicit null", we need to reconstruct, not collapse.
+                    let any_present_null = (0..num_sub).any(|si| {
+                        flat_col_values[flat_idx + si][row] == b"null" && !is_absent(si, row)
+                    });
+                    if any_present_null {
+                        // At least one key has an explicit null — don't collapse.
+                        // Fall through to reconstruction below.
+                    } else {
+                        // All nulls are from absent keys — whole column was null.
+                        merged_col.push(b"null".to_vec());
+                        continue;
+                    }
+                } else if all_null {
                     merged_col.push(b"null".to_vec());
-                } else if !group.nested_template.is_empty()
+                    continue;
+                }
+
+                // Check whether any sub-key is absent in this row.
+                let has_absent = (0..num_sub).any(|si| is_absent(si, row));
+
+                if !has_absent
+                    && !group.nested_template.is_empty()
                     && group.nested_template.len() == num_sub + 1
                 {
-                    // Template-based reconstruction: preserves original formatting.
+                    // Template-based reconstruction: all keys present,
+                    // preserves original formatting exactly.
                     let mut obj = Vec::new();
                     obj.extend_from_slice(&group.nested_template[0]);
                     if flat_idx < flat_col_values.len() {
@@ -967,7 +1028,8 @@ pub(crate) fn unflatten_nested_columns(
                     obj.extend_from_slice(&group.nested_template[num_sub]);
                     merged_col.push(obj);
                 } else {
-                    // Compact reconstruction (NDJSON compatibility / no template).
+                    // Compact reconstruction: some keys absent, or no template.
+                    // Skip sub-keys that were absent in the original.
                     let mut obj = Vec::new();
                     obj.push(b'{');
                     let mut first = true;
@@ -975,10 +1037,10 @@ pub(crate) fn unflatten_nested_columns(
                         if flat_idx + si >= flat_col_values.len() {
                             break;
                         }
-                        let val = flat_col_values[flat_idx + si][row];
-                        if val == b"null" {
-                            continue; // skip null sub-keys in reconstruction
+                        if is_absent(si, row) {
+                            continue; // key was absent — omit entirely
                         }
+                        let val = flat_col_values[flat_idx + si][row];
                         if !first {
                             obj.push(b',');
                         }
@@ -1029,10 +1091,19 @@ pub(crate) fn unflatten_nested_columns(
 /// Serialize nested group info into bytes for storage in metadata.
 /// Version 1 (has_nested=1): sub_keys only (backward compat, NDJSON path).
 /// Version 2 (has_nested=2): sub_keys + nested_template (preserves formatting).
+/// Version 3 (has_nested=3): sub_keys + nested_template + absence_bitmap.
 pub(crate) fn serialize_nested_info(groups: &[NestedGroupInfo]) -> Vec<u8> {
     let has_template = groups.iter().any(|g| !g.nested_template.is_empty());
+    let has_absence = groups.iter().any(|g| !g.absence_bitmap.is_empty());
     let mut out = Vec::new();
-    out.push(if has_template { 2u8 } else { 1u8 });
+    let version = if has_absence {
+        3u8
+    } else if has_template {
+        2u8
+    } else {
+        1u8
+    };
+    out.push(version);
     out.push(groups.len() as u8);
     for group in groups {
         out.extend_from_slice(&group.original_col_index.to_le_bytes());
@@ -1041,12 +1112,17 @@ pub(crate) fn serialize_nested_info(groups: &[NestedGroupInfo]) -> Vec<u8> {
             out.extend_from_slice(&(key.len() as u16).to_le_bytes());
             out.extend_from_slice(key);
         }
-        if has_template {
+        if has_template || version == 3 {
             out.extend_from_slice(&(group.nested_template.len() as u16).to_le_bytes());
             for part in &group.nested_template {
                 out.extend_from_slice(&(part.len() as u16).to_le_bytes());
                 out.extend_from_slice(part);
             }
+        }
+        if version == 3 {
+            let bm_len = group.absence_bitmap.len() as u32;
+            out.extend_from_slice(&bm_len.to_le_bytes());
+            out.extend_from_slice(&group.absence_bitmap);
         }
     }
     out
@@ -1054,7 +1130,8 @@ pub(crate) fn serialize_nested_info(groups: &[NestedGroupInfo]) -> Vec<u8> {
 
 /// Deserialize nested group info from metadata bytes.
 /// Returns (nested_groups, bytes_consumed).
-/// Handles version 1 (no template) and version 2 (with template).
+/// Handles version 1 (no template), version 2 (with template),
+/// and version 3 (template + absence bitmap).
 pub(crate) fn deserialize_nested_info(data: &[u8]) -> Option<(Vec<NestedGroupInfo>, usize)> {
     if data.is_empty() {
         return None;
@@ -1062,10 +1139,11 @@ pub(crate) fn deserialize_nested_info(data: &[u8]) -> Option<(Vec<NestedGroupInf
     let mut pos = 0;
     let version = data[pos];
     pos += 1;
-    if version != 1 && version != 2 {
+    if version != 1 && version != 2 && version != 3 {
         return None;
     }
-    let has_template = version == 2;
+    let has_template = version == 2 || version == 3;
+    let has_absence = version == 3;
     if pos >= data.len() {
         return None;
     }
@@ -1120,10 +1198,27 @@ pub(crate) fn deserialize_nested_info(data: &[u8]) -> Option<(Vec<NestedGroupInf
             Vec::new()
         };
 
+        let absence_bitmap = if has_absence {
+            if pos + 4 > data.len() {
+                return None;
+            }
+            let bm_len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+            pos += 4;
+            if pos + bm_len > data.len() {
+                return None;
+            }
+            let bm = data[pos..pos + bm_len].to_vec();
+            pos += bm_len;
+            bm
+        } else {
+            Vec::new()
+        };
+
         groups.push(NestedGroupInfo {
             original_col_index,
             sub_keys,
             nested_template,
+            absence_bitmap,
         });
     }
 
@@ -1238,9 +1333,10 @@ fn reverse_uniform(data: &[u8], metadata: &[u8]) -> Vec<u8> {
 
     // Check for nested metadata after template parts.
     let remaining_metadata = &metadata[pos..];
-    if !remaining_metadata.is_empty() && (remaining_metadata[0] == 1 || remaining_metadata[0] == 2)
+    if !remaining_metadata.is_empty()
+        && (remaining_metadata[0] == 1 || remaining_metadata[0] == 2 || remaining_metadata[0] == 3)
     {
-        // has_nested == 1 or 2: unflatten before reconstructing rows.
+        // has_nested == 1, 2, or 3: unflatten before reconstructing rows.
         if let Some((nested_groups, _)) = deserialize_nested_info(remaining_metadata) {
             // Calculate total number of flat columns.
             let total_flat_cols = data.split(|&b| b == COL_SEP).count();
@@ -2015,5 +2111,46 @@ mod tests {
         assert_eq!(pairs[0].1, br#""benchmark""#.to_vec());
         assert_eq!(pairs[1].0, b"results_count");
         assert_eq!(pairs[1].1, b"14");
+    }
+
+    #[test]
+    fn test_nested_varying_subkeys_roundtrip() {
+        // Regression: rows with varying sub-keys in nested objects must
+        // round-trip byte-exact. Even rows have `extra`, odd rows don't.
+        let mut lines = Vec::new();
+        for i in 0..50 {
+            let line = if i % 2 == 0 {
+                format!("{{\"id\":{},\"meta\":{{\"x\":{},\"extra\":{}}}}}", i, i, i)
+            } else {
+                format!("{{\"id\":{},\"meta\":{{\"x\":{}}}}}", i, i)
+            };
+            lines.push(line);
+        }
+        let ndjson = lines.join("\n") + "\n";
+        let data = ndjson.as_bytes();
+
+        let result = preprocess(data).expect("should produce transform");
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(
+            std::str::from_utf8(&restored).unwrap(),
+            std::str::from_utf8(data).unwrap(),
+            "varying sub-keys roundtrip must be byte-exact"
+        );
+    }
+
+    #[test]
+    fn test_nested_explicit_null_preserved() {
+        // Explicit null values in nested objects must survive roundtrip.
+        // `{"x":1,"y":null}` must NOT be collapsed to `{"x":1}`.
+        let data = b"{\"id\":1,\"meta\":{\"x\":1,\"y\":null}}\n\
+                     {\"id\":2,\"meta\":{\"x\":2,\"y\":null}}\n\
+                     {\"id\":3,\"meta\":{\"x\":3,\"y\":null}}\n";
+        let result = preprocess(data).expect("should produce transform");
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(
+            std::str::from_utf8(&restored).unwrap(),
+            std::str::from_utf8(data).unwrap(),
+            "explicit null values must be preserved"
+        );
     }
 }

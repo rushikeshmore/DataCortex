@@ -673,6 +673,7 @@ fn flatten_group_nested(
             original_col_index: col_idx as u16,
             sub_keys: all_sub_keys,
             nested_template,
+            absence_bitmap: Vec::new(),
         });
 
         for sc in sub_columns {
