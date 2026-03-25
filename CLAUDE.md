@@ -93,16 +93,16 @@ Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` i
 ## CodeCortex — Project Knowledge (auto-updated)
 
 ### Architecture
-**datacortex** — rust — 49 files, 1074 symbols
-- **Modules (3):** datacortex-core (20573loc), datacortex-neural (773loc), datacortex-cli (653loc)
+**datacortex** — rust — 49 files, 1082 symbols
+- **Modules (3):** datacortex-core (20770loc), datacortex-neural (773loc), datacortex-cli (653loc)
 
 ### Risk Map
 **High-risk files:**
-- `CLAUDE.md` — 32 changes, 3 bug-fixes, volatile
-- `.codecortex/constitution.md` — 27 changes, 3 bug-fixes, volatile
-- `.codecortex/cortex.yaml` — 27 changes, 3 bug-fixes, volatile
-- `.codecortex/graph.json` — 27 changes, 3 bug-fixes, volatile
-- `.codecortex/hotspots.md` — 27 changes, 3 bug-fixes, volatile
+- `CLAUDE.md` — 33 changes, 4 bug-fixes, volatile
+- `.codecortex/constitution.md` — 28 changes, 4 bug-fixes, volatile
+- `.codecortex/cortex.yaml` — 28 changes, 4 bug-fixes, volatile
+- `.codecortex/graph.json` — 28 changes, 4 bug-fixes, volatile
+- `.codecortex/hotspots.md` — 28 changes, 4 bug-fixes, volatile
 
 **Hidden couplings (co-change, no import):**
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (67% co-change)
@@ -110,9 +110,9 @@ Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` i
 - `Cargo.toml` ↔ `crates/datacortex-core/Cargo.toml` (67% co-change)
 
 **Bug-prone files:**
-- `.codecortex/symbols.json` — 3 bug-fix commits
-- `.codecortex/temporal.json` — 3 bug-fix commits
-- `.../datacortex-core/src/format/typed_encoding.rs` — 2 bug-fix commits
+- `.codecortex/symbols.json` — 4 bug-fix commits
+- `.codecortex/temporal.json` — 4 bug-fix commits
+- `.../datacortex-core/src/format/typed_encoding.rs` — 3 bug-fix commits
 
 ### Before Editing
 Check `.codecortex/hotspots.md` for risk-ranked files before editing.

@@ -6,25 +6,25 @@
 - **Name:** datacortex
 - **Languages:** rust
 - **Files:** 49
-- **Symbols:** 1074
+- **Symbols:** 1082
 - **Modules:** 3
-- **Last updated:** 2026-03-25T20:10:18.237Z
+- **Last updated:** 2026-03-25T21:00:04.639Z
 
 ## Architecture
 
 **Modules (3):**
-- **datacortex-core** (44 files, 20573 lines) — rust
+- **datacortex-core** (44 files, 20770 lines) — rust
 - **datacortex-neural** (3 files, 773 lines) — rust
 - **datacortex-cli** (1 files, 653 lines) — rust
 
 ## Risk Map
 
 **Hottest files (most changes):**
-- `CLAUDE.md` — 32 changes, VOLATILE
-- `.codecortex/constitution.md` — 27 changes, VOLATILE
-- `.codecortex/cortex.yaml` — 27 changes, VOLATILE
-- `.codecortex/graph.json` — 27 changes, VOLATILE
-- `.codecortex/hotspots.md` — 27 changes, VOLATILE
+- `CLAUDE.md` — 33 changes, VOLATILE
+- `.codecortex/constitution.md` — 28 changes, VOLATILE
+- `.codecortex/cortex.yaml` — 28 changes, VOLATILE
+- `.codecortex/graph.json` — 28 changes, VOLATILE
+- `.codecortex/hotspots.md` — 28 changes, VOLATILE
 
 **Hidden dependencies (co-change but no import):**
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` — 12 co-changes (67%)
@@ -34,26 +34,26 @@
 - `crates/datacortex-cli/src/main.rs` ↔ `crates/datacortex-core/src/lib.rs` — 6 co-changes (75%)
 
 **Bug-prone files:**
-- `.codecortex/constitution.md` — 3 fix commits
+- `.codecortex/constitution.md` — 4 fix commits
+  - 3 adversarial bugs — singleton arrays, long strings, identical rows
   - schema misclassifies i32::MAX as epoch timestamp (critical)
   - mixed-type column roundtrip corruption (critical)
-  - add readme field to Cargo.toml for crates.io display (v0.3.2)
-- `.codecortex/cortex.yaml` — 3 fix commits
+- `.codecortex/cortex.yaml` — 4 fix commits
+  - 3 adversarial bugs — singleton arrays, long strings, identical rows
   - schema misclassifies i32::MAX as epoch timestamp (critical)
   - mixed-type column roundtrip corruption (critical)
-  - add readme field to Cargo.toml for crates.io display (v0.3.2)
-- `.codecortex/graph.json` — 3 fix commits
+- `.codecortex/graph.json` — 4 fix commits
+  - 3 adversarial bugs — singleton arrays, long strings, identical rows
   - schema misclassifies i32::MAX as epoch timestamp (critical)
   - mixed-type column roundtrip corruption (critical)
-  - add readme field to Cargo.toml for crates.io display (v0.3.2)
-- `.codecortex/hotspots.md` — 3 fix commits
+- `.codecortex/hotspots.md` — 4 fix commits
+  - 3 adversarial bugs — singleton arrays, long strings, identical rows
   - schema misclassifies i32::MAX as epoch timestamp (critical)
   - mixed-type column roundtrip corruption (critical)
-  - add readme field to Cargo.toml for crates.io display (v0.3.2)
-- `.codecortex/symbols.json` — 3 fix commits
+- `.codecortex/symbols.json` — 4 fix commits
+  - 3 adversarial bugs — singleton arrays, long strings, identical rows
   - schema misclassifies i32::MAX as epoch timestamp (critical)
   - mixed-type column roundtrip corruption (critical)
-  - add readme field to Cargo.toml for crates.io display (v0.3.2)
 
 ## Available Knowledge
 
