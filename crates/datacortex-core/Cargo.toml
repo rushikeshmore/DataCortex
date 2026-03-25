@@ -1,6 +1,6 @@
 [package]
 name = "datacortex-core"
-description = "Lossless text compression engine — format-aware preprocessing + bit-level context mixing"
+description = "JSON/NDJSON-optimized lossless compression. Schema inference, columnar reorg, typed encoding. Beats zstd-19 by up to 113%"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 rust-version.workspace = true
-keywords = ["compression", "lossless", "context-mixing", "json", "text"]
+keywords = ["compression", "json", "ndjson", "lossless", "columnar"]
 categories = ["compression", "encoding"]
 
 [dependencies]

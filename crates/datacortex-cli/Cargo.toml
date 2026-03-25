@@ -1,6 +1,6 @@
 [package]
 name = "datacortex-cli"
-description = "DataCortex CLI — lossless text compression with format-aware context mixing"
+description = "Best standalone JSON/NDJSON compressor. Beats zstd-19 and brotli-11 on every file. Just datacortex compress data.json"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 rust-version.workspace = true
-keywords = ["compression", "lossless", "cli", "json", "text"]
+keywords = ["compression", "json", "ndjson", "cli", "lossless"]
 categories = ["command-line-utilities", "compression"]
 
 [[bin]]

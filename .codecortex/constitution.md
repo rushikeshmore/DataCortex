@@ -8,7 +8,7 @@
 - **Files:** 49
 - **Symbols:** 1061
 - **Modules:** 3
-- **Last updated:** 2026-03-25T16:07:29.585Z
+- **Last updated:** 2026-03-25T16:10:18.492Z
 
 ## Architecture
 
@@ -20,11 +20,11 @@
 ## Risk Map
 
 **Hottest files (most changes):**
-- `CLAUDE.md` — 24 changes, VOLATILE
-- `crates/datacortex-core/src/codec.rs` — 20 changes, VOLATILE
-- `.codecortex/constitution.md` — 19 changes, VOLATILE
-- `.codecortex/cortex.yaml` — 19 changes, VOLATILE
-- `.codecortex/graph.json` — 19 changes, VOLATILE
+- `CLAUDE.md` — 25 changes, VOLATILE
+- `.codecortex/constitution.md` — 20 changes, VOLATILE
+- `.codecortex/cortex.yaml` — 20 changes, VOLATILE
+- `.codecortex/graph.json` — 20 changes, VOLATILE
+- `.codecortex/hotspots.md` — 20 changes, VOLATILE
 
 **Hidden dependencies (co-change but no import):**
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` — 12 co-changes (71%)
