@@ -4,30 +4,30 @@
 
 ## Project
 - **Name:** datacortex
-- **Languages:** rust
-- **Files:** 49
-- **Symbols:** 1082
+- **Languages:** rust, python
+- **Files:** 50
+- **Symbols:** 1105
 - **Modules:** 3
-- **Last updated:** 2026-03-25T21:00:21.443Z
+- **Last updated:** 2026-03-25T21:54:03.189Z
 
 ## Architecture
 
 **Modules (3):**
-- **datacortex-core** (44 files, 20770 lines) — rust
+- **datacortex-core** (44 files, 20858 lines) — rust
 - **datacortex-neural** (3 files, 773 lines) — rust
 - **datacortex-cli** (1 files, 653 lines) — rust
 
 ## Risk Map
 
 **Hottest files (most changes):**
-- `CLAUDE.md` — 34 changes, VOLATILE
-- `.codecortex/constitution.md` — 29 changes, VOLATILE
-- `.codecortex/cortex.yaml` — 29 changes, VOLATILE
-- `.codecortex/graph.json` — 29 changes, VOLATILE
-- `.codecortex/hotspots.md` — 29 changes, VOLATILE
+- `CLAUDE.md` — 35 changes, VOLATILE
+- `.codecortex/constitution.md` — 30 changes, VOLATILE
+- `.codecortex/cortex.yaml` — 30 changes, VOLATILE
+- `.codecortex/graph.json` — 30 changes, VOLATILE
+- `.codecortex/hotspots.md` — 30 changes, VOLATILE
 
 **Hidden dependencies (co-change but no import):**
-- `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` — 12 co-changes (67%)
+- `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` — 12 co-changes (63%)
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` — 12 co-changes (86%)
 - `Cargo.toml` ↔ `crates/datacortex-core/Cargo.toml` — 8 co-changes (62%)
 - `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` — 8 co-changes (57%)
