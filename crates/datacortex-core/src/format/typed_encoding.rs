@@ -2315,4 +2315,112 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_integer_large_delta_roundtrip() {
+        // Reproducer: cycling edge values with large delta jumps.
+        let edges: &[i64] = &[
+            0,
+            -1,
+            1,
+            -2147483648,
+            2147483647,
+            -9007199254740991,
+            9007199254740991,
+        ];
+        let strs: Vec<Vec<u8>> = (0..203)
+            .map(|i| edges[i % 7].to_string().into_bytes())
+            .collect();
+        let refs: Vec<&[u8]> = strs.iter().map(|v| v.as_slice()).collect();
+
+        let encoded = encode_integer_column(&refs);
+        let decoded = decode_integer_column(&encoded, refs.len());
+
+        assert_eq!(decoded.len(), refs.len());
+        for (i, val) in refs.iter().enumerate() {
+            assert_eq!(
+                decoded[i],
+                val.to_vec(),
+                "large-delta roundtrip mismatch at index {i}: expected {:?}, got {:?}",
+                String::from_utf8_lossy(val),
+                String::from_utf8_lossy(&decoded[i])
+            );
+        }
+    }
+
+    #[test]
+    fn test_leb128_large_values() {
+        // Values requiring 8-9 bytes of LEB128 encoding.
+        let large_values: Vec<u64> = vec![
+            1u64 << 56,
+            (1u64 << 56) - 1,
+            1u64 << 62,
+            (1u64 << 63) - 1,
+            1u64 << 63,
+            u64::MAX - 1,
+            u64::MAX,
+        ];
+        for &val in &large_values {
+            let mut buf = Vec::new();
+            leb128_encode(val, &mut buf);
+            let (decoded, _) = leb128_decode(&buf, 0)
+                .unwrap_or_else(|| panic!("LEB128 decode returned None for {val}"));
+            assert_eq!(
+                decoded, val,
+                "LEB128 roundtrip failed for {val} (encoded {} bytes)",
+                buf.len()
+            );
+        }
+    }
+
+    #[test]
+    fn test_typed_encoding_preprocess_reverse_large_deltas() {
+        // Regression: integers with values in the epoch-timestamp range (e.g.
+        // 2147483647) were misclassified as TimestampEpochS by schema inference,
+        // causing the column to fall through to String encoding.  The String
+        // decoder then wrapped bare integers in quotes, corrupting the roundtrip.
+        let edges: &[i64] = &[
+            0, -1, 1, -2147483648, 2147483647, -9007199254740991, 9007199254740991,
+        ];
+        let n = 203;
+        let col0: Vec<Vec<u8>> = (0..n).map(|i| edges[i % 7].to_string().into_bytes()).collect();
+        let col1: Vec<Vec<u8>> = (0..n).map(|i: usize| i.to_string().into_bytes()).collect();
+        let col0_refs: Vec<&[u8]> = col0.iter().map(|v| v.as_slice()).collect();
+        let col1_refs: Vec<&[u8]> = col1.iter().map(|v| v.as_slice()).collect();
+        let columnar = build_columnar(&[&col0_refs, &col1_refs]);
+
+        let result = preprocess(&columnar).expect("preprocess should succeed");
+        let restored = reverse(&result.data, &result.metadata);
+
+        assert_eq!(
+            restored.len(),
+            columnar.len(),
+            "preprocess/reverse length mismatch: {} vs {}",
+            restored.len(),
+            columnar.len()
+        );
+        assert_eq!(restored, columnar, "preprocess/reverse content mismatch");
+    }
+
+    #[test]
+    fn test_zigzag_extreme_values() {
+        let extreme: &[i64] = &[
+            i64::MIN,
+            i64::MIN + 1,
+            i64::MAX,
+            i64::MAX - 1,
+            -9007199254740991,
+            9007199254740991,
+            -9007199256888638,
+            9007199256888638,
+        ];
+        for &n in extreme {
+            let encoded = zigzag_encode(n);
+            let decoded = zigzag_decode(encoded);
+            assert_eq!(
+                decoded, n,
+                "zigzag roundtrip failed for {n}: encoded={encoded}, decoded={decoded}"
+            );
+        }
+    }
 }

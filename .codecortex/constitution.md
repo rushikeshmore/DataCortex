@@ -6,32 +6,49 @@
 - **Name:** datacortex
 - **Languages:** rust
 - **Files:** 49
-- **Symbols:** 1061
+- **Symbols:** 1066
 - **Modules:** 3
-- **Last updated:** 2026-03-25T18:44:35.203Z
+- **Last updated:** 2026-03-25T19:16:49.730Z
 
 ## Architecture
 
 **Modules (3):**
-- **datacortex-core** (44 files, 20077 lines) — rust
+- **datacortex-core** (44 files, 20235 lines) — rust
 - **datacortex-neural** (3 files, 773 lines) — rust
 - **datacortex-cli** (1 files, 653 lines) — rust
 
 ## Risk Map
 
 **Hottest files (most changes):**
-- `CLAUDE.md` — 28 changes, VOLATILE
-- `.codecortex/constitution.md` — 23 changes, VOLATILE
-- `.codecortex/cortex.yaml` — 23 changes, VOLATILE
-- `.codecortex/graph.json` — 23 changes, VOLATILE
-- `.codecortex/hotspots.md` — 23 changes, VOLATILE
+- `CLAUDE.md` — 29 changes, VOLATILE
+- `.codecortex/constitution.md` — 24 changes, VOLATILE
+- `.codecortex/cortex.yaml` — 24 changes, VOLATILE
+- `.codecortex/graph.json` — 24 changes, VOLATILE
+- `.codecortex/hotspots.md` — 24 changes, VOLATILE
 
 **Hidden dependencies (co-change but no import):**
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` — 12 co-changes (71%)
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` — 12 co-changes (86%)
-- `Cargo.toml` ↔ `crates/datacortex-core/Cargo.toml` — 8 co-changes (89%)
+- `Cargo.toml` ↔ `crates/datacortex-core/Cargo.toml` — 8 co-changes (80%)
 - `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` — 8 co-changes (57%)
 - `crates/datacortex-cli/src/main.rs` ↔ `crates/datacortex-core/src/lib.rs` — 6 co-changes (75%)
+
+**Bug-prone files:**
+- `.codecortex/constitution.md` — 2 fix commits
+  - mixed-type column roundtrip corruption (critical)
+  - add readme field to Cargo.toml for crates.io display (v0.3.2)
+- `.codecortex/cortex.yaml` — 2 fix commits
+  - mixed-type column roundtrip corruption (critical)
+  - add readme field to Cargo.toml for crates.io display (v0.3.2)
+- `.codecortex/graph.json` — 2 fix commits
+  - mixed-type column roundtrip corruption (critical)
+  - add readme field to Cargo.toml for crates.io display (v0.3.2)
+- `.codecortex/hotspots.md` — 2 fix commits
+  - mixed-type column roundtrip corruption (critical)
+  - add readme field to Cargo.toml for crates.io display (v0.3.2)
+- `.codecortex/symbols.json` — 2 fix commits
+  - mixed-type column roundtrip corruption (critical)
+  - add readme field to Cargo.toml for crates.io display (v0.3.2)
 
 ## Available Knowledge
 

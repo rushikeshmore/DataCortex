@@ -483,4 +483,39 @@ mod tests {
         let restored = reverse_preprocess(&preprocessed, &chain);
         assert_eq!(restored, data.to_vec());
     }
+
+    #[test]
+    fn test_ndjson_large_delta_integer_roundtrip() {
+        // Regression: NDJSON with integers spanning the epoch-timestamp range
+        // (e.g. 2147483647 = i32::MAX) caused schema misclassification and
+        // CRC-32 mismatch on decompression in Fast mode.
+        let edges: &[i64] = &[
+            0, -1, 1, -2147483648, 2147483647, -9007199254740991, 9007199254740991,
+        ];
+        let mut ndjson = String::new();
+        for i in 0..203 {
+            ndjson.push_str(&format!(
+                "{{\"val\":{},\"idx\":{}}}\n",
+                edges[i % 7],
+                i
+            ));
+        }
+
+        let data = ndjson.as_bytes();
+
+        // Full pipeline roundtrip (ndjson columnar + typed encoding in Fast mode).
+        let (preprocessed, chain) = preprocess(data, FormatHint::Ndjson, Mode::Fast);
+
+        // Verify typed encoding was applied.
+        assert!(
+            chain
+                .records
+                .iter()
+                .any(|r| r.id == transform::TRANSFORM_TYPED_ENCODING),
+            "typed encoding should be applied in Fast mode"
+        );
+
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(restored, data.to_vec(), "byte-exact roundtrip failed");
+    }
 }
