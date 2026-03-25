@@ -6,14 +6,19 @@ fn main() {
     let format = detect_format(&data);
     eprintln!("Format: {:?}", format);
     eprintln!("Original: {} bytes", data.len());
-    
+
     let (preprocessed, chain) = preprocess(&data, format, Mode::Balanced);
     eprintln!("Preprocessed: {} bytes", preprocessed.len());
     eprintln!("Transforms: {}", chain.records.len());
     for (i, rec) in chain.records.iter().enumerate() {
-        eprintln!("  [{}] ID={} metadata={} bytes", i, rec.id, rec.metadata.len());
+        eprintln!(
+            "  [{}] ID={} metadata={} bytes",
+            i,
+            rec.id,
+            rec.metadata.len()
+        );
     }
-    
+
     let restored = reverse_preprocess(&preprocessed, &chain);
     if restored == data {
         eprintln!("Roundtrip: OK");

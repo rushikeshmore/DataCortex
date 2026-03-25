@@ -18,8 +18,8 @@
 
 use crate::mixer::apm::APMStage;
 use crate::mixer::dual_mixer::{NUM_MODELS, byte_class};
-use crate::mixer::multi_set_mixer::MultiSetMixer;
 use crate::mixer::isse::IsseChain;
+use crate::mixer::multi_set_mixer::MultiSetMixer;
 use crate::model::cm_model::{AssociativeContextModel, ChecksumContextModel, ContextModel};
 use crate::model::dmc_model::DmcModel;
 use crate::model::indirect_model::IndirectModel;
@@ -30,6 +30,7 @@ use crate::model::ppm_model::{PpmConfig, PpmModel};
 use crate::model::run_model::RunModel;
 use crate::model::sparse_model::SparseModel;
 use crate::model::word_model::WordModel;
+
 /// Configuration for the CM engine -- controls memory/quality trade-off.
 ///
 /// Each field specifies the ContextMap size in bytes for the corresponding model.

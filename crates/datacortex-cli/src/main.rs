@@ -179,7 +179,14 @@ fn cmd_compress(
 
     let start = Instant::now();
     let mut out = BufWriter::new(fs::File::create(&output_path)?);
-    compress_with_options(&data, mode, Some(format), model_path, zstd_level_override, &mut out)?;
+    compress_with_options(
+        &data,
+        mode,
+        Some(format),
+        model_path,
+        zstd_level_override,
+        &mut out,
+    )?;
     let elapsed = start.elapsed();
 
     let output_size = fs::metadata(&output_path)?.len();

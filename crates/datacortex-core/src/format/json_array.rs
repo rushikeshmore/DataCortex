@@ -725,7 +725,10 @@ fn unflatten_group_nested(
     }
 
     let original_num_cols = total_flat_cols
-        - nested_groups.iter().map(|g| g.sub_keys.len()).sum::<usize>()
+        - nested_groups
+            .iter()
+            .map(|g| g.sub_keys.len())
+            .sum::<usize>()
         + nested_groups.len();
 
     let mut original_col_map: Vec<Option<usize>> = vec![None; original_num_cols];
@@ -804,7 +807,8 @@ fn unflatten_group_nested(
                                     // Want: '{\n        "key_si": '
                                     if let Some(brace_pos) = t0.iter().position(|&b| b == b'{') {
                                         obj.extend_from_slice(&t0[..brace_pos + 1]);
-                                        if let Some(comma_pos) = ti.iter().position(|&b| b == b',') {
+                                        if let Some(comma_pos) = ti.iter().position(|&b| b == b',')
+                                        {
                                             obj.extend_from_slice(&ti[comma_pos + 1..]);
                                         } else {
                                             obj.extend_from_slice(ti);
@@ -991,13 +995,10 @@ fn preprocess_grouped(data: &[u8], span: &ArraySpan) -> Option<TransformResult> 
         // Uses json_array-specific flatten that handles absent keys with sentinel.
         let num_rows = rows.len();
         let (final_col_data, nested_meta) =
-            if let Some((flattened, nested_groups)) =
-                flatten_group_nested(&col_data, num_rows)
-            {
+            if let Some((flattened, nested_groups)) = flatten_group_nested(&col_data, num_rows) {
                 if flattened.len() < col_data.len() {
                     // Verify roundtrip: unflatten must produce the exact original.
-                    let total_flat_cols =
-                        flattened.split(|&b| b == COL_SEP).count() as u16;
+                    let total_flat_cols = flattened.split(|&b| b == COL_SEP).count() as u16;
                     let unflattened = unflatten_group_nested(
                         &flattened,
                         &nested_groups,
@@ -1484,8 +1485,7 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
         if mpos + 4 > metadata.len() {
             return data.to_vec();
         }
-        let group_count =
-            u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+        let group_count = u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
         mpos += 4;
 
         let mut element_indices = Vec::with_capacity(group_count);
@@ -1493,8 +1493,7 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
             if mpos + 4 > metadata.len() {
                 return data.to_vec();
             }
-            let idx =
-                u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+            let idx = u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
             mpos += 4;
             element_indices.push(idx);
         }
@@ -1503,8 +1502,7 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
         if mpos + 4 > metadata.len() {
             return data.to_vec();
         }
-        let gm_len =
-            u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+        let gm_len = u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
         mpos += 4;
         if mpos + gm_len > metadata.len() {
             return data.to_vec();
@@ -1536,12 +1534,9 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
             if nested_meta_bytes.len() < 6 {
                 return data.to_vec();
             }
-            let nested_num_rows = u32::from_le_bytes(
-                nested_meta_bytes[0..4].try_into().unwrap(),
-            ) as usize;
-            let total_flat_cols = u16::from_le_bytes(
-                nested_meta_bytes[4..6].try_into().unwrap(),
-            );
+            let nested_num_rows =
+                u32::from_le_bytes(nested_meta_bytes[0..4].try_into().unwrap()) as usize;
+            let total_flat_cols = u16::from_le_bytes(nested_meta_bytes[4..6].try_into().unwrap());
             match ndjson::deserialize_nested_info(&nested_meta_bytes[6..]) {
                 Some((groups, _)) => Some((nested_num_rows, total_flat_cols, groups)),
                 None => return data.to_vec(),
@@ -1554,8 +1549,7 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
         if dpos + 4 > data.len() {
             return data.to_vec();
         }
-        let gd_len =
-            u32::from_le_bytes(data[dpos..dpos + 4].try_into().unwrap()) as usize;
+        let gd_len = u32::from_le_bytes(data[dpos..dpos + 4].try_into().unwrap()) as usize;
         dpos += 4;
         if dpos + gd_len > data.len() {
             return data.to_vec();
@@ -1565,17 +1559,18 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
 
         // If nested flatten was applied, unflatten first.
         let group_data_owned: Vec<u8>;
-        let group_data: &[u8] = if let Some((nested_num_rows, total_flat_cols, ref nested_groups)) = nested_info {
-            group_data_owned = unflatten_group_nested(
-                group_data_raw,
-                nested_groups,
-                nested_num_rows,
-                total_flat_cols as usize,
-            );
-            &group_data_owned
-        } else {
-            group_data_raw
-        };
+        let group_data: &[u8] =
+            if let Some((nested_num_rows, total_flat_cols, ref nested_groups)) = nested_info {
+                group_data_owned = unflatten_group_nested(
+                    group_data_raw,
+                    nested_groups,
+                    nested_num_rows,
+                    total_flat_cols as usize,
+                );
+                &group_data_owned
+            } else {
+                group_data_raw
+            };
 
         // Decode this group using the uniform metadata parser.
         let (parts, num_rows, num_cols) = match parse_group_metadata(group_metadata) {
@@ -1621,8 +1616,7 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
     if mpos + 4 > metadata.len() {
         return data.to_vec();
     }
-    let residual_count =
-        u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+    let residual_count = u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
     mpos += 4;
 
     let mut residual_indices = Vec::with_capacity(residual_count);
@@ -1630,8 +1624,7 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
         if mpos + 4 > metadata.len() {
             return data.to_vec();
         }
-        let idx =
-            u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+        let idx = u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
         mpos += 4;
         residual_indices.push(idx);
     }
@@ -1884,23 +1877,31 @@ mod tests {
                 // Schema B: 10 elements
                 json.push_str(&format!(
                     r#"{{"id": {}, "tag": "tag_{}", "active": {}}}"#,
-                    i, i, if i % 2 == 0 { "true" } else { "false" }
+                    i,
+                    i,
+                    if i % 2 == 0 { "true" } else { "false" }
                 ));
             } else {
                 // Schema A: 20 elements
                 json.push_str(&format!(
                     r#"{{"id": {}, "name": "item_{}", "score": {}}}"#,
-                    i, i, i * 10
+                    i,
+                    i,
+                    i * 10
                 ));
             }
         }
         json.push_str(r#"], "meta": {"count": 30}}"#);
 
         let data = json.as_bytes();
-        let result = preprocess(data).expect("should produce grouped transform for diverse schemas");
+        let result =
+            preprocess(data).expect("should produce grouped transform for diverse schemas");
 
         // Verify it's Strategy 2 (grouped).
-        assert_eq!(result.metadata[0], METADATA_VERSION_GROUPED, "should use grouped strategy");
+        assert_eq!(
+            result.metadata[0], METADATA_VERSION_GROUPED,
+            "should use grouped strategy"
+        );
 
         // Verify roundtrip.
         let restored = reverse(&result.data, &result.metadata);
@@ -1950,19 +1951,25 @@ mod tests {
                 // Schema C: only 2 elements — below MIN_GROUP_ELEMENTS, will be residual.
                 json.push_str(&format!(
                     r#"{{"id": {}, "special": true, "data": "unique_{}", "extra": {}}}"#,
-                    i, i, i * 100
+                    i,
+                    i,
+                    i * 100
                 ));
             } else if i % 3 == 0 {
                 // Schema B: ~8 elements
                 json.push_str(&format!(
                     r#"{{"id": {}, "category": "cat_{}", "weight": {}}}"#,
-                    i, i, i as f64 * 1.5
+                    i,
+                    i,
+                    i as f64 * 1.5
                 ));
             } else {
                 // Schema A: ~20 elements
                 json.push_str(&format!(
                     r#"{{"id": {}, "name": "item_{}", "value": {}}}"#,
-                    i, i, i * 10
+                    i,
+                    i,
+                    i * 10
                 ));
             }
         }
@@ -1998,10 +2005,14 @@ mod tests {
             }
         };
 
-        let result = preprocess(&data).expect("twitter.json should be transformable with grouped strategy");
+        let result =
+            preprocess(&data).expect("twitter.json should be transformable with grouped strategy");
 
         // Should be grouped (twitter has diverse schemas).
-        assert_eq!(result.metadata[0], METADATA_VERSION_GROUPED, "twitter.json should use grouped strategy");
+        assert_eq!(
+            result.metadata[0], METADATA_VERSION_GROUPED,
+            "twitter.json should use grouped strategy"
+        );
 
         // Verify byte-exact roundtrip.
         let restored = reverse(&result.data, &result.metadata);
@@ -2038,7 +2049,9 @@ mod tests {
                 // Schema B: flat, 10 elements
                 json.push_str(&format!(
                     r#"{{"id": {}, "tag": "tag_{}", "active": {}}}"#,
-                    i, i, if i % 2 == 0 { "true" } else { "false" }
+                    i,
+                    i,
+                    if i % 2 == 0 { "true" } else { "false" }
                 ));
             } else {
                 // Schema A: nested, 20 elements
@@ -2051,7 +2064,8 @@ mod tests {
         json.push_str(r#"], "meta": {"count": 30}}"#);
 
         let data = json.as_bytes();
-        let result = preprocess(data).expect("should produce grouped transform with nested flatten");
+        let result =
+            preprocess(data).expect("should produce grouped transform with nested flatten");
 
         // Should be grouped.
         assert_eq!(result.metadata[0], METADATA_VERSION_GROUPED);

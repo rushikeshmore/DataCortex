@@ -49,7 +49,10 @@ fn main() {
     eprintln!("Original:    {} bytes", data.len());
     eprintln!("Transformed: {} bytes", transformed.len());
     eprintln!("Metadata:    {} bytes", metadata_size);
-    eprintln!("Total (transform + meta): {} bytes", transformed.len() + metadata_size);
+    eprintln!(
+        "Total (transform + meta): {} bytes",
+        transformed.len() + metadata_size
+    );
     eprintln!(
         "Transform ratio: {:.1}%",
         (transformed.len() + metadata_size) as f64 / data.len() as f64 * 100.0

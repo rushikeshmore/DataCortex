@@ -171,7 +171,7 @@ const INITIAL_SET_WEIGHTS: [i32; NUM_MODELS] = [
     300, 60, // O6
     250, 60, // O7
     200, 60, // O8
-    180, 60, // O9
+    180, 60,  // O9
     300, // match
     250, // word
     250, // sparse
@@ -240,8 +240,7 @@ impl MultiSetMixer {
             & (SET4_SIZE - 1);
 
         // Set 5: (bpos, byte_class) — structure-dependent (xml_state removed)
-        let ctx5 =
-            (byte_class as usize * 8 + bpos as usize) & (SET5_SIZE - 1);
+        let ctx5 = (byte_class as usize * 8 + bpos as usize) & (SET5_SIZE - 1);
 
         // Set 6: (byte_class, run_q, bpos) — character type + repetition
         let ctx6 =
@@ -265,8 +264,14 @@ impl MultiSetMixer {
         // Fixed-weight average in log-odds space (no learned second layer).
         // Sets 1-3 (byte context) get more weight than sets 4-7 (sparse context).
         // Weights: 4,4,3,2,1,1,1 (total=16)
-        let blended_d = (d1 as i64 * 4 + d2 as i64 * 4 + d3 as i64 * 3
-            + d4 as i64 * 2 + d5 as i64 + d6 as i64 + d7 as i64) / 16;
+        let blended_d = (d1 as i64 * 4
+            + d2 as i64 * 4
+            + d3 as i64 * 3
+            + d4 as i64 * 2
+            + d5 as i64
+            + d6 as i64
+            + d7 as i64)
+            / 16;
         let p = squash(blended_d as i32).clamp(1, 4095);
         self.last_p = p;
         p

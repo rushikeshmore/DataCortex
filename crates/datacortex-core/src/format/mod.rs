@@ -13,9 +13,8 @@ pub mod value_dict;
 
 use crate::dcx::{FormatHint, Mode};
 use transform::{
-    TRANSFORM_JSON_ARRAY_COLUMNAR, TRANSFORM_JSON_KEY_INTERN, TRANSFORM_NESTED_FLATTEN,
-    TRANSFORM_NDJSON_COLUMNAR, TRANSFORM_TYPED_ENCODING, TRANSFORM_VALUE_DICT,
-    TransformChain,
+    TRANSFORM_JSON_ARRAY_COLUMNAR, TRANSFORM_JSON_KEY_INTERN, TRANSFORM_NDJSON_COLUMNAR,
+    TRANSFORM_NESTED_FLATTEN, TRANSFORM_TYPED_ENCODING, TRANSFORM_VALUE_DICT, TransformChain,
 };
 
 /// Detect file format from content bytes.
@@ -69,8 +68,7 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
     // Only Strategy 1 output is compatible with downstream typed_encoding/value_dict.
     if format == FormatHint::Ndjson {
         if let Some(result) = ndjson::preprocess(&current) {
-            let is_uniform_columnar =
-                !result.metadata.is_empty() && result.metadata[0] == 1;
+            let is_uniform_columnar = !result.metadata.is_empty() && result.metadata[0] == 1;
             chain.push(TRANSFORM_NDJSON_COLUMNAR, result.metadata);
             current = result.data;
             ndjson_transform_applied = true;
@@ -100,19 +98,16 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
         // Extract num_rows from the json_array metadata (offset 1, u32 LE).
         let ja_meta = &chain.records.last().unwrap().metadata;
         if ja_meta.len() >= 5 {
-            let num_rows =
-                u32::from_le_bytes(ja_meta[1..5].try_into().unwrap()) as usize;
+            let num_rows = u32::from_le_bytes(ja_meta[1..5].try_into().unwrap()) as usize;
             if let Some((flat_data, nested_groups)) =
                 ndjson::flatten_nested_columns(&current, num_rows)
             {
                 // Build metadata: num_rows + total_flat_cols + serialized nested info.
-                let total_flat_cols =
-                    flat_data.split(|&b| b == 0x00).count() as u16;
+                let total_flat_cols = flat_data.split(|&b| b == 0x00).count() as u16;
                 let mut nested_meta = Vec::new();
                 nested_meta.extend_from_slice(&(num_rows as u32).to_le_bytes());
                 nested_meta.extend_from_slice(&total_flat_cols.to_le_bytes());
-                nested_meta
-                    .extend_from_slice(&ndjson::serialize_nested_info(&nested_groups));
+                nested_meta.extend_from_slice(&ndjson::serialize_nested_info(&nested_groups));
                 chain.push(TRANSFORM_NESTED_FLATTEN, nested_meta);
                 current = flat_data;
             }
@@ -184,12 +179,10 @@ pub fn reverse_preprocess(data: &[u8], chain: &TransformChain) -> Vec<u8> {
             TRANSFORM_NESTED_FLATTEN => {
                 // Metadata: num_rows (u32 LE) + total_flat_cols (u16 LE) + nested_info.
                 if record.metadata.len() >= 6 {
-                    let num_rows = u32::from_le_bytes(
-                        record.metadata[0..4].try_into().unwrap(),
-                    ) as usize;
-                    let total_flat_cols = u16::from_le_bytes(
-                        record.metadata[4..6].try_into().unwrap(),
-                    ) as usize;
+                    let num_rows =
+                        u32::from_le_bytes(record.metadata[0..4].try_into().unwrap()) as usize;
+                    let total_flat_cols =
+                        u16::from_le_bytes(record.metadata[4..6].try_into().unwrap()) as usize;
                     if let Some((nested_groups, _)) =
                         ndjson::deserialize_nested_info(&record.metadata[6..])
                     {
@@ -460,7 +453,9 @@ mod tests {
         for i in 0..10 {
             ndjson.push_str(&format!(
                 r#"{{"id":{},"user":{{"name":"u{}","level":{}}}}}"#,
-                i, i, i % 3
+                i,
+                i,
+                i % 3
             ));
             ndjson.push('\n');
         }

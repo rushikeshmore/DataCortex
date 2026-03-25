@@ -29,6 +29,7 @@ pub enum Mode {
 }
 
 impl Mode {
+    /// Parse a `Mode` from its on-disk `u8` representation.
     pub fn from_u8(v: u8) -> io::Result<Self> {
         match v {
             0 => Ok(Self::Max),
@@ -41,6 +42,7 @@ impl Mode {
         }
     }
 
+    /// Return the lowercase string name for this mode.
     pub fn name(&self) -> &'static str {
         match self {
             Self::Max => "max",
@@ -76,6 +78,7 @@ pub enum FormatHint {
 }
 
 impl FormatHint {
+    /// Parse a `FormatHint` from its on-disk `u8` representation.
     pub fn from_u8(v: u8) -> io::Result<Self> {
         match v {
             0 => Ok(Self::Generic),
@@ -96,6 +99,7 @@ impl FormatHint {
         }
     }
 
+    /// Return the lowercase string name for this format.
     pub fn name(&self) -> &'static str {
         match self {
             Self::Generic => "generic",
@@ -119,14 +123,13 @@ impl std::fmt::Display for FormatHint {
     }
 }
 
-/// Flags byte layout:
-///   bit 0: has_transform_metadata
-///   bit 1: has_zstd_dictionary (Fast mode only)
-///   bit 2: metadata is zstd-compressed
-///   bit 3: compressed with brotli (vs zstd)
+/// Flag bit 0: transform metadata is present.
 pub const FLAG_HAS_TRANSFORM: u8 = 1 << 0;
+/// Flag bit 1: compressed payload embeds a zstd dictionary (Fast mode).
 pub const FLAG_HAS_DICT: u8 = 1 << 1;
+/// Flag bit 2: transform metadata is zstd-compressed.
 pub const FLAG_META_COMPRESSED: u8 = 1 << 2;
+/// Flag bit 3: payload compressed with brotli instead of zstd.
 pub const FLAG_BROTLI: u8 = 1 << 3;
 
 /// .dcx file header.
@@ -201,10 +204,11 @@ impl DcxHeader {
         let has_dict = flags & FLAG_HAS_DICT != 0;
         let meta_compressed = flags & FLAG_META_COMPRESSED != 0;
         let use_brotli = flags & FLAG_BROTLI != 0;
-        let original_size = u64::from_le_bytes(buf[8..16].try_into().unwrap());
-        let compressed_size = u64::from_le_bytes(buf[16..24].try_into().unwrap());
-        let crc32 = u32::from_le_bytes(buf[24..28].try_into().unwrap());
-        let transform_metadata_len = u32::from_le_bytes(buf[28..32].try_into().unwrap()) as usize;
+        let original_size = u64::from_le_bytes(buf[8..16].try_into().expect("8-byte slice"));
+        let compressed_size = u64::from_le_bytes(buf[16..24].try_into().expect("8-byte slice"));
+        let crc32 = u32::from_le_bytes(buf[24..28].try_into().expect("4-byte slice"));
+        let transform_metadata_len =
+            u32::from_le_bytes(buf[28..32].try_into().expect("4-byte slice")) as usize;
 
         let transform_metadata = if flags & FLAG_HAS_TRANSFORM != 0 && transform_metadata_len > 0 {
             let mut meta = vec![0u8; transform_metadata_len];
