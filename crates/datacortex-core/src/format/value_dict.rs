@@ -69,8 +69,8 @@ pub fn preprocess(data: &[u8]) -> Option<TransformResult> {
             // Metadata: num_entries + entries (length-prefixed).
             metadata.push(dict.len() as u8);
             for entry in dict {
-                // Store value length (u16) + value bytes.
-                metadata.extend_from_slice(&(entry.len() as u16).to_le_bytes());
+                // Store value length (u32) + value bytes.
+                metadata.extend_from_slice(&(entry.len() as u32).to_le_bytes());
                 metadata.extend_from_slice(entry);
             }
 
@@ -143,12 +143,12 @@ pub fn reverse(data: &[u8], metadata: &[u8]) -> Vec<u8> {
             let num_entries = marker as usize;
             let mut dict = Vec::with_capacity(num_entries);
             for _ in 0..num_entries {
-                if mpos + 2 > metadata.len() {
+                if mpos + 4 > metadata.len() {
                     return data.to_vec();
                 }
                 let val_len =
-                    u16::from_le_bytes(metadata[mpos..mpos + 2].try_into().unwrap()) as usize;
-                mpos += 2;
+                    u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+                mpos += 4;
                 if mpos + val_len > metadata.len() {
                     return data.to_vec();
                 }
@@ -274,7 +274,7 @@ fn analyze_column(col_data: &[u8]) -> ColumnAnalysis {
     let current_size = col_data.len();
 
     // Dictionary-encoded: 1 byte per value + separators + dictionary overhead.
-    let dict_overhead: usize = freq.keys().map(|k| 2 + k.len()).sum::<usize>() + 1; // 1 byte marker + entries
+    let dict_overhead: usize = freq.keys().map(|k| 4 + k.len()).sum::<usize>() + 1; // 1 byte marker + entries
     let encoded_data_size = values.len() + values.len().saturating_sub(1); // 1 byte per value + separators
 
     let dict_total = encoded_data_size + dict_overhead;
@@ -306,13 +306,32 @@ mod tests {
 
     #[test]
     fn roundtrip_simple() {
-        // 3 columns, 2 with few unique values.
-        let input = b"page_view\x01page_view\x01api_call\x01page_view\x00alice\x01bob\x01alice\x00unique1\x01unique2\x01unique3";
-        let result = preprocess(input);
+        // 3 columns: col 0 has many repeated values to overcome dict overhead,
+        // col 1 has repeated values, col 2 has all unique values (not dictable).
+        let mut col0 = Vec::new();
+        let mut col1 = Vec::new();
+        let mut col2 = Vec::new();
+        for i in 0..20 {
+            if i > 0 {
+                col0.push(VAL_SEP);
+                col1.push(VAL_SEP);
+                col2.push(VAL_SEP);
+            }
+            col0.extend_from_slice(if i % 3 == 0 { b"page_view" } else { b"api_call" });
+            col1.extend_from_slice(if i % 2 == 0 { b"alice" } else { b"bob" });
+            col2.extend_from_slice(format!("unique{i}").as_bytes());
+        }
+        let mut input = col0;
+        input.push(COL_SEP);
+        input.extend_from_slice(&col1);
+        input.push(COL_SEP);
+        input.extend_from_slice(&col2);
+
+        let result = preprocess(&input);
         assert!(result.is_some(), "should apply dict transform");
         let result = result.unwrap();
         let recovered = reverse(&result.data, &result.metadata);
-        assert_eq!(recovered, input.to_vec(), "roundtrip failed");
+        assert_eq!(recovered, input, "roundtrip failed");
     }
 
     #[test]

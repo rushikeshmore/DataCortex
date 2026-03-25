@@ -227,7 +227,7 @@ dependencies = [
 
 [[package]]
 name = "datacortex-cli"
-version = "0.3.4"
+version = "0.3.6"
 dependencies = [
  "clap",
  "datacortex-core",
@@ -236,7 +236,7 @@ dependencies = [
 
 [[package]]
 name = "datacortex-core"
-version = "0.3.4"
+version = "0.3.6"
 dependencies = [
  "brotli",
  "crc32fast",
@@ -247,7 +247,7 @@ dependencies = [
 
 [[package]]
 name = "datacortex-neural"
-version = "0.3.4"
+version = "0.3.6"
 dependencies = [
  "encoding_rs",
  "llama-cpp-2",
