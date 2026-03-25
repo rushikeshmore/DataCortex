@@ -22,33 +22,58 @@ pub struct TransformChain {
     pub records: Vec<TransformRecord>,
 }
 
-// Transform IDs — all kept for backward-compat decoding of existing .dcx files.
+/// Transform ID: JSON key interning.
 pub const TRANSFORM_JSON_KEY_INTERN: u8 = 1;
+/// Transform ID: NDJSON columnar layout.
 pub const TRANSFORM_NDJSON_COLUMNAR: u8 = 2;
-// Legacy (non-JSON) transform IDs — needed for decoding old .dcx files.
-pub const TRANSFORM_WRT: u8 = 3;
-pub const TRANSFORM_LZP: u8 = 4;
-pub const TRANSFORM_CSV_COLUMNAR: u8 = 5;
-pub const TRANSFORM_LOG_COLUMNAR: u8 = 6;
+/// Transform ID: word-replace transform (legacy).
+#[allow(dead_code)]
+pub(crate) const TRANSFORM_WRT: u8 = 3;
+/// Transform ID: LZP preprocessing (legacy).
+#[allow(dead_code)]
+pub(crate) const TRANSFORM_LZP: u8 = 4;
+/// Transform ID: CSV columnar layout (legacy).
+#[allow(dead_code)]
+pub(crate) const TRANSFORM_CSV_COLUMNAR: u8 = 5;
+/// Transform ID: log file columnar layout (legacy).
+#[allow(dead_code)]
+pub(crate) const TRANSFORM_LOG_COLUMNAR: u8 = 6;
+/// Transform ID: JSON array columnar layout.
 pub const TRANSFORM_JSON_ARRAY_COLUMNAR: u8 = 7;
-pub const TRANSFORM_MD_STRUCTURAL: u8 = 8;
-pub const TRANSFORM_LOGFMT_COLUMNAR: u8 = 9;
-pub const TRANSFORM_PROMETHEUS_COLUMNAR: u8 = 10;
-pub const TRANSFORM_YAML_COLUMNAR: u8 = 11;
-pub const TRANSFORM_XML_COLUMNAR: u8 = 12;
+/// Transform ID: Markdown structural transform (legacy).
+#[allow(dead_code)]
+pub(crate) const TRANSFORM_MD_STRUCTURAL: u8 = 8;
+/// Transform ID: logfmt columnar layout (legacy).
+#[allow(dead_code)]
+pub(crate) const TRANSFORM_LOGFMT_COLUMNAR: u8 = 9;
+/// Transform ID: Prometheus columnar layout (legacy).
+#[allow(dead_code)]
+pub(crate) const TRANSFORM_PROMETHEUS_COLUMNAR: u8 = 10;
+/// Transform ID: YAML columnar layout (legacy).
+#[allow(dead_code)]
+pub(crate) const TRANSFORM_YAML_COLUMNAR: u8 = 11;
+/// Transform ID: XML columnar layout (legacy).
+#[allow(dead_code)]
+pub(crate) const TRANSFORM_XML_COLUMNAR: u8 = 12;
+/// Transform ID: value dictionary encoding.
 pub const TRANSFORM_VALUE_DICT: u8 = 13;
+/// Transform ID: per-column typed binary encoding.
 pub const TRANSFORM_TYPED_ENCODING: u8 = 14;
+/// Transform ID: nested JSON flattening.
 pub const TRANSFORM_NESTED_FLATTEN: u8 = 15;
 
 impl TransformChain {
+    /// Create an empty transform chain.
     pub fn new() -> Self {
         Self { records: vec![] }
     }
 
+    /// Append a transform record with the given ID and metadata.
     pub fn push(&mut self, id: u8, metadata: Vec<u8>) {
         self.records.push(TransformRecord { id, metadata });
     }
 
+    /// Returns `true` if no transforms have been applied.
     pub fn is_empty(&self) -> bool {
         self.records.is_empty()
     }

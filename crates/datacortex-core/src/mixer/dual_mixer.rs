@@ -220,14 +220,7 @@ pub fn byte_class(b: u8) -> u8 {
 /// Compute fine mixer context index (0..65535).
 /// Uses c0 partial byte, c1 top 4 bits, bpos, byte class, match info, run length.
 #[inline]
-fn fine_context(
-    c0: u32,
-    c1: u8,
-    bpos: u8,
-    bclass: u8,
-    match_q: u8,
-    run_q: u8,
-) -> usize {
+fn fine_context(c0: u32, c1: u8, bpos: u8, bclass: u8, match_q: u8, run_q: u8) -> usize {
     // Hash together: c0(8b) + c1_top4(4b) + bpos(3b) + bclass(3b) + match_q(2b) + run_q(2b)
     // = 22 bits, fold to 16 bits for 64K sets
     let mut h: usize = c0 as usize & 0xFF;

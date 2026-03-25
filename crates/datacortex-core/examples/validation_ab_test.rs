@@ -16,7 +16,8 @@ use std::fs;
 
 fn main() {
     // Read test file.
-    let data = fs::read("corpus/test-ndjson.ndjson").expect("failed to read corpus/test-ndjson.ndjson");
+    let data =
+        fs::read("corpus/test-ndjson.ndjson").expect("failed to read corpus/test-ndjson.ndjson");
     println!("Original NDJSON: {} bytes", data.len());
 
     // Apply NDJSON columnar transform (low-level, no value dict).
@@ -61,17 +62,20 @@ fn main() {
         bpb_b
     );
 
-    let improvement = (compressed_a.len() as f64 - compressed_b.len() as f64)
-        / compressed_a.len() as f64
-        * 100.0;
+    let improvement =
+        (compressed_a.len() as f64 - compressed_b.len() as f64) / compressed_a.len() as f64 * 100.0;
     println!("Improvement: {:.1}%", improvement);
 
     if compressed_b.len() < compressed_a.len() {
         println!();
-        println!("VERDICT: PROCEED — quote stripping HELPS CM. Typed encoding will likely help too.");
+        println!(
+            "VERDICT: PROCEED — quote stripping HELPS CM. Typed encoding will likely help too."
+        );
     } else {
         println!();
-        println!("VERDICT: DUAL-PIPELINE — quote stripping HURTS CM. Use typed encoding + zstd (Fast mode only).");
+        println!(
+            "VERDICT: DUAL-PIPELINE — quote stripping HURTS CM. Use typed encoding + zstd (Fast mode only)."
+        );
     }
 }
 

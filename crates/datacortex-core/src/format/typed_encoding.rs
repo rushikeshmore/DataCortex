@@ -207,9 +207,9 @@ fn decode_boolean_column(data: &[u8]) -> Vec<Vec<u8>> {
 
 /// Timestamp format byte values for the column header.
 /// These encode the exact format variation so decoding reproduces byte-exact output.
-const TS_FMT_Z: u8 = 0;       // "...Z" suffix
-const TS_FMT_OFFSET: u8 = 1;  // "+HH:MM" or "-HH:MM" suffix
-const TS_FMT_BARE: u8 = 2;    // No timezone suffix
+const TS_FMT_Z: u8 = 0; // "...Z" suffix
+const TS_FMT_OFFSET: u8 = 1; // "+HH:MM" or "-HH:MM" suffix
+const TS_FMT_BARE: u8 = 2; // No timezone suffix
 
 /// Parse an ISO 8601 timestamp string (WITH surrounding quotes) to epoch microseconds.
 /// Returns (epoch_micros, format_byte, tz_offset_minutes, frac_digits).
@@ -225,15 +225,25 @@ fn parse_iso8601_to_micros(val: &[u8]) -> Option<(u64, u8, i16, u8)> {
 
     // Parse YYYY-MM-DDThh:mm:ss
     let year = parse_digits(inner, 0, 4)? as i64;
-    if inner[4] != b'-' { return None; }
+    if inner[4] != b'-' {
+        return None;
+    }
     let month = parse_digits(inner, 5, 2)? as u32;
-    if inner[7] != b'-' { return None; }
+    if inner[7] != b'-' {
+        return None;
+    }
     let day = parse_digits(inner, 8, 2)? as u32;
-    if inner[10] != b'T' { return None; }
+    if inner[10] != b'T' {
+        return None;
+    }
     let hour = parse_digits(inner, 11, 2)? as u64;
-    if inner[13] != b':' { return None; }
+    if inner[13] != b':' {
+        return None;
+    }
     let minute = parse_digits(inner, 14, 2)? as u64;
-    if inner[16] != b':' { return None; }
+    if inner[16] != b':' {
+        return None;
+    }
     let second = parse_digits(inner, 17, 2)? as u64;
 
     // Parse optional fractional seconds.
@@ -281,9 +291,13 @@ fn parse_iso8601_to_micros(val: &[u8]) -> Option<(u64, u8, i16, u8)> {
                 format_byte = TS_FMT_OFFSET;
                 let sign: i16 = if inner[pos] == b'+' { 1 } else { -1 };
                 pos += 1;
-                if pos + 5 > inner.len() { return None; }
+                if pos + 5 > inner.len() {
+                    return None;
+                }
                 let tz_h = parse_digits(inner, pos, 2)? as i16;
-                if inner[pos + 2] != b':' { return None; }
+                if inner[pos + 2] != b':' {
+                    return None;
+                }
                 let tz_m = parse_digits(inner, pos + 3, 2)? as i16;
                 tz_offset_minutes = sign * (tz_h * 60 + tz_m);
                 pos += 5;
@@ -313,7 +327,12 @@ fn parse_iso8601_to_micros(val: &[u8]) -> Option<(u64, u8, i16, u8)> {
 }
 
 /// Convert epoch microseconds back to an ISO 8601 string WITH surrounding quotes.
-fn micros_to_iso8601(epoch_micros: u64, format_byte: u8, tz_offset_minutes: i16, frac_digits: u8) -> Vec<u8> {
+fn micros_to_iso8601(
+    epoch_micros: u64,
+    format_byte: u8,
+    tz_offset_minutes: i16,
+    frac_digits: u8,
+) -> Vec<u8> {
     // Adjust from UTC to local time if there's a timezone offset.
     let adjusted_micros = if tz_offset_minutes != 0 {
         (epoch_micros as i64 + tz_offset_minutes as i64 * 60 * 1_000_000) as u64
@@ -464,7 +483,12 @@ fn decode_timestamp_column(data: &[u8]) -> Vec<Vec<u8>> {
             None => {
                 // Pad remaining with base value.
                 for _ in i..count {
-                    result.push(micros_to_iso8601(prev_micros, format_byte, tz_offset_minutes, frac_digits));
+                    result.push(micros_to_iso8601(
+                        prev_micros,
+                        format_byte,
+                        tz_offset_minutes,
+                        frac_digits,
+                    ));
                 }
                 return result;
             }
@@ -472,7 +496,12 @@ fn decode_timestamp_column(data: &[u8]) -> Vec<Vec<u8>> {
         pos = new_pos;
         let delta = zigzag_decode(zz);
         let micros = (prev_micros as i64 + delta) as u64;
-        result.push(micros_to_iso8601(micros, format_byte, tz_offset_minutes, frac_digits));
+        result.push(micros_to_iso8601(
+            micros,
+            format_byte,
+            tz_offset_minutes,
+            frac_digits,
+        ));
         prev_micros = micros;
     }
 
@@ -678,10 +707,10 @@ fn parse_uuid_to_bytes(val: &[u8]) -> Option<[u8; 16]> {
 
     // Collect hex digits (skip dashes).
     let hex_positions: &[usize] = &[
-        0, 1, 2, 3, 4, 5, 6, 7,       // 8 hex chars
-        9, 10, 11, 12,                  // 4 hex chars
-        14, 15, 16, 17,                 // 4 hex chars
-        19, 20, 21, 22,                 // 4 hex chars
+        0, 1, 2, 3, 4, 5, 6, 7, // 8 hex chars
+        9, 10, 11, 12, // 4 hex chars
+        14, 15, 16, 17, // 4 hex chars
+        19, 20, 21, 22, // 4 hex chars
         24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, // 12 hex chars
     ]; // 32 hex chars = 16 bytes
 
@@ -764,12 +793,6 @@ fn decode_uuid_column(data: &[u8]) -> Vec<Vec<u8>> {
 
 // ─── Hex Prefix Encoder ─────────────────────────────────────────────────────
 
-/// Check if a byte is a lowercase hex character [0-9a-f].
-#[inline]
-fn is_lower_hex(b: u8) -> bool {
-    matches!(b, b'0'..=b'9' | b'a'..=b'f')
-}
-
 /// Try to detect and encode a column of strings that follow a pattern:
 /// `"prefix_HEXHEX..."` — a common prefix followed by a fixed number of
 /// lowercase hex characters.
@@ -796,102 +819,12 @@ fn is_lower_hex(b: u8) -> bool {
 /// On decode, binary bytes are converted back to lowercase hex, and the
 /// closing quote `"` is appended.
 fn try_encode_hex_prefix(values: &[&[u8]]) -> Option<Vec<u8>> {
-    // DISABLED: hex→binary removes the limited-alphabet structure that zstd exploits
-    // via Huffman coding. Converting 16-symbol hex chars to 256-symbol binary bytes
-    // makes the data LESS compressible by zstd (same entropy, higher per-byte density).
-    // Same gotcha pattern as #33/#35. Keep code for future use with non-zstd backends.
+    // DISABLED: hex->binary removes the limited-alphabet structure that zstd
+    // exploits via Huffman coding. Converting 16-symbol hex chars to 256-symbol
+    // binary bytes makes the data LESS compressible by zstd (same entropy,
+    // higher per-byte density). Keep stub for future non-zstd backends.
     let _ = values;
-    return None;
-    #[allow(unreachable_code)]
-    if values.is_empty() {
-        return None;
-    }
-
-    // All values must be quoted strings.
-    for val in values {
-        if val.len() < 2 || val[0] != b'"' || val[val.len() - 1] != b'"' {
-            return None;
-        }
-    }
-
-    // Find the longest common prefix (including the opening quote) across
-    // the inner content (everything except the closing quote).
-    // We compare bytes from position 0 up to len-1 (excluding closing quote).
-    let first = &values[0][..values[0].len() - 1]; // drop closing quote
-    let mut prefix_len = first.len();
-
-    for val in &values[1..] {
-        let inner = &val[..val.len() - 1];
-        let max_check = prefix_len.min(inner.len());
-        let mut matching = 0;
-        for i in 0..max_check {
-            if first[i] == inner[i] {
-                matching += 1;
-            } else {
-                break;
-            }
-        }
-        prefix_len = matching;
-        if prefix_len == 0 {
-            return None;
-        }
-    }
-
-    // The prefix is first[..prefix_len]. The suffix is the rest up to closing quote.
-    // Check that all suffixes are lowercase hex and have the same length.
-    let suffix_len = (values[0].len() - 1) - prefix_len; // -1 for closing quote
-    if suffix_len < 2 {
-        return None; // Too short to be worth it.
-    }
-
-    for val in values {
-        let inner_len = val.len() - 1; // exclude closing quote
-        let this_suffix_len = inner_len - prefix_len;
-        if this_suffix_len != suffix_len {
-            return None; // Variable length suffix -> fall back.
-        }
-        // Check all suffix bytes are lowercase hex.
-        for &b in &val[prefix_len..inner_len] {
-            if !is_lower_hex(b) {
-                return None; // Non-lowercase-hex char -> fall back.
-            }
-        }
-    }
-
-    // All checks passed. Encode.
-    let prefix_bytes = &first[..prefix_len];
-    let binary_len = suffix_len.div_ceil(2); // ceil(suffix_hex_len / 2)
-
-    let mut out = Vec::with_capacity(
-        2 + prefix_len + 1 + 4 + values.len() * binary_len,
-    );
-
-    // Header.
-    out.extend_from_slice(&(prefix_len as u16).to_le_bytes());
-    out.extend_from_slice(prefix_bytes);
-    out.push(suffix_len as u8);
-    out.extend_from_slice(&(values.len() as u32).to_le_bytes());
-
-    // Per-value binary data.
-    for val in values {
-        let hex_start = prefix_len;
-        let hex_end = val.len() - 1; // exclude closing quote
-        let hex_bytes = &val[hex_start..hex_end];
-
-        // Convert pairs of hex chars to binary bytes.
-        for i in (0..hex_bytes.len()).step_by(2) {
-            let hi = hex_nibble(hex_bytes[i]).unwrap_or(0);
-            if i + 1 < hex_bytes.len() {
-                let lo = hex_nibble(hex_bytes[i + 1]).unwrap_or(0);
-                out.push((hi << 4) | lo);
-            } else {
-                // Odd number of hex chars: store the last nibble in the high bits.
-                out.push(hi << 4);
-            }
-        }
-    }
-
-    Some(out)
+    None
 }
 
 /// Decode a hex-prefix-encoded column back to quoted strings.
@@ -1179,11 +1112,9 @@ pub fn reverse(data: &[u8], _metadata: &[u8]) -> Vec<u8> {
     let mut pos = 0;
 
     // Read header.
-    let num_columns =
-        u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
+    let num_columns = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
     pos += 2;
-    let schema_len =
-        u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+    let schema_len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
     pos += 4;
 
     if pos + schema_len > data.len() {
@@ -1207,8 +1138,7 @@ pub fn reverse(data: &[u8], _metadata: &[u8]) -> Vec<u8> {
 
         let enc_type = data[pos];
         pos += 1;
-        let data_len =
-            u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+        let data_len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
         pos += 4;
 
         if pos + data_len > data.len() {
@@ -1245,7 +1175,10 @@ fn encode_column(values: &[&[u8]], col_type: &ColumnType) -> (u8, Vec<u8>) {
     match col_type {
         ColumnType::Integer { nullable, .. } => {
             if *nullable {
-                (ENC_NULL_TYPED, encode_nullable_column(values, ENC_DELTA_VARINT))
+                (
+                    ENC_NULL_TYPED,
+                    encode_nullable_column(values, ENC_DELTA_VARINT),
+                )
             } else {
                 (ENC_DELTA_VARINT, encode_integer_column(values))
             }
@@ -1257,9 +1190,15 @@ fn encode_column(values: &[&[u8]], col_type: &ColumnType) -> (u8, Vec<u8>) {
                 (ENC_BITMAP, encode_boolean_column(values))
             }
         }
-        ColumnType::Timestamp { format: TimestampFormat::Iso8601, nullable } => {
+        ColumnType::Timestamp {
+            format: TimestampFormat::Iso8601,
+            nullable,
+        } => {
             if *nullable {
-                (ENC_NULL_TYPED, encode_nullable_column(values, ENC_TIMESTAMP))
+                (
+                    ENC_NULL_TYPED,
+                    encode_nullable_column(values, ENC_TIMESTAMP),
+                )
             } else {
                 (ENC_TIMESTAMP, encode_timestamp_column(values))
             }
@@ -1278,13 +1217,17 @@ fn encode_column(values: &[&[u8]], col_type: &ColumnType) -> (u8, Vec<u8>) {
         ColumnType::String { nullable } => {
             if *nullable {
                 // For nullable strings, extract non-null values and try hex prefix.
-                let non_null: Vec<&[u8]> = values.iter().filter(|v| **v != b"null").copied().collect();
+                let non_null: Vec<&[u8]> =
+                    values.iter().filter(|v| **v != b"null").copied().collect();
                 if !non_null.is_empty() {
                     if let Some(hex_data) = try_encode_hex_prefix(&non_null) {
                         // Re-encode as nullable with hex prefix sub-type.
                         let _ = hex_data; // We need a different approach for nullable.
                         // Build nullable wrapper with ENC_HEX_PREFIX sub-type.
-                        return (ENC_NULL_TYPED, encode_nullable_column(values, ENC_HEX_PREFIX));
+                        return (
+                            ENC_NULL_TYPED,
+                            encode_nullable_column(values, ENC_HEX_PREFIX),
+                        );
                     }
                 }
                 (ENC_NULL_TYPED, encode_nullable_column(values, ENC_STRING))
@@ -1348,9 +1291,7 @@ fn encode_raw(values: &[&[u8]]) -> Vec<u8> {
 
 /// Decode raw: split by \x01.
 fn decode_raw(data: &[u8]) -> Vec<Vec<u8>> {
-    data.split(|&b| b == VAL_SEP)
-        .map(|v| v.to_vec())
-        .collect()
+    data.split(|&b| b == VAL_SEP).map(|v| v.to_vec()).collect()
 }
 
 /// Decode an integer column by consuming all varints in the data.
@@ -1430,11 +1371,11 @@ fn days_since_epoch(year: i64, month: u32, day: u32) -> Option<i64> {
     // civil_from_days / days_from_civil
     let y = if month <= 2 { year - 1 } else { year };
     let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = (y - era * 400) as u32;                               // [0, 399]
+    let yoe = (y - era * 400) as u32; // [0, 399]
     let m = month;
     let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + day - 1; // [0, 365]
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;               // [0, 146096]
-    let days = era * 146097 + doe as i64 - 719468;                  // days since epoch
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
+    let days = era * 146097 + doe as i64 - 719468; // days since epoch
     Some(days)
 }
 
@@ -1443,13 +1384,13 @@ fn date_from_epoch_days(days: i64) -> (i64, u32, u32) {
     // Reverse of days_since_epoch, from Howard Hinnant's algorithm.
     let z = days + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
-    let doe = (z - era * 146097) as u32;                             // [0, 146096]
+    let doe = (z - era * 146097) as u32; // [0, 146096]
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // [0, 399]
     let y = yoe as i64 + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);             // [0, 365]
-    let mp = (5 * doy + 2) / 153;                                   // [0, 11]
-    let d = doy - (153 * mp + 2) / 5 + 1;                           // [1, 31]
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };                  // [1, 12]
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
     let year = if m <= 2 { y + 1 } else { y };
     (year, m, d)
 }
@@ -1498,8 +1439,17 @@ mod tests {
     #[test]
     fn test_leb128_roundtrip() {
         let test_values: Vec<u64> = vec![
-            0, 1, 127, 128, 255, 256, 16383, 16384, 1_000_000,
-            u32::MAX as u64, u64::MAX,
+            0,
+            1,
+            127,
+            128,
+            255,
+            256,
+            16383,
+            16384,
+            1_000_000,
+            u32::MAX as u64,
+            u64::MAX,
         ];
 
         for &val in &test_values {
@@ -1544,7 +1494,9 @@ mod tests {
     #[test]
     fn test_integer_delta_encoding() {
         // Monotonic sequence: deltas are all 1, so encoding should be tiny.
-        let values: Vec<Vec<u8>> = (100..=103).map(|n: i64| n.to_string().into_bytes()).collect();
+        let values: Vec<Vec<u8>> = (100..=103)
+            .map(|n: i64| n.to_string().into_bytes())
+            .collect();
         let val_refs: Vec<&[u8]> = values.iter().map(|v| v.as_slice()).collect();
 
         let encoded = encode_integer_column(&val_refs);
@@ -1567,19 +1519,14 @@ mod tests {
     #[test]
     fn test_boolean_column_roundtrip() {
         let values: &[&[u8]] = &[
-            b"true", b"false", b"true", b"true", b"false",
-            b"false", b"true", b"false", b"true",
+            b"true", b"false", b"true", b"true", b"false", b"false", b"true", b"false", b"true",
         ];
         let encoded = encode_boolean_column(values);
         let decoded = decode_boolean_column(&encoded);
 
         assert_eq!(decoded.len(), values.len());
         for (i, val) in values.iter().enumerate() {
-            assert_eq!(
-                decoded[i],
-                val.to_vec(),
-                "boolean mismatch at index {i}"
-            );
+            assert_eq!(decoded[i], val.to_vec(), "boolean mismatch at index {i}");
         }
 
         // Verify compactness: 9 bools should be 4 (count) + 2 (packed) = 6 bytes.
@@ -1617,7 +1564,8 @@ mod tests {
 
         let restored = micros_to_iso8601(micros, fmt, tz, frac);
         assert_eq!(
-            restored, ts.to_vec(),
+            restored,
+            ts.to_vec(),
             "timestamp parse roundtrip failed: expected {:?}, got {:?}",
             String::from_utf8_lossy(ts),
             String::from_utf8_lossy(&restored)
@@ -1770,7 +1718,13 @@ mod tests {
             .map(|i| i.to_string().into_bytes())
             .collect();
         let bools: Vec<Vec<u8>> = (0..n)
-            .map(|i| if i % 2 == 0 { b"true".to_vec() } else { b"false".to_vec() })
+            .map(|i| {
+                if i % 2 == 0 {
+                    b"true".to_vec()
+                } else {
+                    b"false".to_vec()
+                }
+            })
             .collect();
         let strs: Vec<Vec<u8>> = (0..n)
             .map(|i| format!("\"some_string_value_{}\"", i).into_bytes())
@@ -1783,7 +1737,11 @@ mod tests {
         let data = build_columnar(&[&int_refs, &bool_refs, &str_refs]);
 
         let result = preprocess(&data);
-        assert!(result.is_some(), "preprocess should succeed for typed data with {} rows", n);
+        assert!(
+            result.is_some(),
+            "preprocess should succeed for typed data with {} rows",
+            n
+        );
         let result = result.unwrap();
 
         assert!(
@@ -1794,11 +1752,7 @@ mod tests {
         );
 
         let restored = reverse(&result.data, &result.metadata);
-        assert_eq!(
-            restored,
-            data,
-            "full pipeline roundtrip failed"
-        );
+        assert_eq!(restored, data, "full pipeline roundtrip failed");
     }
 
     #[test]
@@ -1824,13 +1778,13 @@ mod tests {
         .expect("failed to read test-ndjson.ndjson");
 
         // Step 1: NDJSON columnar transform.
-        let ndjson_result = crate::format::ndjson::preprocess(&corpus)
-            .expect("ndjson::preprocess should succeed");
+        let ndjson_result =
+            crate::format::ndjson::preprocess(&corpus).expect("ndjson::preprocess should succeed");
         let columnar_data = &ndjson_result.data;
 
         // Step 2: Typed encoding.
-        let typed_result = preprocess(columnar_data)
-            .expect("typed encoding should succeed on real corpus");
+        let typed_result =
+            preprocess(columnar_data).expect("typed encoding should succeed on real corpus");
 
         // Verify it saved space.
         assert!(
@@ -1873,7 +1827,7 @@ mod tests {
         let values: &[&[u8]] = &[
             b"\"hello world\"",
             b"\"foo bar baz\"",
-            b"\"\"",  // Empty string (just quotes).
+            b"\"\"", // Empty string (just quotes).
             b"\"special chars: !@#$%^&*()\"",
             b"\"unicode: \xc3\xa9\xc3\xa0\xc3\xbc\"",
         ];
@@ -1922,11 +1876,7 @@ mod tests {
         // Net byte savings: each value saves 2 bytes (quotes removed) but adds
         // 2 bytes (u16 length prefix), so per-value cost is neutral. The 4-byte
         // count header is overhead. The real win is regularity for zstd compression.
-        let values: &[&[u8]] = &[
-            b"\"hello\"",
-            b"\"world\"",
-            b"\"test\"",
-        ];
+        let values: &[&[u8]] = &[b"\"hello\"", b"\"world\"", b"\"test\""];
         let encoded = encode_string_column(values);
 
         // Expected: 4 (count) + (2+5) + (2+5) + (2+4) = 4 + 7 + 7 + 6 = 24 bytes.
@@ -2037,11 +1987,7 @@ mod tests {
     #[ignore = "hex_prefix disabled (gotcha #39: hurts zstd compression)"]
     fn test_hex_prefix_detection() {
         // Standard session IDs with "sess_" prefix and 6 hex chars.
-        let values: &[&[u8]] = &[
-            b"\"sess_a1b2c3\"",
-            b"\"sess_d4e5f6\"",
-            b"\"sess_001122\"",
-        ];
+        let values: &[&[u8]] = &[b"\"sess_a1b2c3\"", b"\"sess_d4e5f6\"", b"\"sess_001122\""];
         let result = try_encode_hex_prefix(values);
         assert!(result.is_some(), "should detect sess_ + hex pattern");
     }
@@ -2086,8 +2032,8 @@ mod tests {
     fn test_hex_prefix_variable_lengths_fallback() {
         // Different hex suffix lengths should fall back.
         let values: &[&[u8]] = &[
-            b"\"sess_a1b2c3\"",    // 6 hex chars
-            b"\"sess_d4e5f6a0\"",  // 8 hex chars
+            b"\"sess_a1b2c3\"",   // 6 hex chars
+            b"\"sess_d4e5f6a0\"", // 8 hex chars
         ];
         let result = try_encode_hex_prefix(values);
         assert!(result.is_none(), "variable hex lengths should fall back");
@@ -2096,10 +2042,7 @@ mod tests {
     #[test]
     fn test_hex_prefix_uppercase_fallback() {
         // Uppercase hex should fall back.
-        let values: &[&[u8]] = &[
-            b"\"sess_A1B2C3\"",
-            b"\"sess_D4E5F6\"",
-        ];
+        let values: &[&[u8]] = &[b"\"sess_A1B2C3\"", b"\"sess_D4E5F6\""];
         let result = try_encode_hex_prefix(values);
         assert!(result.is_none(), "uppercase hex should fall back");
     }
@@ -2108,7 +2051,7 @@ mod tests {
     fn test_hex_prefix_non_hex_fallback() {
         // Non-hex characters in suffix should fall back.
         let values: &[&[u8]] = &[
-            b"\"sess_a1b2g3\"",  // 'g' is not hex
+            b"\"sess_a1b2g3\"", // 'g' is not hex
             b"\"sess_d4e5f6\"",
         ];
         let result = try_encode_hex_prefix(values);
@@ -2141,11 +2084,7 @@ mod tests {
     #[ignore = "hex_prefix disabled (gotcha #39)"]
     fn test_hex_prefix_odd_hex_length() {
         // Odd number of hex chars (5 chars -> 3 binary bytes).
-        let values: &[&[u8]] = &[
-            b"\"id_a1b2c\"",
-            b"\"id_d4e5f\"",
-            b"\"id_00112\"",
-        ];
+        let values: &[&[u8]] = &[b"\"id_a1b2c\"", b"\"id_d4e5f\"", b"\"id_00112\""];
         let encoded = try_encode_hex_prefix(values).expect("should encode odd-length hex");
         let decoded = decode_hex_prefix_column(&encoded);
 
@@ -2171,8 +2110,8 @@ mod tests {
         }
         let corpus = corpus.unwrap();
 
-        let ndjson_result = crate::format::ndjson::preprocess(&corpus)
-            .expect("ndjson preprocess should succeed");
+        let ndjson_result =
+            crate::format::ndjson::preprocess(&corpus).expect("ndjson preprocess should succeed");
         let columnar = &ndjson_result.data;
 
         // Apply typed encoding and reverse, verify roundtrip.

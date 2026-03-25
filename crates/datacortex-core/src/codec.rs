@@ -176,7 +176,8 @@ fn decompress_with_dict(payload: &[u8], capacity: usize) -> std::io::Result<Vec<
     let mut pos = 0;
 
     // Read dictionary.
-    let dict_size = u32::from_le_bytes(payload[pos..pos + 4].try_into().unwrap()) as usize;
+    let dict_size =
+        u32::from_le_bytes(payload[pos..pos + 4].try_into().expect("4-byte slice")) as usize;
     pos += 4;
     if payload.len() < pos + dict_size {
         return Err(io::Error::new(
@@ -194,7 +195,8 @@ fn decompress_with_dict(payload: &[u8], capacity: usize) -> std::io::Result<Vec<
             "dict payload truncated: num_chunks",
         ));
     }
-    let num_chunks = u32::from_le_bytes(payload[pos..pos + 4].try_into().unwrap()) as usize;
+    let num_chunks =
+        u32::from_le_bytes(payload[pos..pos + 4].try_into().expect("4-byte slice")) as usize;
     pos += 4;
 
     // Prepare decompressor with dictionary.
@@ -211,7 +213,7 @@ fn decompress_with_dict(payload: &[u8], capacity: usize) -> std::io::Result<Vec<
             ));
         }
         let chunk_size =
-            u32::from_le_bytes(payload[pos..pos + 4].try_into().unwrap()) as usize;
+            u32::from_le_bytes(payload[pos..pos + 4].try_into().expect("4-byte slice")) as usize;
         pos += 4;
         if payload.len() < pos + chunk_size {
             return Err(io::Error::new(
@@ -317,17 +319,7 @@ fn gru_compress(data: &[u8], config: CMConfig) -> Vec<u8> {
         0
     };
 
-    let mut last_byte: u8 = 0;
-
     for (byte_idx, &byte) in data.iter().enumerate() {
-        // At bpos==0 of each byte, run GRU forward with the PREVIOUS byte
-        // (so GRU predicts THIS byte). For the first byte, GRU has no context
-        // and returns uniform (2048).
-        if byte_idx > 0 {
-            // GRU already ran forward for last_byte at end of previous byte.
-            // byte_probs are cached and valid.
-        }
-
         for bpos in 0..8u8 {
             let bit = (byte >> (7 - bpos)) & 1;
 
@@ -358,15 +350,12 @@ fn gru_compress(data: &[u8], config: CMConfig) -> Vec<u8> {
         // Byte complete: train GRU on observed byte, then forward for next prediction.
         gru.train(byte);
         gru.forward(byte);
-        last_byte = byte;
 
         if report_interval > 0 && (byte_idx + 1) % report_interval == 0 {
             let pct = (byte_idx + 1) * 100 / total_bytes;
             eprint!("\r[gru] compressing... {pct}%");
         }
     }
-
-    let _ = last_byte; // suppress warning
 
     if total_bytes > 100_000 {
         eprintln!("\r[gru] compressing... 100%");
@@ -702,13 +691,10 @@ pub fn compress_with_options<W: Write>(
             let level = adaptive_fast_level(preprocessed.len(), zstd_level_override);
 
             // Path A: preprocessed + zstd (with optional dict).
-            let plain_a =
-                zstd::bulk::compress(&preprocessed, level).map_err(io::Error::other)?;
+            let plain_a = zstd::bulk::compress(&preprocessed, level).map_err(io::Error::other)?;
 
             let (compressed_a, dict_a) = if preprocessed.len() >= DICT_MIN_DATA_SIZE {
-                if let Some(dict_payload) =
-                    try_dict_compress(&preprocessed, level, plain_a.len())
-                {
+                if let Some(dict_payload) = try_dict_compress(&preprocessed, level, plain_a.len()) {
                     (dict_payload, true)
                 } else {
                     (plain_a, false)
@@ -737,8 +723,7 @@ pub fn compress_with_options<W: Write>(
             // Path B: raw zstd (no preprocessing, no dict).
             // Use same adaptive level but on original data size.
             let raw_level = adaptive_fast_level(data.len(), zstd_level_override);
-            let compressed_b =
-                zstd::bulk::compress(data, raw_level).map_err(io::Error::other)?;
+            let compressed_b = zstd::bulk::compress(data, raw_level).map_err(io::Error::other)?;
 
             // Total size for Path B: header(32) + 0 (empty metadata) + compressed_b.
             let total_b = 32 + compressed_b.len();
@@ -766,7 +751,11 @@ pub fn compress_with_options<W: Write>(
             }
 
             // Path D: preprocessed + brotli.
-            let brotli_prep_quality = if preprocessed.len() <= 1_048_576 { 11 } else { 9 };
+            let brotli_prep_quality = if preprocessed.len() <= 1_048_576 {
+                11
+            } else {
+                9
+            };
             if let Ok(brotli_prep) = brotli_compress(&preprocessed, brotli_prep_quality) {
                 let brotli_prep_total = 32 + meta_size_for_comparison + brotli_prep.len();
                 if brotli_prep_total < best_total {
@@ -862,8 +851,8 @@ pub fn compress_with_options<W: Write>(
     // Compress metadata with zstd if it's large enough to benefit.
     // Small metadata (<= 64 bytes) stays raw to avoid zstd frame overhead.
     let (header_metadata, meta_compressed) = if final_metadata.len() > 64 {
-        let compressed_meta = zstd::bulk::compress(&final_metadata, 19)
-            .unwrap_or_else(|_| final_metadata.clone());
+        let compressed_meta =
+            zstd::bulk::compress(&final_metadata, 19).unwrap_or_else(|_| final_metadata.clone());
         if compressed_meta.len() < final_metadata.len() {
             (compressed_meta, true)
         } else {
@@ -929,7 +918,7 @@ pub fn decompress_with_model<R: Read>(
                     "CM mode compressed data too short",
                 ));
             }
-            let size_raw = u64::from_le_bytes(compressed[..8].try_into().unwrap());
+            let size_raw = u64::from_le_bytes(compressed[..8].try_into().expect("8-byte slice"));
             let preprocessed_size = (size_raw & !(1u64 << 63)) as usize;
             let config = cm_config_for_mode(header.mode);
             gru_decompress(&compressed[8..], preprocessed_size, config)
@@ -942,7 +931,7 @@ pub fn decompress_with_model<R: Read>(
                     "CM mode compressed data too short",
                 ));
             }
-            let size_raw = u64::from_le_bytes(compressed[..8].try_into().unwrap());
+            let size_raw = u64::from_le_bytes(compressed[..8].try_into().expect("8-byte slice"));
 
             // Check if bit 63 is set (neural flag).
             let neural_flag = size_raw & (1u64 << 63) != 0;
@@ -1088,7 +1077,14 @@ pub fn compress_to_vec_with_options(
     zstd_level_override: Option<i32>,
 ) -> io::Result<Vec<u8>> {
     let mut buf = Vec::new();
-    compress_with_options(data, mode, format_override, model_path, zstd_level_override, &mut buf)?;
+    compress_with_options(
+        data,
+        mode,
+        format_override,
+        model_path,
+        zstd_level_override,
+        &mut buf,
+    )?;
     Ok(buf)
 }
 
@@ -1321,8 +1317,7 @@ mod tests {
             data.len()
         );
 
-        let compressed =
-            compress_to_vec(data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
+        let compressed = compress_to_vec(data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
         let decompressed = decompress_from_slice(&compressed).unwrap();
         assert_eq!(
             decompressed, data,
@@ -1343,10 +1338,7 @@ mod tests {
         // Verify no dict flag in header.
         let mut cursor = Cursor::new(&compressed);
         let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
-        assert!(
-            !header.has_dict,
-            "small data should not have dict flag set"
-        );
+        assert!(!header.has_dict, "small data should not have dict flag set");
     }
 
     #[test]
@@ -1383,8 +1375,7 @@ mod tests {
         }
         let data = ndjson.as_bytes();
 
-        let compressed =
-            compress_to_vec(data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
+        let compressed = compress_to_vec(data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
         let decompressed = decompress_from_slice(&compressed).unwrap();
         assert_eq!(decompressed, data, "large NDJSON roundtrip mismatch");
     }
@@ -1401,8 +1392,7 @@ mod tests {
         }
         assert!(data.len() > DICT_MIN_DATA_SIZE);
 
-        let compressed =
-            compress_to_vec(&data, Mode::Fast, Some(FormatHint::Generic)).unwrap();
+        let compressed = compress_to_vec(&data, Mode::Fast, Some(FormatHint::Generic)).unwrap();
         let decompressed = decompress_from_slice(&compressed).unwrap();
         assert_eq!(decompressed, data, "generic data dict roundtrip mismatch");
     }
@@ -1422,14 +1412,10 @@ mod tests {
         let data = ndjson.as_bytes();
 
         for mode in [Mode::Balanced, Mode::Max] {
-            let compressed =
-                compress_to_vec(data, mode, Some(FormatHint::Ndjson)).unwrap();
+            let compressed = compress_to_vec(data, mode, Some(FormatHint::Ndjson)).unwrap();
             let mut cursor = Cursor::new(&compressed);
             let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
-            assert!(
-                !header.has_dict,
-                "mode {mode} should never have dict flag"
-            );
+            assert!(!header.has_dict, "mode {mode} should never have dict flag");
             let decompressed = decompress_from_slice(&compressed).unwrap();
             assert_eq!(decompressed, data, "roundtrip failed for mode {mode}");
         }
@@ -1466,32 +1452,14 @@ mod tests {
     fn test_compress_with_level_higher_ratio() {
         // Level 19 should compress better than level 1 on repetitive data.
         let data = r#"{"name":"Alice","score":95}"#.repeat(200);
-        let low = compress_to_vec_with_options(
-            data.as_bytes(),
-            Mode::Fast,
-            None,
-            None,
-            Some(1),
-        )
-        .unwrap();
-        let high = compress_to_vec_with_options(
-            data.as_bytes(),
-            Mode::Fast,
-            None,
-            None,
-            Some(19),
-        )
-        .unwrap();
+        let low =
+            compress_to_vec_with_options(data.as_bytes(), Mode::Fast, None, None, Some(1)).unwrap();
+        let high = compress_to_vec_with_options(data.as_bytes(), Mode::Fast, None, None, Some(19))
+            .unwrap();
 
         // Both must roundtrip.
-        assert_eq!(
-            decompress_from_slice(&low).unwrap(),
-            data.as_bytes()
-        );
-        assert_eq!(
-            decompress_from_slice(&high).unwrap(),
-            data.as_bytes()
-        );
+        assert_eq!(decompress_from_slice(&low).unwrap(), data.as_bytes());
+        assert_eq!(decompress_from_slice(&high).unwrap(), data.as_bytes());
 
         // Higher level should produce smaller output (or at least not larger).
         assert!(
@@ -1537,8 +1505,7 @@ mod tests {
         ))
         .unwrap();
 
-        let compressed =
-            compress_to_vec(&data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
+        let compressed = compress_to_vec(&data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
         let decompressed = decompress_from_slice(&compressed).unwrap();
         assert_eq!(decompressed, data, "test-ndjson roundtrip failed");
 
@@ -1567,10 +1534,12 @@ mod tests {
         .unwrap();
 
         // citm_catalog — raw path
-        let compressed_citm =
-            compress_to_vec(&citm, Mode::Fast, Some(FormatHint::Json)).unwrap();
+        let compressed_citm = compress_to_vec(&citm, Mode::Fast, Some(FormatHint::Json)).unwrap();
         let decompressed_citm = decompress_from_slice(&compressed_citm).unwrap();
-        assert_eq!(decompressed_citm, citm, "citm_catalog roundtrip (raw path) failed");
+        assert_eq!(
+            decompressed_citm, citm,
+            "citm_catalog roundtrip (raw path) failed"
+        );
 
         // test-ndjson — preprocessed path
         let compressed_ndjson =
@@ -1628,8 +1597,7 @@ mod tests {
         }
         let data = ndjson.as_bytes();
 
-        let compressed =
-            compress_to_vec(data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
+        let compressed = compress_to_vec(data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
         let decompressed = decompress_from_slice(&compressed).unwrap();
         assert_eq!(
             decompressed, data,
@@ -1670,8 +1638,7 @@ mod tests {
         // Small metadata (< 64 bytes) should NOT be compressed — zstd frame overhead
         // would make it larger.
         let data = br#"{"name":"Alice","age":30}"#;
-        let compressed =
-            compress_to_vec(data, Mode::Fast, Some(FormatHint::Json)).unwrap();
+        let compressed = compress_to_vec(data, Mode::Fast, Some(FormatHint::Json)).unwrap();
         let decompressed = decompress_from_slice(&compressed).unwrap();
         assert_eq!(decompressed, data.to_vec());
 
@@ -1698,8 +1665,7 @@ mod tests {
         ))
         .unwrap();
 
-        let compressed =
-            compress_to_vec(&data, Mode::Fast, Some(FormatHint::Json)).unwrap();
+        let compressed = compress_to_vec(&data, Mode::Fast, Some(FormatHint::Json)).unwrap();
         let decompressed = decompress_from_slice(&compressed).unwrap();
         assert_eq!(decompressed, data, "twitter.json roundtrip failed");
 
@@ -1726,8 +1692,7 @@ mod tests {
         let data = ndjson.as_bytes();
 
         for mode in [Mode::Fast, Mode::Balanced, Mode::Max] {
-            let compressed =
-                compress_to_vec(data, mode, Some(FormatHint::Ndjson)).unwrap();
+            let compressed = compress_to_vec(data, mode, Some(FormatHint::Ndjson)).unwrap();
             let decompressed = decompress_from_slice(&compressed).unwrap();
             assert_eq!(
                 decompressed, data,
@@ -1756,8 +1721,7 @@ mod tests {
         ))
         .unwrap();
 
-        let compressed =
-            compress_to_vec(&data, Mode::Fast, Some(FormatHint::Json)).unwrap();
+        let compressed = compress_to_vec(&data, Mode::Fast, Some(FormatHint::Json)).unwrap();
         let decompressed = decompress_from_slice(&compressed).unwrap();
         assert_eq!(decompressed, data, "twitter.json brotli roundtrip failed");
 
@@ -1779,8 +1743,7 @@ mod tests {
         ))
         .unwrap();
 
-        let compressed =
-            compress_to_vec(&data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
+        let compressed = compress_to_vec(&data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
         let decompressed = decompress_from_slice(&compressed).unwrap();
         assert_eq!(decompressed, data, "ndjson roundtrip failed");
     }

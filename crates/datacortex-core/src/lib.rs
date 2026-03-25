@@ -8,7 +8,6 @@ pub mod entropy;
 pub mod format;
 pub mod mixer;
 pub mod model;
-pub mod ramanujan;
 pub mod state;
 
 pub use codec::{

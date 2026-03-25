@@ -28,13 +28,31 @@ pub enum TimestampFormat {
 /// Inferred type of a single column.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ColumnType {
-    Integer { min: i64, max: i64, nullable: bool },
-    Float { nullable: bool },
-    Boolean { nullable: bool },
-    Timestamp { format: TimestampFormat, nullable: bool },
-    Uuid { nullable: bool },
-    Enum { cardinality: u16, nullable: bool },
-    String { nullable: bool },
+    Integer {
+        min: i64,
+        max: i64,
+        nullable: bool,
+    },
+    Float {
+        nullable: bool,
+    },
+    Boolean {
+        nullable: bool,
+    },
+    Timestamp {
+        format: TimestampFormat,
+        nullable: bool,
+    },
+    Uuid {
+        nullable: bool,
+    },
+    Enum {
+        cardinality: u16,
+        nullable: bool,
+    },
+    String {
+        nullable: bool,
+    },
     /// Column where every value is null.
     Null,
 }
@@ -308,7 +326,10 @@ pub fn infer_schema(columnar_data: &[u8]) -> InferredSchema {
             classifications.push(vt);
         }
 
-        let non_null: Vec<&ValueType> = classifications.iter().filter(|c| **c != ValueType::Null).collect();
+        let non_null: Vec<&ValueType> = classifications
+            .iter()
+            .filter(|c| **c != ValueType::Null)
+            .collect();
         let nullable = null_count > 0;
 
         let col_type = if non_null.is_empty() {
@@ -330,20 +351,32 @@ pub fn infer_schema(columnar_data: &[u8]) -> InferredSchema {
                 }
             }
             ColumnType::Integer { min, max, nullable }
-        } else if non_null.iter().all(|c| matches!(c, ValueType::Integer(_) | ValueType::Float)) {
+        } else if non_null
+            .iter()
+            .all(|c| matches!(c, ValueType::Integer(_) | ValueType::Float))
+        {
             // Mixed int+float => Float
             ColumnType::Float { nullable }
-        } else if non_null.iter().all(|c| matches!(c, ValueType::TimestampIso)) {
+        } else if non_null
+            .iter()
+            .all(|c| matches!(c, ValueType::TimestampIso))
+        {
             ColumnType::Timestamp {
                 format: TimestampFormat::Iso8601,
                 nullable,
             }
-        } else if non_null.iter().all(|c| matches!(c, ValueType::TimestampEpochS)) {
+        } else if non_null
+            .iter()
+            .all(|c| matches!(c, ValueType::TimestampEpochS))
+        {
             ColumnType::Timestamp {
                 format: TimestampFormat::EpochSeconds,
                 nullable,
             }
-        } else if non_null.iter().all(|c| matches!(c, ValueType::TimestampEpochMs)) {
+        } else if non_null
+            .iter()
+            .all(|c| matches!(c, ValueType::TimestampEpochMs))
+        {
             ColumnType::Timestamp {
                 format: TimestampFormat::EpochMillis,
                 nullable,
@@ -359,7 +392,10 @@ pub fn infer_schema(columnar_data: &[u8]) -> InferredSchema {
             }
         } else if non_null.iter().all(|c| matches!(c, ValueType::Uuid)) {
             ColumnType::Uuid { nullable }
-        } else if non_null.iter().all(|c| matches!(c, ValueType::QuotedString)) {
+        } else if non_null
+            .iter()
+            .all(|c| matches!(c, ValueType::QuotedString))
+        {
             // Check cardinality for Enum vs String.
             let mut unique_vals: HashSet<&[u8]> = HashSet::new();
             for val in &values {
@@ -416,14 +452,22 @@ pub fn serialize_schema(schema: &InferredSchema) -> Vec<u8> {
                 let mut extra = Vec::with_capacity(16);
                 extra.extend_from_slice(&min.to_le_bytes());
                 extra.extend_from_slice(&max.to_le_bytes());
-                (TAG_INTEGER, if *nullable { FLAG_NULLABLE } else { 0 }, extra)
+                (
+                    TAG_INTEGER,
+                    if *nullable { FLAG_NULLABLE } else { 0 },
+                    extra,
+                )
             }
-            ColumnType::Float { nullable } => {
-                (TAG_FLOAT, if *nullable { FLAG_NULLABLE } else { 0 }, Vec::new())
-            }
-            ColumnType::Boolean { nullable } => {
-                (TAG_BOOLEAN, if *nullable { FLAG_NULLABLE } else { 0 }, Vec::new())
-            }
+            ColumnType::Float { nullable } => (
+                TAG_FLOAT,
+                if *nullable { FLAG_NULLABLE } else { 0 },
+                Vec::new(),
+            ),
+            ColumnType::Boolean { nullable } => (
+                TAG_BOOLEAN,
+                if *nullable { FLAG_NULLABLE } else { 0 },
+                Vec::new(),
+            ),
             ColumnType::Timestamp { format, nullable } => {
                 let tag = match format {
                     TimestampFormat::Iso8601 => TAG_TIMESTAMP_ISO,
@@ -432,17 +476,24 @@ pub fn serialize_schema(schema: &InferredSchema) -> Vec<u8> {
                 };
                 (tag, if *nullable { FLAG_NULLABLE } else { 0 }, Vec::new())
             }
-            ColumnType::Uuid { nullable } => {
-                (TAG_UUID, if *nullable { FLAG_NULLABLE } else { 0 }, Vec::new())
-            }
-            ColumnType::Enum { cardinality, nullable } => {
+            ColumnType::Uuid { nullable } => (
+                TAG_UUID,
+                if *nullable { FLAG_NULLABLE } else { 0 },
+                Vec::new(),
+            ),
+            ColumnType::Enum {
+                cardinality,
+                nullable,
+            } => {
                 let mut extra = Vec::with_capacity(2);
                 extra.extend_from_slice(&cardinality.to_le_bytes());
                 (TAG_ENUM, if *nullable { FLAG_NULLABLE } else { 0 }, extra)
             }
-            ColumnType::String { nullable } => {
-                (TAG_STRING, if *nullable { FLAG_NULLABLE } else { 0 }, Vec::new())
-            }
+            ColumnType::String { nullable } => (
+                TAG_STRING,
+                if *nullable { FLAG_NULLABLE } else { 0 },
+                Vec::new(),
+            ),
         };
         out.push(tag);
         out.push(flags);
@@ -849,10 +900,7 @@ mod tests {
     #[test]
     fn test_multi_column() {
         // Two columns: integers and booleans.
-        let data = build_columnar(&[
-            &[b"1", b"2", b"3"],
-            &[b"true", b"false", b"true"],
-        ]);
+        let data = build_columnar(&[&[b"1", b"2", b"3"], &[b"true", b"false", b"true"]]);
         let schema = infer_schema(&data);
         assert_eq!(schema.columns.len(), 2);
         assert_eq!(

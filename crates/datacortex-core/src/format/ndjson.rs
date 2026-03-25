@@ -28,7 +28,6 @@ const VAL_SEP: u8 = 0x01;
 const METADATA_VERSION_UNIFORM: u8 = 1;
 const METADATA_VERSION_GROUPED: u8 = 2;
 
-
 /// Minimum rows in a schema group for it to be columnarized (not residual).
 const MIN_GROUP_ROWS: usize = 5;
 
@@ -319,7 +318,10 @@ fn build_uniform_columnar(
 
 /// Strategy 1: Uniform schema — all rows must have the same template.
 /// Returns None if schemas differ.
-fn preprocess_uniform(non_empty: &[&[u8]], has_trailing_newline: bool) -> Option<(Vec<u8>, Vec<u8>)> {
+fn preprocess_uniform(
+    non_empty: &[&[u8]],
+    has_trailing_newline: bool,
+) -> Option<(Vec<u8>, Vec<u8>)> {
     if non_empty.len() < 2 {
         return None;
     }
@@ -350,7 +352,12 @@ fn preprocess_uniform(non_empty: &[&[u8]], has_trailing_newline: bool) -> Option
         }
     }
 
-    Some(build_uniform_columnar(&template_parts, &columns, non_empty.len(), has_trailing_newline))
+    Some(build_uniform_columnar(
+        &template_parts,
+        &columns,
+        non_empty.len(),
+        has_trailing_newline,
+    ))
 }
 
 /// Strategy 2: Group-by-schema — group rows by template, columnarize each group.
@@ -373,7 +380,10 @@ fn preprocess_uniform(non_empty: &[&[u8]], has_trailing_newline: bool) -> Option
 ///     data_len: u32 LE
 ///     data: [bytes]  (columnar data for this group)
 ///   residual_data: [bytes]  (raw lines joined by \n)
-fn preprocess_grouped(non_empty: &[&[u8]], has_trailing_newline: bool) -> Option<(Vec<u8>, Vec<u8>)> {
+fn preprocess_grouped(
+    non_empty: &[&[u8]],
+    has_trailing_newline: bool,
+) -> Option<(Vec<u8>, Vec<u8>)> {
     if non_empty.len() < MIN_GROUP_ROWS {
         return None;
     }
@@ -1090,16 +1100,14 @@ pub(crate) fn deserialize_nested_info(data: &[u8]) -> Option<(Vec<NestedGroupInf
             if pos + 2 > data.len() {
                 return None;
             }
-            let num_parts =
-                u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
+            let num_parts = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
             pos += 2;
             let mut parts = Vec::with_capacity(num_parts);
             for _ in 0..num_parts {
                 if pos + 2 > data.len() {
                     return None;
                 }
-                let part_len =
-                    u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
+                let part_len = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
                 pos += 2;
                 if pos + part_len > data.len() {
                     return None;
@@ -1147,9 +1155,7 @@ pub fn preprocess(data: &[u8]) -> Option<TransformResult> {
             // typed encoding + compression benefits are significant: null bitmaps
             // are compact and type-homogeneous columns compress much better.
             let num_rows = non_empty.len();
-            if let Some((flat_data, nested_groups)) =
-                flatten_nested_columns(&col_data, num_rows)
-            {
+            if let Some((flat_data, nested_groups)) = flatten_nested_columns(&col_data, num_rows) {
                 // Append nested info to metadata.
                 let nested_bytes = serialize_nested_info(&nested_groups);
                 metadata.extend_from_slice(&nested_bytes);
@@ -1232,13 +1238,21 @@ fn reverse_uniform(data: &[u8], metadata: &[u8]) -> Vec<u8> {
 
     // Check for nested metadata after template parts.
     let remaining_metadata = &metadata[pos..];
-    if !remaining_metadata.is_empty() && (remaining_metadata[0] == 1 || remaining_metadata[0] == 2) {
+    if !remaining_metadata.is_empty() && (remaining_metadata[0] == 1 || remaining_metadata[0] == 2)
+    {
         // has_nested == 1 or 2: unflatten before reconstructing rows.
         if let Some((nested_groups, _)) = deserialize_nested_info(remaining_metadata) {
             // Calculate total number of flat columns.
             let total_flat_cols = data.split(|&b| b == COL_SEP).count();
-            let unflattened = unflatten_nested_columns(data, &nested_groups, num_rows, total_flat_cols);
-            return reverse_uniform_from_parts(&unflattened, &parts, num_rows, num_cols, has_trailing_newline);
+            let unflattened =
+                unflatten_nested_columns(data, &nested_groups, num_rows, total_flat_cols);
+            return reverse_uniform_from_parts(
+                &unflattened,
+                &parts,
+                num_rows,
+                num_cols,
+                has_trailing_newline,
+            );
         }
     }
 
@@ -1332,11 +1346,9 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
     let mut mpos = 1; // Skip version byte.
     let has_trailing_newline = metadata[mpos] != 0;
     mpos += 1;
-    let total_rows =
-        u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+    let total_rows = u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
     mpos += 4;
-    let num_groups =
-        u16::from_le_bytes(metadata[mpos..mpos + 2].try_into().unwrap()) as usize;
+    let num_groups = u16::from_le_bytes(metadata[mpos..mpos + 2].try_into().unwrap()) as usize;
     mpos += 2;
 
     // Allocate output slots.
@@ -1368,8 +1380,7 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
         if mpos + 4 > metadata.len() {
             return data.to_vec();
         }
-        let gm_len =
-            u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+        let gm_len = u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
         mpos += 4;
         if mpos + gm_len > metadata.len() {
             return data.to_vec();
@@ -1381,8 +1392,7 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
         if dpos + 4 > data.len() {
             return data.to_vec();
         }
-        let gd_len =
-            u32::from_le_bytes(data[dpos..dpos + 4].try_into().unwrap()) as usize;
+        let gd_len = u32::from_le_bytes(data[dpos..dpos + 4].try_into().unwrap()) as usize;
         dpos += 4;
         if dpos + gd_len > data.len() {
             return data.to_vec();
@@ -1391,11 +1401,10 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
         dpos += gd_len;
 
         // Decode this group using Strategy 1 reverse.
-        let (parts, num_rows, num_cols, _trailing) =
-            match parse_uniform_metadata(group_metadata) {
-                Some(v) => v,
-                None => return data.to_vec(),
-            };
+        let (parts, num_rows, num_cols, _trailing) = match parse_uniform_metadata(group_metadata) {
+            Some(v) => v,
+            None => return data.to_vec(),
+        };
 
         if num_rows != group_row_count {
             return data.to_vec();
@@ -1437,8 +1446,7 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
     if mpos + 4 > metadata.len() {
         return data.to_vec();
     }
-    let residual_count =
-        u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+    let residual_count = u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
     mpos += 4;
 
     let mut residual_indices = Vec::with_capacity(residual_count);
@@ -1775,9 +1783,7 @@ mod tests {
         let mut data = Vec::new();
         // Group A: 8 rows.
         for i in 0..8 {
-            data.extend_from_slice(
-                format!(r#"{{"a":{},"b":"val{}"}}"#, i, i).as_bytes(),
-            );
+            data.extend_from_slice(format!(r#"{{"a":{},"b":"val{}"}}"#, i, i).as_bytes());
             data.push(b'\n');
         }
         // 2 unique rows (will be residual).
@@ -1787,9 +1793,7 @@ mod tests {
         data.push(b'\n');
         // Group B: 6 rows.
         for i in 0..6 {
-            data.extend_from_slice(
-                format!(r#"{{"c":{},"d":"val{}","e":true}}"#, i, i).as_bytes(),
-            );
+            data.extend_from_slice(format!(r#"{{"c":{},"d":"val{}","e":true}}"#, i, i).as_bytes());
             data.push(b'\n');
         }
         let result = preprocess(&data).expect("should produce grouped transform");
@@ -1806,9 +1810,7 @@ mod tests {
     fn grouped_roundtrip_no_trailing_newline() {
         let mut data = Vec::new();
         for i in 0..6 {
-            data.extend_from_slice(
-                format!(r#"{{"id":{},"type":"push"}}"#, i).as_bytes(),
-            );
+            data.extend_from_slice(format!(r#"{{"id":{},"type":"push"}}"#, i).as_bytes());
             data.push(b'\n');
         }
         for i in 0..6 {
@@ -1890,7 +1892,12 @@ mod tests {
         // The columnar data should have expanded columns.
         let cols: Vec<&[u8]> = result.data.split(|&b| b == COL_SEP).collect();
         // Original: 2 cols (id, meta). After flattening: 3 cols (id, meta.x, meta.y).
-        assert_eq!(cols.len(), 3, "should have 3 columns after flattening: got {}", cols.len());
+        assert_eq!(
+            cols.len(),
+            3,
+            "should have 3 columns after flattening: got {}",
+            cols.len()
+        );
 
         // Verify sub-columns contain the extracted values.
         let meta_x_vals: Vec<&[u8]> = cols[1].split(|&b| b == VAL_SEP).collect();
