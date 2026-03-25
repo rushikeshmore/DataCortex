@@ -675,10 +675,12 @@ pub fn compress_with_options<W: Write>(
     let mut use_brotli = false;
     // Track whether raw fallback won (empty transform chain).
     let mut use_raw_fallback = false;
+    // Track whether metadata is embedded in the compressed stream.
+    let mut use_meta_embedded = false;
     let compressed = match mode {
         // Fast mode: auto-fallback — try preprocessed+zstd, raw+zstd, raw+brotli,
-        // and preprocessed+brotli. Keep whichever produces the smallest output
-        // (including header and metadata overhead).
+        // preprocessed+brotli, and embedded-metadata+brotli. Keep whichever produces
+        // the smallest output (including header and metadata overhead).
         //
         // Preprocessing (columnar + typed encoding) usually helps zstd by grouping
         // similar values. But for some files (e.g. citm_catalog.json with extreme
@@ -687,6 +689,10 @@ pub fn compress_with_options<W: Write>(
         //
         // Brotli at quality 11 can beat zstd on some JSON files (e.g. twitter.json)
         // because its context modeling handles certain data patterns better.
+        //
+        // For small files with transforms, embedding metadata inside the brotli stream
+        // saves the separate metadata overhead (~150 bytes), because brotli compresses
+        // the 4-byte length prefix + raw metadata nearly for free.
         Mode::Fast => {
             let level = adaptive_fast_level(preprocessed.len(), zstd_level_override);
 
@@ -729,11 +735,11 @@ pub fn compress_with_options<W: Write>(
             let total_b = 32 + compressed_b.len();
 
             // Start with best of zstd paths.
-            let (mut best_compressed, mut best_total, mut best_dict, mut best_raw, mut best_brotli) =
+            let (mut best_compressed, mut best_total, mut best_dict, mut best_raw, mut best_brotli, mut best_embedded) =
                 if total_b < total_a {
-                    (compressed_b, total_b, false, true, false)
+                    (compressed_b, total_b, false, true, false, false)
                 } else {
-                    (compressed_a, total_a, dict_a, false, false)
+                    (compressed_a, total_a, dict_a, false, false, false)
                 };
 
             // Path C: raw + brotli.
@@ -747,10 +753,11 @@ pub fn compress_with_options<W: Write>(
                     best_dict = false;
                     best_raw = true;
                     best_brotli = true;
+                    best_embedded = false;
                 }
             }
 
-            // Path D: preprocessed + brotli.
+            // Path D: preprocessed + brotli (separate metadata).
             let brotli_prep_quality = if preprocessed.len() <= 1_048_576 {
                 11
             } else {
@@ -764,6 +771,40 @@ pub fn compress_with_options<W: Write>(
                     best_dict = false;
                     best_raw = false;
                     best_brotli = true;
+                    best_embedded = false;
+                }
+            }
+
+            // Path E: preprocessed + brotli with EMBEDDED metadata.
+            // Only attempt when transforms were applied (non-empty metadata).
+            // The metadata is prepended to the preprocessed data as:
+            //   [meta_len: u32 LE][raw_metadata][preprocessed_data]
+            // and the whole thing is brotli-compressed together. This eliminates
+            // separate metadata overhead in the header.
+            if !transform_metadata.is_empty() {
+                let mut embedded_payload =
+                    Vec::with_capacity(4 + transform_metadata.len() + preprocessed.len());
+                embedded_payload
+                    .extend_from_slice(&(transform_metadata.len() as u32).to_le_bytes());
+                embedded_payload.extend_from_slice(&transform_metadata);
+                embedded_payload.extend_from_slice(&preprocessed);
+
+                let embed_quality = if embedded_payload.len() <= 1_048_576 {
+                    11
+                } else {
+                    9
+                };
+                if let Ok(brotli_embedded) = brotli_compress(&embedded_payload, embed_quality) {
+                    // Total: header(32) + 0 (no separate metadata) + brotli_embedded.
+                    let brotli_embedded_total = 32 + brotli_embedded.len();
+                    if brotli_embedded_total < best_total {
+                        best_compressed = brotli_embedded;
+                        best_total = brotli_embedded_total;
+                        best_dict = false;
+                        best_raw = false;
+                        best_brotli = true;
+                        best_embedded = true;
+                    }
                 }
             }
 
@@ -771,6 +812,7 @@ pub fn compress_with_options<W: Write>(
             use_dict = best_dict;
             use_raw_fallback = best_raw;
             use_brotli = best_brotli;
+            use_meta_embedded = best_embedded;
             best_compressed
         }
         // Balanced mode: dual-path CM + GRU byte predictor.
@@ -840,9 +882,10 @@ pub fn compress_with_options<W: Write>(
         }
     };
 
-    // When raw fallback won, use empty transform metadata (decompressor handles
-    // empty chains correctly — just decompresses, no reverse transforms).
-    let final_metadata = if use_raw_fallback {
+    // When raw fallback or embedded metadata won, use empty header metadata.
+    // - Raw fallback: decompressor handles empty chains (just decompresses, no reverse transforms).
+    // - Embedded: metadata lives inside the compressed stream, not in the header.
+    let final_metadata = if use_raw_fallback || use_meta_embedded {
         vec![]
     } else {
         transform_metadata
@@ -850,6 +893,7 @@ pub fn compress_with_options<W: Write>(
 
     // Compress metadata with zstd if it's large enough to benefit.
     // Small metadata (<= 64 bytes) stays raw to avoid zstd frame overhead.
+    // Skipped when metadata is embedded (final_metadata is empty).
     let (header_metadata, meta_compressed) = if final_metadata.len() > 64 {
         let compressed_meta =
             zstd::bulk::compress(&final_metadata, 19).unwrap_or_else(|_| final_metadata.clone());
@@ -872,6 +916,7 @@ pub fn compress_with_options<W: Write>(
         has_dict: use_dict,
         meta_compressed,
         use_brotli,
+        meta_embedded: use_meta_embedded,
     };
 
     header.write_to(output)?;
@@ -989,26 +1034,56 @@ pub fn decompress_with_model<R: Read>(
         }
     };
 
-    // Step 1.5: Decompress metadata if it was zstd-compressed.
-    // Use streaming decoder to avoid guessing decompressed size.
-    let transform_metadata = if header.meta_compressed && !header.transform_metadata.is_empty() {
-        let mut decoder =
-            zstd::Decoder::new(Cursor::new(&header.transform_metadata)).map_err(|e| {
+    // Step 1.5: Handle embedded metadata OR separate metadata.
+    // When meta_embedded is set, the decompressed stream starts with:
+    //   [meta_len: u32 LE][raw_metadata][preprocessed_data]
+    // We extract the metadata and the actual preprocessed data from the stream.
+    let (preprocessed, transform_metadata) = if header.meta_embedded {
+        if preprocessed.len() < 4 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "embedded metadata: decompressed stream too short for meta_len",
+            ));
+        }
+        let meta_len = u32::from_le_bytes(
+            preprocessed[0..4].try_into().expect("4-byte slice"),
+        ) as usize;
+        if preprocessed.len() < 4 + meta_len {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "embedded metadata: stream too short for metadata ({} bytes needed, {} available)",
+                    4 + meta_len,
+                    preprocessed.len()
+                ),
+            ));
+        }
+        let metadata = preprocessed[4..4 + meta_len].to_vec();
+        let actual_preprocessed = preprocessed[4 + meta_len..].to_vec();
+        (actual_preprocessed, metadata)
+    } else {
+        // Decompress metadata if it was zstd-compressed (separate metadata path).
+        // Use streaming decoder to avoid guessing decompressed size.
+        let tm = if header.meta_compressed && !header.transform_metadata.is_empty() {
+            let mut decoder =
+                zstd::Decoder::new(Cursor::new(&header.transform_metadata)).map_err(|e| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("failed to init metadata decompressor: {e}"),
+                    )
+                })?;
+            let mut decompressed_meta = Vec::new();
+            decoder.read_to_end(&mut decompressed_meta).map_err(|e| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!("failed to init metadata decompressor: {e}"),
+                    format!("failed to decompress transform metadata: {e}"),
                 )
             })?;
-        let mut decompressed_meta = Vec::new();
-        decoder.read_to_end(&mut decompressed_meta).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("failed to decompress transform metadata: {e}"),
-            )
-        })?;
-        decompressed_meta
-    } else {
-        header.transform_metadata.clone()
+            decompressed_meta
+        } else {
+            header.transform_metadata.clone()
+        };
+        (preprocessed, tm)
     };
 
     // Step 2: Reverse preprocessing.
@@ -1509,12 +1584,13 @@ mod tests {
         let decompressed = decompress_from_slice(&compressed).unwrap();
         assert_eq!(decompressed, data, "test-ndjson roundtrip failed");
 
-        // Check that preprocessing was used (non-empty transform metadata).
+        // Check that preprocessing was used: either non-empty transform metadata
+        // in the header, or metadata embedded in the compressed stream.
         let mut cursor = Cursor::new(&compressed);
         let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
         assert!(
-            !header.transform_metadata.is_empty(),
-            "test-ndjson should prefer preprocessed path (non-empty transform metadata)"
+            !header.transform_metadata.is_empty() || header.meta_embedded,
+            "test-ndjson should prefer preprocessed path (non-empty transform metadata or embedded)"
         );
     }
 
@@ -1767,6 +1843,7 @@ mod tests {
             has_dict: false,
             meta_compressed: false,
             use_brotli: false,
+            meta_embedded: false,
         };
 
         let mut buf = Vec::new();
@@ -1777,6 +1854,162 @@ mod tests {
         assert_eq!(buf[7] & crate::dcx::FLAG_BROTLI, 0);
 
         // Decompress — must work even though brotli path exists.
+        let decompressed = decompress_from_slice(&buf).unwrap();
+        assert_eq!(decompressed, original.to_vec());
+    }
+
+    // ─── Embedded metadata tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_embedded_metadata_roundtrip() {
+        // Compress test-api.json with Fast mode — if embedded metadata is used,
+        // the roundtrip must be byte-exact.
+        let data = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../corpus/test-api.json"
+        ))
+        .unwrap();
+
+        let compressed = compress_to_vec(&data, Mode::Fast, Some(FormatHint::Json)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(
+            decompressed, data,
+            "test-api.json embedded metadata roundtrip: byte-exact mismatch"
+        );
+    }
+
+    #[test]
+    fn test_embedded_metadata_backward_compat() {
+        // Old .dcx files without the meta_embedded flag (bit 4 = 0) must still decompress.
+        // We simulate an old file by manually crafting a .dcx with FLAG_META_EMBEDDED unset
+        // and separate transform metadata.
+        let original = b"backward compat: no embedded metadata in this old file format";
+        let crc = crc32fast::hash(original);
+        let zstd_compressed = zstd::bulk::compress(original, 19).unwrap();
+
+        let header = crate::dcx::DcxHeader {
+            mode: Mode::Fast,
+            format_hint: crate::dcx::FormatHint::Generic,
+            original_size: original.len() as u64,
+            compressed_size: zstd_compressed.len() as u64,
+            crc32: crc,
+            transform_metadata: vec![],
+            has_dict: false,
+            meta_compressed: false,
+            use_brotli: false,
+            meta_embedded: false,
+        };
+
+        let mut buf = Vec::new();
+        header.write_to(&mut buf).unwrap();
+        buf.extend_from_slice(&zstd_compressed);
+
+        // Verify meta_embedded flag is NOT set.
+        assert_eq!(buf[7] & crate::dcx::FLAG_META_EMBEDDED, 0);
+
+        // Decompress — must work without embedded metadata support.
+        let decompressed = decompress_from_slice(&buf).unwrap();
+        assert_eq!(decompressed, original.to_vec());
+    }
+
+    #[test]
+    fn test_embedded_metadata_small_file_improvement() {
+        // test-api.json is a small file (37KB) where embedded metadata should
+        // save overhead compared to separate metadata.
+        let data = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../corpus/test-api.json"
+        ))
+        .unwrap();
+
+        let compressed = compress_to_vec(&data, Mode::Fast, Some(FormatHint::Json)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed, data, "roundtrip failed");
+
+        // Verify the file compresses to a reasonable size.
+        let ratio = data.len() as f64 / compressed.len() as f64;
+        assert!(
+            ratio > 5.0,
+            "test-api.json should achieve >5x compression, got {ratio:.1}x"
+        );
+
+        // Check header to see which path was chosen.
+        let mut cursor = Cursor::new(&compressed);
+        let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
+
+        // If embedded was chosen, verify the flag is set and header metadata is empty.
+        if header.meta_embedded {
+            assert!(
+                header.transform_metadata.is_empty(),
+                "meta_embedded header should have empty transform_metadata"
+            );
+            assert!(
+                header.use_brotli,
+                "meta_embedded should use brotli codec"
+            );
+        }
+    }
+
+    #[test]
+    fn test_embedded_metadata_ndjson_roundtrip() {
+        // NDJSON files with transforms must still roundtrip correctly
+        // regardless of whether embedded or separate metadata is chosen.
+        let data = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../corpus/test-ndjson.ndjson"
+        ))
+        .unwrap();
+
+        let compressed = compress_to_vec(&data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(
+            decompressed, data,
+            "NDJSON embedded metadata roundtrip: byte-exact mismatch"
+        );
+    }
+
+    #[test]
+    fn test_embedded_metadata_manual_roundtrip() {
+        // Manually construct an embedded-metadata .dcx to verify the decompress path
+        // handles the format correctly, independent of what the compressor chooses.
+        let original = b"Hello, embedded metadata world! This is a test.";
+        let crc = crc32fast::hash(original);
+
+        // Build embedded payload with an empty transform chain so reverse_preprocess
+        // is a no-op and the data passes through unchanged.
+        let empty_chain = TransformChain::new();
+        let raw_metadata = empty_chain.serialize();
+
+        // Build embedded payload: [meta_len:u32 LE][raw_metadata][original_data]
+        let mut embedded = Vec::new();
+        embedded.extend_from_slice(&(raw_metadata.len() as u32).to_le_bytes());
+        embedded.extend_from_slice(&raw_metadata);
+        embedded.extend_from_slice(original);
+
+        let brotli_data = brotli_compress(&embedded, 11).unwrap();
+
+        let header = crate::dcx::DcxHeader {
+            mode: Mode::Fast,
+            format_hint: crate::dcx::FormatHint::Generic,
+            original_size: original.len() as u64,
+            compressed_size: brotli_data.len() as u64,
+            crc32: crc,
+            transform_metadata: vec![], // empty — metadata is embedded
+            has_dict: false,
+            meta_compressed: false,
+            use_brotli: true,
+            meta_embedded: true,
+        };
+
+        let mut buf = Vec::new();
+        header.write_to(&mut buf).unwrap();
+        buf.extend_from_slice(&brotli_data);
+
+        // Verify flags.
+        assert_ne!(buf[7] & crate::dcx::FLAG_META_EMBEDDED, 0);
+        assert_ne!(buf[7] & crate::dcx::FLAG_BROTLI, 0);
+
+        // Decompress and verify.
         let decompressed = decompress_from_slice(&buf).unwrap();
         assert_eq!(decompressed, original.to_vec());
     }
