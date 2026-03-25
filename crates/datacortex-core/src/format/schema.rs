@@ -390,6 +390,35 @@ pub fn infer_schema(columnar_data: &[u8]) -> InferredSchema {
                 format: TimestampFormat::EpochMillis,
                 nullable,
             }
+        } else if non_null.iter().all(|c| {
+            matches!(
+                c,
+                ValueType::Integer(_) | ValueType::TimestampEpochS | ValueType::TimestampEpochMs
+            )
+        }) {
+            // Mixed integers and epoch timestamps — the epoch classification was a
+            // heuristic guess.  Since not ALL values look like timestamps, treat the
+            // whole column as plain integers.  Epoch timestamps are just integers
+            // that happen to fall in a certain range.
+            let mut min = i64::MAX;
+            let mut max = i64::MIN;
+            for val in &values {
+                let vt = classify_value(val);
+                if vt == ValueType::Null {
+                    continue;
+                }
+                // All non-null values in this branch are numeric (Integer or
+                // epoch timestamp), so parse_i64 will succeed.
+                if let Some(n) = parse_i64(val) {
+                    if n < min {
+                        min = n;
+                    }
+                    if n > max {
+                        max = n;
+                    }
+                }
+            }
+            ColumnType::Integer { min, max, nullable }
         } else if non_null.iter().all(|c| matches!(c, ValueType::Uuid)) {
             ColumnType::Uuid { nullable }
         } else if non_null
@@ -629,6 +658,34 @@ mod tests {
         );
         assert_eq!(schema.columns[0].null_count, 0);
         assert_eq!(schema.columns[0].total_count, 4);
+    }
+
+    #[test]
+    fn test_infer_mixed_integer_and_epoch_as_integer() {
+        // Regression: 2147483647 (i32::MAX) falls in the epoch-seconds range
+        // and was misclassified as TimestampEpochS.  When mixed with plain
+        // integers, the column should be inferred as Integer, not String.
+        let data = build_columnar(&[&[
+            b"0",
+            b"-1",
+            b"1",
+            b"-2147483648",
+            b"2147483647",
+            b"-9007199254740991",
+            b"9007199254740991",
+        ]]);
+        let schema = infer_schema(&data);
+        assert_eq!(schema.columns.len(), 1);
+        assert_eq!(
+            schema.columns[0].col_type,
+            ColumnType::Integer {
+                min: -9007199254740991,
+                max: 9007199254740991,
+                nullable: false,
+            },
+            "mixed integers with epoch-range values should infer as Integer, got {:?}",
+            schema.columns[0].col_type
+        );
     }
 
     #[test]

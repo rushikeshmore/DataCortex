@@ -93,21 +93,26 @@ Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` i
 ## CodeCortex — Project Knowledge (auto-updated)
 
 ### Architecture
-**datacortex** — rust — 49 files, 1061 symbols
-- **Modules (3):** datacortex-core (20077loc), datacortex-neural (773loc), datacortex-cli (653loc)
+**datacortex** — rust — 49 files, 1066 symbols
+- **Modules (3):** datacortex-core (20235loc), datacortex-neural (773loc), datacortex-cli (653loc)
 
 ### Risk Map
 **High-risk files:**
-- `CLAUDE.md` — 28 changes, 1 bug-fixes, volatile
-- `.codecortex/constitution.md` — 23 changes, 1 bug-fixes, volatile
-- `.codecortex/cortex.yaml` — 23 changes, 1 bug-fixes, volatile
-- `.codecortex/graph.json` — 23 changes, 1 bug-fixes, volatile
-- `.codecortex/hotspots.md` — 23 changes, 1 bug-fixes, volatile
+- `CLAUDE.md` — 29 changes, 2 bug-fixes, volatile
+- `.codecortex/constitution.md` — 24 changes, 2 bug-fixes, volatile
+- `.codecortex/cortex.yaml` — 24 changes, 2 bug-fixes, volatile
+- `.codecortex/graph.json` — 24 changes, 2 bug-fixes, volatile
+- `.codecortex/hotspots.md` — 24 changes, 2 bug-fixes, volatile
 
 **Hidden couplings (co-change, no import):**
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (71% co-change)
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` (86% co-change)
-- `Cargo.toml` ↔ `crates/datacortex-core/Cargo.toml` (89% co-change)
+- `Cargo.toml` ↔ `crates/datacortex-core/Cargo.toml` (80% co-change)
+
+**Bug-prone files:**
+- `.codecortex/symbols.json` — 2 bug-fix commits
+- `.codecortex/temporal.json` — 2 bug-fix commits
+- `Cargo.toml` — 2 bug-fix commits
 
 ### Before Editing
 Check `.codecortex/hotspots.md` for risk-ranked files before editing.
