@@ -415,7 +415,10 @@ mod tests {
 
         assert_eq!(
             buf[7],
-            FLAG_HAS_TRANSFORM | FLAG_HAS_DICT | FLAG_META_COMPRESSED | FLAG_BROTLI
+            FLAG_HAS_TRANSFORM
+                | FLAG_HAS_DICT
+                | FLAG_META_COMPRESSED
+                | FLAG_BROTLI
                 | FLAG_META_EMBEDDED
         );
 

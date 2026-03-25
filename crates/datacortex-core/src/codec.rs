@@ -242,11 +242,24 @@ fn decompress_with_dict(payload: &[u8], capacity: usize) -> std::io::Result<Vec<
 
 // ─── Brotli helpers (Fast mode auto-fallback) ─────────────────────────────────
 
-/// Compress `data` with brotli at the given quality (0-11).
-fn brotli_compress(data: &[u8], quality: u32) -> io::Result<Vec<u8>> {
+/// Brotli mode constants for `brotli_compress`.
+/// GENERIC (0): default, best for binary/preprocessed data.
+/// TEXT (1): optimized for UTF-8 text, better for raw JSON.
+const BROTLI_MODE_GENERIC: u32 = 0;
+const BROTLI_MODE_TEXT: u32 = 1;
+
+/// Compress `data` with brotli at the given quality (0-11) and mode.
+/// Use `BROTLI_MODE_TEXT` for raw UTF-8/JSON, `BROTLI_MODE_GENERIC` for preprocessed data.
+fn brotli_compress(data: &[u8], quality: u32, mode: u32) -> io::Result<Vec<u8>> {
+    use brotli::enc::backward_references::BrotliEncoderMode;
     let mut output = Vec::new();
+    let brotli_mode = match mode {
+        1 => BrotliEncoderMode::BROTLI_MODE_TEXT,
+        _ => BrotliEncoderMode::BROTLI_MODE_GENERIC,
+    };
     let params = brotli::enc::BrotliEncoderParams {
         quality: quality as i32,
+        mode: brotli_mode,
         ..Default::default()
     };
     brotli::BrotliCompress(&mut io::Cursor::new(data), &mut output, &params)?;
@@ -735,17 +748,23 @@ pub fn compress_with_options<W: Write>(
             let total_b = 32 + compressed_b.len();
 
             // Start with best of zstd paths.
-            let (mut best_compressed, mut best_total, mut best_dict, mut best_raw, mut best_brotli, mut best_embedded) =
-                if total_b < total_a {
-                    (compressed_b, total_b, false, true, false, false)
-                } else {
-                    (compressed_a, total_a, dict_a, false, false, false)
-                };
+            let (
+                mut best_compressed,
+                mut best_total,
+                mut best_dict,
+                mut best_raw,
+                mut best_brotli,
+                mut best_embedded,
+            ) = if total_b < total_a {
+                (compressed_b, total_b, false, true, false, false)
+            } else {
+                (compressed_a, total_a, dict_a, false, false, false)
+            };
 
-            // Path C: raw + brotli.
+            // Path C: raw + brotli (TEXT mode — raw JSON is UTF-8 text).
             // Use quality 11 for files <= 1MB, 9 for larger (speed tradeoff).
             let brotli_quality = if data.len() <= 1_048_576 { 11 } else { 9 };
-            if let Ok(brotli_raw) = brotli_compress(data, brotli_quality) {
+            if let Ok(brotli_raw) = brotli_compress(data, brotli_quality, BROTLI_MODE_TEXT) {
                 let brotli_raw_total = 32 + brotli_raw.len();
                 if brotli_raw_total < best_total {
                     best_compressed = brotli_raw;
@@ -757,52 +776,99 @@ pub fn compress_with_options<W: Write>(
                 }
             }
 
-            // Path D: preprocessed + brotli (separate metadata).
-            let brotli_prep_quality = if preprocessed.len() <= 1_048_576 {
-                11
-            } else {
-                9
-            };
-            if let Ok(brotli_prep) = brotli_compress(&preprocessed, brotli_prep_quality) {
-                let brotli_prep_total = 32 + meta_size_for_comparison + brotli_prep.len();
-                if brotli_prep_total < best_total {
-                    best_compressed = brotli_prep;
-                    best_total = brotli_prep_total;
-                    best_dict = false;
-                    best_raw = false;
-                    best_brotli = true;
-                    best_embedded = false;
+            // Path D: preprocessed + brotli (separate metadata, GENERIC mode).
+            // Try both quality 11 and 10 — sometimes q10 is smaller on binary-mixed data.
+            {
+                let brotli_prep_max_q = if preprocessed.len() <= 1_048_576 {
+                    11
+                } else {
+                    9
+                };
+                let qualities = if brotli_prep_max_q == 11 {
+                    &[11u32, 10][..]
+                } else {
+                    &[brotli_prep_max_q as u32][..]
+                };
+                for &q in qualities {
+                    if let Ok(brotli_prep) = brotli_compress(&preprocessed, q, BROTLI_MODE_GENERIC)
+                    {
+                        let brotli_prep_total = 32 + meta_size_for_comparison + brotli_prep.len();
+                        if brotli_prep_total < best_total {
+                            best_compressed = brotli_prep;
+                            best_total = brotli_prep_total;
+                            best_dict = false;
+                            best_raw = false;
+                            best_brotli = true;
+                            best_embedded = false;
+                        }
+                    }
                 }
             }
 
-            // Path E: preprocessed + brotli with EMBEDDED metadata.
+            // Build the embedded metadata payload once for Paths E and F.
+            let embedded_payload = if !transform_metadata.is_empty() {
+                let mut ep = Vec::with_capacity(4 + transform_metadata.len() + preprocessed.len());
+                ep.extend_from_slice(&(transform_metadata.len() as u32).to_le_bytes());
+                ep.extend_from_slice(&transform_metadata);
+                ep.extend_from_slice(&preprocessed);
+                Some(ep)
+            } else {
+                None
+            };
+
+            // Path E: preprocessed + brotli with EMBEDDED metadata (GENERIC mode).
             // Only attempt when transforms were applied (non-empty metadata).
             // The metadata is prepended to the preprocessed data as:
             //   [meta_len: u32 LE][raw_metadata][preprocessed_data]
             // and the whole thing is brotli-compressed together. This eliminates
             // separate metadata overhead in the header.
-            if !transform_metadata.is_empty() {
-                let mut embedded_payload =
-                    Vec::with_capacity(4 + transform_metadata.len() + preprocessed.len());
-                embedded_payload
-                    .extend_from_slice(&(transform_metadata.len() as u32).to_le_bytes());
-                embedded_payload.extend_from_slice(&transform_metadata);
-                embedded_payload.extend_from_slice(&preprocessed);
-
-                let embed_quality = if embedded_payload.len() <= 1_048_576 {
+            // Try both quality 11 and 10 (same dual-quality as Path D).
+            if let Some(ref embedded_payload) = embedded_payload {
+                let embed_max_q = if embedded_payload.len() <= 1_048_576 {
                     11
                 } else {
                     9
                 };
-                if let Ok(brotli_embedded) = brotli_compress(&embedded_payload, embed_quality) {
-                    // Total: header(32) + 0 (no separate metadata) + brotli_embedded.
-                    let brotli_embedded_total = 32 + brotli_embedded.len();
-                    if brotli_embedded_total < best_total {
-                        best_compressed = brotli_embedded;
-                        best_total = brotli_embedded_total;
+                let qualities = if embed_max_q == 11 {
+                    &[11u32, 10][..]
+                } else {
+                    &[embed_max_q as u32][..]
+                };
+                for &q in qualities {
+                    if let Ok(brotli_embedded) =
+                        brotli_compress(embedded_payload, q, BROTLI_MODE_GENERIC)
+                    {
+                        // Total: header(32) + 0 (no separate metadata) + brotli_embedded.
+                        let brotli_embedded_total = 32 + brotli_embedded.len();
+                        if brotli_embedded_total < best_total {
+                            best_compressed = brotli_embedded;
+                            best_total = brotli_embedded_total;
+                            best_dict = false;
+                            best_raw = false;
+                            best_brotli = true;
+                            best_embedded = true;
+                        }
+                    }
+                }
+            }
+
+            // Path F: preprocessed + zstd with EMBEDDED metadata (no dict).
+            // When transforms were applied and dict was NOT the winner, try
+            // compressing [meta_len:u32][raw_metadata][preprocessed_data] with zstd.
+            // IMPORTANT: do NOT embed metadata when dict compression is active —
+            // the dict format has its own layout (dict + chunks) and embedding
+            // metadata would break it.
+            if let Some(ref embedded_payload) = embedded_payload {
+                let embed_level = adaptive_fast_level(embedded_payload.len(), zstd_level_override);
+                if let Ok(zstd_embedded) = zstd::bulk::compress(embedded_payload, embed_level) {
+                    // Total: header(32) + 0 (no separate metadata) + zstd_embedded.
+                    let zstd_embedded_total = 32 + zstd_embedded.len();
+                    if zstd_embedded_total < best_total {
+                        best_compressed = zstd_embedded;
+                        best_total = zstd_embedded_total;
                         best_dict = false;
                         best_raw = false;
-                        best_brotli = true;
+                        best_brotli = false;
                         best_embedded = true;
                     }
                 }
@@ -1045,9 +1111,8 @@ pub fn decompress_with_model<R: Read>(
                 "embedded metadata: decompressed stream too short for meta_len",
             ));
         }
-        let meta_len = u32::from_le_bytes(
-            preprocessed[0..4].try_into().expect("4-byte slice"),
-        ) as usize;
+        let meta_len =
+            u32::from_le_bytes(preprocessed[0..4].try_into().expect("4-byte slice")) as usize;
         if preprocessed.len() < 4 + meta_len {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -1783,7 +1848,7 @@ mod tests {
     fn test_brotli_compress_roundtrip() {
         // Direct brotli compress/decompress helper roundtrip.
         let data = b"Hello, brotli! This is a test of the brotli compression helpers.";
-        let compressed = brotli_compress(data, 11).unwrap();
+        let compressed = brotli_compress(data, 11, BROTLI_MODE_GENERIC).unwrap();
         let decompressed = brotli_decompress(&compressed).unwrap();
         assert_eq!(decompressed, data.to_vec());
     }
@@ -1943,10 +2008,7 @@ mod tests {
                 header.transform_metadata.is_empty(),
                 "meta_embedded header should have empty transform_metadata"
             );
-            assert!(
-                header.use_brotli,
-                "meta_embedded should use brotli codec"
-            );
+            assert!(header.use_brotli, "meta_embedded should use brotli codec");
         }
     }
 
@@ -1986,7 +2048,7 @@ mod tests {
         embedded.extend_from_slice(&raw_metadata);
         embedded.extend_from_slice(original);
 
-        let brotli_data = brotli_compress(&embedded, 11).unwrap();
+        let brotli_data = brotli_compress(&embedded, 11, BROTLI_MODE_GENERIC).unwrap();
 
         let header = crate::dcx::DcxHeader {
             mode: Mode::Fast,
@@ -2012,5 +2074,130 @@ mod tests {
         // Decompress and verify.
         let decompressed = decompress_from_slice(&buf).unwrap();
         assert_eq!(decompressed, original.to_vec());
+    }
+
+    // ─── Optimization: Brotli TEXT mode tests ───────────────────────────────
+
+    #[test]
+    fn test_brotli_text_mode_on_raw() {
+        // Verify TEXT mode produces valid brotli that decompresses correctly.
+        let data = br#"{"name":"Alice","age":30,"city":"New York","active":true}"#;
+
+        // TEXT mode (for raw UTF-8/JSON).
+        let compressed_text = brotli_compress(data, 11, BROTLI_MODE_TEXT).unwrap();
+        let decompressed_text = brotli_decompress(&compressed_text).unwrap();
+        assert_eq!(
+            decompressed_text,
+            data.to_vec(),
+            "TEXT mode roundtrip failed"
+        );
+
+        // GENERIC mode (for comparison).
+        let compressed_generic = brotli_compress(data, 11, BROTLI_MODE_GENERIC).unwrap();
+        let decompressed_generic = brotli_decompress(&compressed_generic).unwrap();
+        assert_eq!(
+            decompressed_generic,
+            data.to_vec(),
+            "GENERIC mode roundtrip failed"
+        );
+
+        // Both must produce valid output — TEXT mode should not be larger than
+        // GENERIC on UTF-8 text (or at most within a few bytes).
+        // We don't assert TEXT < GENERIC because on tiny data the difference is negligible,
+        // but we verify the feature works.
+        assert!(
+            !compressed_text.is_empty(),
+            "TEXT mode should produce non-empty output"
+        );
+    }
+
+    // ─── Optimization: Zstd embedded metadata tests ─────────────────────────
+
+    #[test]
+    fn test_zstd_embedded_metadata_roundtrip() {
+        // Manually construct a .dcx with zstd-compressed embedded metadata
+        // (meta_embedded=true, use_brotli=false) and verify roundtrip.
+        let original = b"Hello, zstd embedded metadata! This is a test of the zstd path.";
+        let crc = crc32fast::hash(original);
+
+        // Build embedded payload with an empty transform chain.
+        let empty_chain = TransformChain::new();
+        let raw_metadata = empty_chain.serialize();
+
+        // [meta_len:u32 LE][raw_metadata][original_data]
+        let mut embedded = Vec::new();
+        embedded.extend_from_slice(&(raw_metadata.len() as u32).to_le_bytes());
+        embedded.extend_from_slice(&raw_metadata);
+        embedded.extend_from_slice(original);
+
+        let zstd_data = zstd::bulk::compress(&embedded, 19).unwrap();
+
+        let header = crate::dcx::DcxHeader {
+            mode: Mode::Fast,
+            format_hint: crate::dcx::FormatHint::Generic,
+            original_size: original.len() as u64,
+            compressed_size: zstd_data.len() as u64,
+            crc32: crc,
+            transform_metadata: vec![], // empty — metadata is embedded
+            has_dict: false,
+            meta_compressed: false,
+            use_brotli: false, // zstd, not brotli
+            meta_embedded: true,
+        };
+
+        let mut buf = Vec::new();
+        header.write_to(&mut buf).unwrap();
+        buf.extend_from_slice(&zstd_data);
+
+        // Verify flags: meta_embedded set, brotli NOT set.
+        assert_ne!(buf[7] & crate::dcx::FLAG_META_EMBEDDED, 0);
+        assert_eq!(buf[7] & crate::dcx::FLAG_BROTLI, 0);
+
+        // Decompress and verify byte-exact roundtrip.
+        let decompressed = decompress_from_slice(&buf).unwrap();
+        assert_eq!(decompressed, original.to_vec());
+    }
+
+    // ─── Optimization: Multi-quality brotli tests ───────────────────────────
+
+    #[test]
+    fn test_multi_quality_brotli() {
+        // Verify both quality 10 and 11 produce valid brotli that decompresses.
+        // On some data q10 beats q11 — we just verify both work correctly.
+        let data = br#"{"items":[1,2,3,4,5],"nested":{"a":"hello","b":"world"}}"#;
+
+        let q10 = brotli_compress(data, 10, BROTLI_MODE_GENERIC).unwrap();
+        let q11 = brotli_compress(data, 11, BROTLI_MODE_GENERIC).unwrap();
+
+        let dec_q10 = brotli_decompress(&q10).unwrap();
+        let dec_q11 = brotli_decompress(&q11).unwrap();
+
+        assert_eq!(dec_q10, data.to_vec(), "quality 10 roundtrip failed");
+        assert_eq!(dec_q11, data.to_vec(), "quality 11 roundtrip failed");
+
+        // Both should produce non-empty compressed output.
+        assert!(!q10.is_empty());
+        assert!(!q11.is_empty());
+
+        // The auto-fallback should pick the smaller one.
+        // We can't assert which is smaller (data-dependent), but verify the logic
+        // by checking that auto-fallback roundtrips on real corpus files.
+        let corpus_files = [
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../corpus/test-api.json"),
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../corpus/json-bench/twitter.json"
+            ),
+        ];
+        for path in corpus_files {
+            let file_data = std::fs::read(path).unwrap();
+            let compressed =
+                compress_to_vec(&file_data, Mode::Fast, Some(FormatHint::Json)).unwrap();
+            let decompressed = decompress_from_slice(&compressed).unwrap();
+            assert_eq!(
+                decompressed, file_data,
+                "multi-quality roundtrip failed for {path}"
+            );
+        }
     }
 }
