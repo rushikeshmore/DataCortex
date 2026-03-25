@@ -514,7 +514,7 @@ fn decode_timestamp_column(data: &[u8]) -> Vec<Vec<u8>> {
 ///
 /// Column header:
 ///   dict_count: u8
-///   for each entry: len (u16 LE) + bytes (includes quotes)
+///   for each entry: len (u32 LE) + bytes (includes quotes)
 ///   count: u32 LE
 /// Followed by one ordinal byte per value.
 fn encode_enum_column(values: &[&[u8]]) -> Vec<u8> {
@@ -547,7 +547,7 @@ fn encode_enum_column(values: &[&[u8]]) -> Vec<u8> {
     // Write dictionary.
     out.push(dict_count);
     for (val, _) in &freq {
-        let len = val.len() as u16;
+        let len = val.len() as u32;
         out.extend_from_slice(&len.to_le_bytes());
         out.extend_from_slice(val);
     }
@@ -577,11 +577,11 @@ fn decode_enum_column(data: &[u8]) -> Vec<Vec<u8>> {
     // Read dictionary entries.
     let mut dictionary: Vec<Vec<u8>> = Vec::with_capacity(dict_count);
     for _ in 0..dict_count {
-        if pos + 2 > data.len() {
+        if pos + 4 > data.len() {
             return Vec::new();
         }
-        let len = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
-        pos += 2;
+        let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+        pos += 4;
         if pos + len > data.len() {
             return Vec::new();
         }
@@ -619,13 +619,14 @@ fn decode_enum_column(data: &[u8]) -> Vec<Vec<u8>> {
 /// Encode a string column by stripping surrounding quotes and length-prefixing.
 ///
 /// Input: slices of quoted text bytes (e.g., b"\"hello\"").
-/// Output: count (u32 LE) + for each value: length (u16 LE) + bytes (without quotes).
+/// Output: count (u32 LE) + for each value: length (u32 LE) + bytes (without quotes).
 ///
 /// Saves 2 bytes per value (the quotes) and makes the data more regular for zstd.
+/// Uses u32 for per-value lengths to support strings longer than 65535 bytes.
 fn encode_string_column(values: &[&[u8]]) -> Vec<u8> {
     let count = values.len();
-    // Estimate: 4 (count) + per-value (2 + avg_len).
-    let mut out = Vec::with_capacity(4 + count * 10);
+    // Estimate: 4 (count) + per-value (4 + avg_len).
+    let mut out = Vec::with_capacity(4 + count * 12);
 
     out.extend_from_slice(&(count as u32).to_le_bytes());
 
@@ -636,7 +637,7 @@ fn encode_string_column(values: &[&[u8]]) -> Vec<u8> {
         } else {
             *val
         };
-        let len = inner.len() as u16;
+        let len = inner.len() as u32;
         out.extend_from_slice(&len.to_le_bytes());
         out.extend_from_slice(inner);
     }
@@ -657,11 +658,11 @@ fn decode_string_column(data: &[u8]) -> Vec<Vec<u8>> {
     let mut result = Vec::with_capacity(count);
 
     for _ in 0..count {
-        if pos + 2 > data.len() {
+        if pos + 4 > data.len() {
             break;
         }
-        let len = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
-        pos += 2;
+        let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+        pos += 4;
         if pos + len > data.len() {
             break;
         }
@@ -1196,6 +1197,26 @@ fn has_mixed_quoting(values: &[&[u8]]) -> bool {
     false
 }
 
+/// Check whether ALL non-null values in a String-typed column are unquoted.
+///
+/// Schema inference can classify unquoted non-numeric values (arrays, objects,
+/// bare tokens) as `QuotedString`.  The string encoder passes them through
+/// without stripping quotes, but the decoder unconditionally wraps them in
+/// quotes, corrupting the roundtrip.  Fall back to RAW when this is detected.
+fn has_all_unquoted(values: &[&[u8]]) -> bool {
+    let mut has_non_null = false;
+    for val in values {
+        if *val == b"null" {
+            continue;
+        }
+        has_non_null = true;
+        if val.len() >= 2 && val[0] == b'"' && val[val.len() - 1] == b'"' {
+            return false; // Found a quoted value — not all-unquoted.
+        }
+    }
+    has_non_null // true only if every non-null value is unquoted.
+}
+
 // ─── Column Encoding Dispatch ───────────────────────────────────────────────
 
 /// Choose and apply the appropriate encoder for a column based on its type.
@@ -1247,7 +1268,10 @@ fn encode_column(values: &[&[u8]], col_type: &ColumnType) -> (u8, Vec<u8>) {
             // Guard: if this "String" column actually contains a mix of quoted
             // and unquoted values (e.g. integers, booleans alongside strings),
             // fall back to RAW passthrough to avoid roundtrip corruption.
-            if has_mixed_quoting(values) {
+            // Also guard against ALL-unquoted columns (e.g. arrays like
+            // [{"x":0}] that schema inference classified as String) — the
+            // string decoder unconditionally adds quotes, corrupting them.
+            if has_mixed_quoting(values) || has_all_unquoted(values) {
                 return (ENC_RAW, encode_raw(values));
             }
             if *nullable {
@@ -1909,17 +1933,17 @@ mod tests {
     fn test_string_encoding_structure() {
         // Verify the encoding structure: count header + length-prefixed values.
         // Net byte savings: each value saves 2 bytes (quotes removed) but adds
-        // 2 bytes (u16 length prefix), so per-value cost is neutral. The 4-byte
+        // 4 bytes (u32 length prefix), so per-value cost is +2 bytes. The 4-byte
         // count header is overhead. The real win is regularity for zstd compression.
         let values: &[&[u8]] = &[b"\"hello\"", b"\"world\"", b"\"test\""];
         let encoded = encode_string_column(values);
 
-        // Expected: 4 (count) + (2+5) + (2+5) + (2+4) = 4 + 7 + 7 + 6 = 24 bytes.
+        // Expected: 4 (count) + (4+5) + (4+5) + (4+4) = 4 + 9 + 9 + 8 = 30 bytes.
         // "hello" inner = 5 bytes, "world" inner = 5 bytes, "test" inner = 4 bytes.
         assert_eq!(
             encoded.len(),
-            4 + (2 + 5) + (2 + 5) + (2 + 4),
-            "string encoding should be count(4) + sum(2+inner_len), got {}",
+            4 + (4 + 5) + (4 + 5) + (4 + 4),
+            "string encoding should be count(4) + sum(4+inner_len), got {}",
             encoded.len()
         );
     }
@@ -2422,5 +2446,60 @@ mod tests {
                 "zigzag roundtrip failed for {n}: encoded={encoded}, decoded={decoded}"
             );
         }
+    }
+
+    // ─── Adversarial Regression Tests ────────────────────────────────────────
+
+    #[test]
+    fn test_singleton_array_values_roundtrip() {
+        // Bug 1: singleton array values like [{"x":0}] were classified as
+        // QuotedString by schema inference. The string encoder passed them
+        // through (no quotes to strip), but the decoder unconditionally
+        // re-added quotes, corrupting them from [{"x":0}] to "[{"x":0}]".
+        // The fix: detect all-unquoted columns and fall back to RAW encoding.
+        let col_sep = 0x00u8;
+        let val_sep = 0x01u8;
+
+        // Build columnar data: column 0 = array values, column 1 = integers.
+        let mut columnar = Vec::new();
+        for i in 0..500u32 {
+            columnar.extend_from_slice(format!("[{{\"x\":{}}}]", i).as_bytes());
+            if i < 499 {
+                columnar.push(val_sep);
+            }
+        }
+        columnar.push(col_sep);
+        for i in 0..500u32 {
+            columnar.extend_from_slice(i.to_string().as_bytes());
+            if i < 499 {
+                columnar.push(val_sep);
+            }
+        }
+
+        let result = preprocess(&columnar).expect("should produce typed encoding");
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(
+            restored, columnar,
+            "singleton array values must roundtrip byte-exact through typed encoding"
+        );
+    }
+
+    #[test]
+    fn test_very_long_string_values_roundtrip() {
+        // Bug 2: encode_string_column used u16 for per-value lengths, which
+        // silently truncated strings longer than 65535 bytes.  A 100KB string
+        // (inner length 99998) would have its length stored as 99998 mod 65536
+        // = 34462, causing a CRC mismatch on decompress.
+        // The fix: use u32 for per-value string lengths.
+        let long_str = format!("\"{}\"", "X".repeat(100_000));
+        let values: &[&[u8]] = &[long_str.as_bytes()];
+        let encoded = encode_string_column(values);
+        let decoded = decode_string_column(&encoded);
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(
+            decoded[0],
+            long_str.as_bytes().to_vec(),
+            "100KB string must roundtrip through string encoding"
+        );
     }
 }

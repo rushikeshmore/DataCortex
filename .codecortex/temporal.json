@@ -1,55 +1,55 @@
 {
-  "generated": "2026-03-25T20:09:28.628Z",
+  "generated": "2026-03-25T20:10:18.228Z",
   "periodDays": 90,
-  "totalCommits": 69,
+  "totalCommits": 70,
   "hotspots": [
     {
       "file": "CLAUDE.md",
-      "changes": 31,
+      "changes": 32,
       "stability": "volatile",
-      "lastChanged": "2026-03-26T01:13:28+05:30",
+      "lastChanged": "2026-03-26T01:40:16+05:30",
       "daysSinceChange": 0
     },
     {
       "file": ".codecortex/constitution.md",
-      "changes": 26,
+      "changes": 27,
       "stability": "volatile",
-      "lastChanged": "2026-03-26T01:13:28+05:30",
+      "lastChanged": "2026-03-26T01:40:16+05:30",
       "daysSinceChange": 0
     },
     {
       "file": ".codecortex/cortex.yaml",
-      "changes": 26,
+      "changes": 27,
       "stability": "volatile",
-      "lastChanged": "2026-03-26T01:13:28+05:30",
+      "lastChanged": "2026-03-26T01:40:16+05:30",
       "daysSinceChange": 0
     },
     {
       "file": ".codecortex/graph.json",
-      "changes": 26,
+      "changes": 27,
       "stability": "volatile",
-      "lastChanged": "2026-03-26T01:13:28+05:30",
+      "lastChanged": "2026-03-26T01:40:16+05:30",
       "daysSinceChange": 0
     },
     {
       "file": ".codecortex/hotspots.md",
-      "changes": 26,
+      "changes": 27,
       "stability": "volatile",
-      "lastChanged": "2026-03-26T01:13:28+05:30",
+      "lastChanged": "2026-03-26T01:40:16+05:30",
       "daysSinceChange": 0
     },
     {
       "file": ".codecortex/symbols.json",
-      "changes": 26,
+      "changes": 27,
       "stability": "volatile",
-      "lastChanged": "2026-03-26T01:13:28+05:30",
+      "lastChanged": "2026-03-26T01:40:16+05:30",
       "daysSinceChange": 0
     },
     {
       "file": ".codecortex/temporal.json",
-      "changes": 26,
+      "changes": 27,
       "stability": "volatile",
-      "lastChanged": "2026-03-26T01:13:28+05:30",
+      "lastChanged": "2026-03-26T01:40:16+05:30",
       "daysSinceChange": 0
     },
     {
@@ -74,6 +74,13 @@
       "daysSinceChange": 0
     },
     {
+      "file": "Cargo.toml",
+      "changes": 12,
+      "stability": "volatile",
+      "lastChanged": "2026-03-26T01:40:16+05:30",
+      "daysSinceChange": 0
+    },
+    {
       "file": "crates/datacortex-core/src/format/transform.rs",
       "changes": 12,
       "stability": "volatile",
@@ -85,13 +92,6 @@
       "changes": 12,
       "stability": "volatile",
       "lastChanged": "2026-03-25T19:07:31+05:30",
-      "daysSinceChange": 0
-    },
-    {
-      "file": "Cargo.toml",
-      "changes": 11,
-      "stability": "volatile",
-      "lastChanged": "2026-03-26T01:13:28+05:30",
       "daysSinceChange": 0
     },
     {
@@ -485,6 +485,20 @@
       "stability": "stable",
       "lastChanged": "2026-03-15T17:41:34+05:30",
       "daysSinceChange": 10
+    },
+    {
+      "file": ".codecortex/sessions/2026-03-25T20-09-19.md",
+      "changes": 1,
+      "stability": "stable",
+      "lastChanged": "2026-03-26T01:40:16+05:30",
+      "daysSinceChange": 0
+    },
+    {
+      "file": ".codecortex/sessions/2026-03-25T20-09-28.md",
+      "changes": 1,
+      "stability": "stable",
+      "lastChanged": "2026-03-26T01:40:16+05:30",
+      "daysSinceChange": 0
     },
     {
       "file": ".codecortex/sessions/2026-03-25T19-43-29.md",
@@ -997,9 +1011,8 @@
       "fileA": "Cargo.toml",
       "fileB": "crates/datacortex-core/Cargo.toml",
       "cochanges": 8,
-      "strength": 0.73,
-      "hasImport": false,
-      "warning": "HIDDEN DEPENDENCY — 73% co-change rate"
+      "strength": 0.67,
+      "hasImport": false
     },
     {
       "fileA": "crates/datacortex-core/src/model/engine.rs",
@@ -1048,7 +1061,7 @@
       "fileA": "Cargo.toml",
       "fileB": "crates/datacortex-cli/Cargo.toml",
       "cochanges": 5,
-      "strength": 0.45,
+      "strength": 0.42,
       "hasImport": false
     },
     {
@@ -1069,7 +1082,7 @@
       "fileA": "Cargo.toml",
       "fileB": "crates/datacortex-cli/src/main.rs",
       "cochanges": 5,
-      "strength": 0.45,
+      "strength": 0.42,
       "hasImport": false
     },
     {
@@ -1350,14 +1363,14 @@
       "fileA": "Cargo.toml",
       "fileB": "crates/datacortex-core/src/lib.rs",
       "cochanges": 3,
-      "strength": 0.27,
+      "strength": 0.25,
       "hasImport": false
     },
     {
       "fileA": "Cargo.toml",
       "fileB": "crates/datacortex-neural/Cargo.toml",
       "cochanges": 3,
-      "strength": 0.27,
+      "strength": 0.25,
       "hasImport": false
     },
     {

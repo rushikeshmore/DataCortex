@@ -77,8 +77,18 @@ fn generate_training_samples(data: &[u8], chunk_size: usize) -> Vec<&[u8]> {
     // Try column boundaries (0x00 separators from columnar transform).
     let col_chunks: Vec<&[u8]> = data.split(|&b| b == 0x00).collect();
     if col_chunks.len() >= 5 {
-        // Filter out empty chunks and return.
-        return col_chunks.into_iter().filter(|c| !c.is_empty()).collect();
+        let non_empty: Vec<&[u8]> = col_chunks.into_iter().filter(|c| !c.is_empty()).collect();
+        // Validate that the split produced reasonable samples. If the data is
+        // typed-encoded binary (not columnar text), 0x00 bytes are varint
+        // zeros, not column separators. Splitting on them creates thousands
+        // of tiny fragments that crash zstd dictionary training. Require
+        // non-empty samples with a minimum average size of 8 bytes.
+        if !non_empty.is_empty() {
+            let avg_len = non_empty.iter().map(|c| c.len()).sum::<usize>() / non_empty.len();
+            if avg_len >= 8 {
+                return non_empty;
+            }
+        }
     }
 
     // Fall back to fixed-size blocks for training.
@@ -2199,5 +2209,94 @@ mod tests {
                 "multi-quality roundtrip failed for {path}"
             );
         }
+    }
+
+    // ─── Adversarial Regression Tests ────────────────────────────────────────
+
+    #[test]
+    fn test_singleton_arrays_fast_roundtrip() {
+        // Bug 1: NDJSON with singleton array values like [{"x":0}] caused CRC
+        // mismatch in fast mode because typed encoding corrupted unquoted values.
+        let rows: Vec<String> = (0..500)
+            .map(|i| format!("{{\"items\":[{{\"x\":{}}}],\"id\":{}}}", i, i))
+            .collect();
+        let data = rows.join("\n") + "\n";
+        let compressed =
+            compress_to_vec(data.as_bytes(), Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(
+            decompressed,
+            data.as_bytes(),
+            "singleton_arrays fast mode roundtrip failed"
+        );
+    }
+
+    #[test]
+    fn test_very_long_lines_fast_roundtrip() {
+        // Bug 2: NDJSON with 100KB string values caused CRC mismatch because
+        // encode_string_column used u16 for per-value lengths (max 65535).
+        let rows: Vec<String> = (0..50)
+            .map(|i| format!("{{\"data\":\"{}\",\"id\":{}}}", "X".repeat(100_000), i))
+            .collect();
+        let data = rows.join("\n") + "\n";
+        let compressed =
+            compress_to_vec(data.as_bytes(), Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(
+            decompressed,
+            data.as_bytes(),
+            "very_long_lines fast mode roundtrip failed"
+        );
+    }
+
+    #[test]
+    fn test_very_long_lines_balanced_roundtrip() {
+        // Bug 2 also affected balanced mode — the NDJSON columnar transform
+        // itself is mode-independent, and long strings overflow u16 everywhere.
+        let rows: Vec<String> = (0..10)
+            .map(|i| format!("{{\"data\":\"{}\",\"id\":{}}}", "X".repeat(100_000), i))
+            .collect();
+        let data = rows.join("\n") + "\n";
+        let compressed =
+            compress_to_vec(data.as_bytes(), Mode::Balanced, Some(FormatHint::Ndjson)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(
+            decompressed,
+            data.as_bytes(),
+            "very_long_lines balanced mode roundtrip failed"
+        );
+    }
+
+    #[test]
+    fn test_all_same_value_fast_roundtrip() {
+        // Bug 3: 10K identical rows of {"x":1} caused SIGBUS crash in fast mode.
+        // After typed encoding, the delta-varint stream was full of 0x00 bytes.
+        // generate_training_samples split on 0x00, creating thousands of tiny
+        // fragments that crashed zstd dictionary training.
+        let rows: Vec<String> = (0..10_000).map(|_| "{\"x\":1}".to_string()).collect();
+        let data = rows.join("\n") + "\n";
+        let compressed =
+            compress_to_vec(data.as_bytes(), Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(
+            decompressed,
+            data.as_bytes(),
+            "all_same_value fast mode roundtrip failed"
+        );
+    }
+
+    #[test]
+    fn test_generate_training_samples_degenerate() {
+        // Verify that generate_training_samples falls back to fixed-size chunks
+        // when 0x00 splitting produces degenerate samples (avg < 8 bytes).
+        let mut data = vec![0x02u8]; // one non-zero byte
+        data.extend_from_slice(&[0x00; 9999]); // 9999 zero bytes
+        let samples = generate_training_samples(&data, 1024);
+        // Must fall back to fixed-size chunks, not degenerate 0x00-split.
+        let avg_len = samples.iter().map(|s| s.len()).sum::<usize>() / samples.len();
+        assert!(
+            avg_len >= 8,
+            "training samples average size should be >= 8, got {avg_len}"
+        );
     }
 }

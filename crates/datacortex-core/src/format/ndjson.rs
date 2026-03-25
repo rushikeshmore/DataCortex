@@ -640,7 +640,7 @@ pub(crate) fn flatten_nested_columns(
         let num_sub_keys = all_sub_keys.len();
         let mut sub_columns: Vec<Vec<Vec<u8>>> = vec![Vec::with_capacity(num_rows); num_sub_keys];
         let total_bits = num_sub_keys * num_rows;
-        let bitmap_bytes = (total_bits + 7) / 8;
+        let bitmap_bytes = total_bits.div_ceil(8);
         let mut absence_bitmap = vec![0u8; bitmap_bytes];
         let mut has_any_absent = false;
 
