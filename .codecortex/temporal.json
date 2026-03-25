@@ -1,55 +1,55 @@
 {
-  "generated": "2026-03-25T21:54:03.179Z",
+  "generated": "2026-03-25T21:54:24.976Z",
   "periodDays": 90,
-  "totalCommits": 76,
+  "totalCommits": 77,
   "hotspots": [
     {
       "file": "CLAUDE.md",
-      "changes": 35,
+      "changes": 36,
       "stability": "volatile",
-      "lastChanged": "2026-03-26T02:38:08+05:30",
+      "lastChanged": "2026-03-26T03:24:24+05:30",
       "daysSinceChange": 0
     },
     {
       "file": ".codecortex/constitution.md",
-      "changes": 30,
+      "changes": 31,
       "stability": "volatile",
-      "lastChanged": "2026-03-26T02:38:08+05:30",
+      "lastChanged": "2026-03-26T03:24:24+05:30",
       "daysSinceChange": 0
     },
     {
       "file": ".codecortex/cortex.yaml",
-      "changes": 30,
+      "changes": 31,
       "stability": "volatile",
-      "lastChanged": "2026-03-26T02:38:08+05:30",
+      "lastChanged": "2026-03-26T03:24:24+05:30",
       "daysSinceChange": 0
     },
     {
       "file": ".codecortex/graph.json",
-      "changes": 30,
+      "changes": 31,
       "stability": "volatile",
-      "lastChanged": "2026-03-26T02:38:08+05:30",
+      "lastChanged": "2026-03-26T03:24:24+05:30",
       "daysSinceChange": 0
     },
     {
       "file": ".codecortex/hotspots.md",
-      "changes": 30,
+      "changes": 31,
       "stability": "volatile",
-      "lastChanged": "2026-03-26T02:38:08+05:30",
+      "lastChanged": "2026-03-26T03:24:24+05:30",
       "daysSinceChange": 0
     },
     {
       "file": ".codecortex/symbols.json",
-      "changes": 30,
+      "changes": 31,
       "stability": "volatile",
-      "lastChanged": "2026-03-26T02:38:08+05:30",
+      "lastChanged": "2026-03-26T03:24:24+05:30",
       "daysSinceChange": 0
     },
     {
       "file": ".codecortex/temporal.json",
-      "changes": 30,
+      "changes": 31,
       "stability": "volatile",
-      "lastChanged": "2026-03-26T02:38:08+05:30",
+      "lastChanged": "2026-03-26T03:24:24+05:30",
       "daysSinceChange": 0
     },
     {
@@ -67,17 +67,17 @@
       "daysSinceChange": 0
     },
     {
+      "file": "Cargo.toml",
+      "changes": 14,
+      "stability": "volatile",
+      "lastChanged": "2026-03-26T03:24:24+05:30",
+      "daysSinceChange": 0
+    },
+    {
       "file": "crates/datacortex-core/src/model/engine.rs",
       "changes": 14,
       "stability": "volatile",
       "lastChanged": "2026-03-25T19:07:31+05:30",
-      "daysSinceChange": 0
-    },
-    {
-      "file": "Cargo.toml",
-      "changes": 13,
-      "stability": "volatile",
-      "lastChanged": "2026-03-26T02:30:20+05:30",
       "daysSinceChange": 0
     },
     {
@@ -492,6 +492,13 @@
       "stability": "stable",
       "lastChanged": "2026-03-15T17:41:34+05:30",
       "daysSinceChange": 10
+    },
+    {
+      "file": ".codecortex/sessions/2026-03-25T21-54-03.md",
+      "changes": 1,
+      "stability": "stable",
+      "lastChanged": "2026-03-26T03:24:24+05:30",
+      "daysSinceChange": 0
     },
     {
       "file": ".codecortex/sessions/2026-03-25T21-08-09.md",
@@ -1046,7 +1053,7 @@
       "fileA": "Cargo.toml",
       "fileB": "crates/datacortex-core/Cargo.toml",
       "cochanges": 8,
-      "strength": 0.62,
+      "strength": 0.57,
       "hasImport": false
     },
     {
@@ -1103,7 +1110,7 @@
       "fileA": "Cargo.toml",
       "fileB": "crates/datacortex-cli/Cargo.toml",
       "cochanges": 5,
-      "strength": 0.38,
+      "strength": 0.36,
       "hasImport": false
     },
     {
@@ -1124,7 +1131,7 @@
       "fileA": "Cargo.toml",
       "fileB": "crates/datacortex-cli/src/main.rs",
       "cochanges": 5,
-      "strength": 0.38,
+      "strength": 0.36,
       "hasImport": false
     },
     {
@@ -1398,14 +1405,14 @@
       "fileA": "Cargo.toml",
       "fileB": "crates/datacortex-core/src/lib.rs",
       "cochanges": 3,
-      "strength": 0.23,
+      "strength": 0.21,
       "hasImport": false
     },
     {
       "fileA": "Cargo.toml",
       "fileB": "crates/datacortex-neural/Cargo.toml",
       "cochanges": 3,
-      "strength": 0.23,
+      "strength": 0.21,
       "hasImport": false
     },
     {

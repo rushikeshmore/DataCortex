@@ -317,7 +317,11 @@ mod tests {
                 col1.push(VAL_SEP);
                 col2.push(VAL_SEP);
             }
-            col0.extend_from_slice(if i % 3 == 0 { b"page_view" } else { b"api_call" });
+            col0.extend_from_slice(if i % 3 == 0 {
+                b"page_view"
+            } else {
+                b"api_call"
+            });
             col1.extend_from_slice(if i % 2 == 0 { b"alice" } else { b"bob" });
             col2.extend_from_slice(format!("unique{i}").as_bytes());
         }

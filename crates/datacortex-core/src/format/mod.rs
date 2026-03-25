@@ -119,8 +119,7 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
                     let mut nested_meta = Vec::new();
                     nested_meta.extend_from_slice(&(num_rows as u32).to_le_bytes());
                     nested_meta.extend_from_slice(&total_flat_cols.to_le_bytes());
-                    nested_meta
-                        .extend_from_slice(&ndjson::serialize_nested_info(&nested_groups));
+                    nested_meta.extend_from_slice(&ndjson::serialize_nested_info(&nested_groups));
                     chain.push(TRANSFORM_NESTED_FLATTEN, nested_meta);
                     current = flat_data;
                 }
@@ -507,15 +506,17 @@ mod tests {
         // (e.g. 2147483647 = i32::MAX) caused schema misclassification and
         // CRC-32 mismatch on decompression in Fast mode.
         let edges: &[i64] = &[
-            0, -1, 1, -2147483648, 2147483647, -9007199254740991, 9007199254740991,
+            0,
+            -1,
+            1,
+            -2147483648,
+            2147483647,
+            -9007199254740991,
+            9007199254740991,
         ];
         let mut ndjson = String::new();
         for i in 0..203 {
-            ndjson.push_str(&format!(
-                "{{\"val\":{},\"idx\":{}}}\n",
-                edges[i % 7],
-                i
-            ));
+            ndjson.push_str(&format!("{{\"val\":{},\"idx\":{}}}\n", edges[i % 7], i));
         }
 
         let data = ndjson.as_bytes();
@@ -550,14 +551,12 @@ mod tests {
                 json.push(',');
             }
             // Nested dict with optional key (missing for first 6 rows)
-            let license = if i >= 6 {
-                r#","license":"MIT""#
-            } else {
-                ""
-            };
+            let license = if i >= 6 { r#","license":"MIT""# } else { "" };
             // Nested dict with varying key sets across rows
             let links = match i % 5 {
-                0 => format!(r#"{{"homepage":"h{i}","repository":"r{i}","bugs":"b{i}","npm":"n{i}"}}"#),
+                0 => format!(
+                    r#"{{"homepage":"h{i}","repository":"r{i}","bugs":"b{i}","npm":"n{i}"}}"#
+                ),
                 1 => format!(r#"{{"homepage":"h{i}","npm":"n{i}","repository":"r{i}"}}"#),
                 2 => format!(r#"{{"npm":"n{i}"}}"#),
                 3 => format!(r#"{{"bugs":"b{i}","homepage":"h{i}","npm":"n{i}"}}"#),
@@ -584,11 +583,7 @@ mod tests {
             let (preprocessed, chain) = preprocess(data, FormatHint::Json, mode);
             assert!(!chain.is_empty(), "should apply transforms in {mode} mode");
             let restored = reverse_preprocess(&preprocessed, &chain);
-            assert_eq!(
-                restored.len(),
-                data.len(),
-                "length mismatch in {mode} mode",
-            );
+            assert_eq!(restored.len(), data.len(), "length mismatch in {mode} mode",);
             assert_eq!(restored, data.to_vec(), "roundtrip failed in {mode} mode");
         }
     }

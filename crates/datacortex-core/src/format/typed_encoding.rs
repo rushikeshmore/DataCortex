@@ -2390,7 +2390,8 @@ mod tests {
             let (decoded, _) = leb128_decode(&buf, 0)
                 .unwrap_or_else(|| panic!("LEB128 decode returned None for {val}"));
             assert_eq!(
-                decoded, val,
+                decoded,
+                val,
                 "LEB128 roundtrip failed for {val} (encoded {} bytes)",
                 buf.len()
             );
@@ -2404,10 +2405,18 @@ mod tests {
         // causing the column to fall through to String encoding.  The String
         // decoder then wrapped bare integers in quotes, corrupting the roundtrip.
         let edges: &[i64] = &[
-            0, -1, 1, -2147483648, 2147483647, -9007199254740991, 9007199254740991,
+            0,
+            -1,
+            1,
+            -2147483648,
+            2147483647,
+            -9007199254740991,
+            9007199254740991,
         ];
         let n = 203;
-        let col0: Vec<Vec<u8>> = (0..n).map(|i| edges[i % 7].to_string().into_bytes()).collect();
+        let col0: Vec<Vec<u8>> = (0..n)
+            .map(|i| edges[i % 7].to_string().into_bytes())
+            .collect();
         let col1: Vec<Vec<u8>> = (0..n).map(|i: usize| i.to_string().into_bytes()).collect();
         let col0_refs: Vec<&[u8]> = col0.iter().map(|v| v.as_slice()).collect();
         let col1_refs: Vec<&[u8]> = col1.iter().map(|v| v.as_slice()).collect();

@@ -1256,12 +1256,8 @@ pub fn preprocess(data: &[u8]) -> Option<TransformResult> {
                 // cause the compact reconstruction to reorder keys, breaking byte-exact
                 // roundtrip. Only apply if the unflatten is provably lossless.
                 let total_flat_cols = flat_data.split(|&b| b == COL_SEP).count();
-                let unflattened = unflatten_nested_columns(
-                    &flat_data,
-                    &nested_groups,
-                    num_rows,
-                    total_flat_cols,
-                );
+                let unflattened =
+                    unflatten_nested_columns(&flat_data, &nested_groups, num_rows, total_flat_cols);
                 if unflattened == col_data {
                     // Append nested info to metadata.
                     let nested_bytes = serialize_nested_info(&nested_groups);
