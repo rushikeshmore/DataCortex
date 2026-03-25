@@ -16,6 +16,7 @@ crc32fast = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 zstd = { workspace = true }
+brotli = { workspace = true }
 
 [features]
 default = []

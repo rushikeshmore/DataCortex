@@ -555,6 +555,10 @@ fn cmd_info(file: &Path, quiet: bool) -> io::Result<()> {
         );
         println!("  Header size:     {} bytes", header.total_size());
         println!("  CRC-32:          {:#010X}", header.crc32);
+        println!(
+            "  Entropy coder:   {}",
+            if header.use_brotli { "brotli" } else { "zstd" }
+        );
         if !header.transform_metadata.is_empty() {
             println!(
                 "  Transform meta:  {} bytes",
