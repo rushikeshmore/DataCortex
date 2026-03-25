@@ -8,7 +8,7 @@
 - **Files:** 49
 - **Symbols:** 1061
 - **Modules:** 3
-- **Last updated:** 2026-03-25T16:10:18.492Z
+- **Last updated:** 2026-03-25T18:14:59.422Z
 
 ## Architecture
 
@@ -20,18 +20,18 @@
 ## Risk Map
 
 **Hottest files (most changes):**
-- `CLAUDE.md` — 25 changes, VOLATILE
-- `.codecortex/constitution.md` — 20 changes, VOLATILE
-- `.codecortex/cortex.yaml` — 20 changes, VOLATILE
-- `.codecortex/graph.json` — 20 changes, VOLATILE
-- `.codecortex/hotspots.md` — 20 changes, VOLATILE
+- `CLAUDE.md` — 26 changes, VOLATILE
+- `.codecortex/constitution.md` — 21 changes, VOLATILE
+- `.codecortex/cortex.yaml` — 21 changes, VOLATILE
+- `.codecortex/graph.json` — 21 changes, VOLATILE
+- `.codecortex/hotspots.md` — 21 changes, VOLATILE
 
 **Hidden dependencies (co-change but no import):**
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` — 12 co-changes (71%)
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` — 12 co-changes (86%)
 - `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` — 8 co-changes (57%)
+- `Cargo.toml` ↔ `crates/datacortex-core/Cargo.toml` — 7 co-changes (100%)
 - `crates/datacortex-cli/src/main.rs` ↔ `crates/datacortex-core/src/lib.rs` — 6 co-changes (75%)
-- `Cargo.toml` ↔ `crates/datacortex-core/Cargo.toml` — 6 co-changes (100%)
 
 ## Available Knowledge
 

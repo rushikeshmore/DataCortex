@@ -10,6 +10,7 @@ authors.workspace = true
 rust-version.workspace = true
 keywords = ["compression", "json", "ndjson", "cli", "lossless"]
 categories = ["command-line-utilities", "compression"]
+readme = "../../README.md"
 
 [[bin]]
 name = "datacortex"
