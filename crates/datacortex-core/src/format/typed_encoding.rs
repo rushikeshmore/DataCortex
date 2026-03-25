@@ -2034,6 +2034,7 @@ mod tests {
     // ─── Hex Prefix Encoder Tests ──────────────────────────────────────────
 
     #[test]
+    #[ignore = "hex_prefix disabled (gotcha #39: hurts zstd compression)"]
     fn test_hex_prefix_detection() {
         // Standard session IDs with "sess_" prefix and 6 hex chars.
         let values: &[&[u8]] = &[
@@ -2046,6 +2047,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "hex_prefix disabled (gotcha #39)"]
     fn test_hex_prefix_encode_decode() {
         // Roundtrip encoding of session IDs.
         let values: &[&[u8]] = &[
@@ -2114,6 +2116,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "hex_prefix disabled (gotcha #39)"]
     fn test_hex_prefix_request_ids() {
         // Longer hex suffixes (12 chars).
         let values: &[&[u8]] = &[
@@ -2135,6 +2138,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "hex_prefix disabled (gotcha #39)"]
     fn test_hex_prefix_odd_hex_length() {
         // Odd number of hex chars (5 chars -> 3 binary bytes).
         let values: &[&[u8]] = &[
@@ -2188,6 +2192,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "hex_prefix disabled (gotcha #39)"]
     fn test_hex_prefix_via_column_dispatch() {
         // Test that the encode_column dispatch correctly chooses hex prefix
         // for String columns with hex-prefix pattern.

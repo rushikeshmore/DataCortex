@@ -16,12 +16,20 @@ use crate::mixer::MetaMixer;
 use crate::model::gru_model::GruModel;
 use crate::model::{CMConfig, CMEngine};
 
-/// zstd compression level per mode (for Fast mode).
-fn zstd_level(mode: Mode) -> i32 {
-    match mode {
-        Mode::Fast => 9,
-        Mode::Balanced => 19,
-        Mode::Max => 22,
+/// Adaptive zstd level for Fast mode based on preprocessed data size.
+///
+/// Smaller data compresses quickly even at high levels, so we use higher
+/// zstd levels for small-medium files without meaningful speed impact.
+/// If `level_override` is set (user passed --level), it always wins.
+fn adaptive_fast_level(data_size: usize, level_override: Option<i32>) -> i32 {
+    if let Some(level) = level_override {
+        return level; // User explicitly set level, respect it
+    }
+    match data_size {
+        0..=262_144 => 19,         // <256KB: instant at level 19
+        262_145..=1_048_576 => 15,  // 256KB-1MB: fast at level 15
+        1_048_577..=10_485_760 => 11, // 1MB-10MB: reasonable at level 11
+        _ => 9,                     // >10MB: use level 9 for speed
     }
 }
 
@@ -656,24 +664,57 @@ pub fn compress_with_options<W: Write>(
 
     // Step 2: Compress with engine.
     let mut use_dict = false;
+    // Track whether raw fallback won (empty transform chain).
+    let mut use_raw_fallback = false;
     let compressed = match mode {
-        // Fast mode: zstd compression on preprocessed data.
-        // Try dictionary training if data is large enough.
+        // Fast mode: auto-fallback — try both preprocessed and raw, keep smaller.
+        //
+        // Preprocessing (columnar + typed encoding) usually helps zstd by grouping
+        // similar values. But for some files (e.g. citm_catalog.json with extreme
+        // repetition), raw zstd without preprocessing gives MUCH better results
+        // because preprocessing removes the repetition patterns zstd's LZ77 exploits.
+        //
+        // Strategy: compress both ways, keep whichever is smaller (including header
+        // and metadata overhead).
         Mode::Fast => {
-            let level = zstd_level_override.unwrap_or_else(|| zstd_level(mode));
-            let plain = zstd::bulk::compress(&preprocessed, level).map_err(io::Error::other)?;
+            let level = adaptive_fast_level(preprocessed.len(), zstd_level_override);
 
-            if preprocessed.len() >= DICT_MIN_DATA_SIZE {
+            // Path A: preprocessed + zstd (with optional dict).
+            let plain_a =
+                zstd::bulk::compress(&preprocessed, level).map_err(io::Error::other)?;
+
+            let (compressed_a, dict_a) = if preprocessed.len() >= DICT_MIN_DATA_SIZE {
                 if let Some(dict_payload) =
-                    try_dict_compress(&preprocessed, level, plain.len())
+                    try_dict_compress(&preprocessed, level, plain_a.len())
                 {
-                    use_dict = true;
-                    dict_payload
+                    (dict_payload, true)
                 } else {
-                    plain
+                    (plain_a, false)
                 }
             } else {
-                plain
+                (plain_a, false)
+            };
+
+            // Total size for Path A: header(32) + transform_metadata + compressed_a.
+            let total_a = 32 + transform_metadata.len() + compressed_a.len();
+
+            // Path B: raw zstd (no preprocessing, no dict).
+            // Use same adaptive level but on original data size.
+            let raw_level = adaptive_fast_level(data.len(), zstd_level_override);
+            let compressed_b =
+                zstd::bulk::compress(data, raw_level).map_err(io::Error::other)?;
+
+            // Total size for Path B: header(32) + 0 (empty metadata) + compressed_b.
+            let total_b = 32 + compressed_b.len();
+
+            if total_b < total_a {
+                // Raw wins — use empty transform chain.
+                use_raw_fallback = true;
+                compressed_b
+            } else {
+                // Preprocessed wins — use current behavior.
+                use_dict = dict_a;
+                compressed_a
             }
         }
         // Balanced mode: dual-path CM + GRU byte predictor.
@@ -743,13 +784,21 @@ pub fn compress_with_options<W: Write>(
         }
     };
 
+    // When raw fallback won, use empty transform metadata (decompressor handles
+    // empty chains correctly — just decompresses, no reverse transforms).
+    let final_metadata = if use_raw_fallback {
+        vec![]
+    } else {
+        transform_metadata
+    };
+
     let header = DcxHeader {
         mode,
         format_hint,
         original_size: data.len() as u64,
         compressed_size: compressed.len() as u64,
         crc32: crc,
-        transform_metadata,
+        transform_metadata: final_metadata,
         has_dict: use_dict,
     };
 
@@ -1342,5 +1391,130 @@ mod tests {
             high.len(),
             low.len()
         );
+    }
+
+    // ─── Auto-fallback tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_auto_fallback_picks_smaller() {
+        // citm_catalog.json has extreme repetition that raw zstd exploits better
+        // than preprocessed. The auto-fallback should pick raw.
+        let data = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../corpus/json-bench/citm_catalog.json"
+        ))
+        .unwrap();
+
+        let compressed = compress_to_vec(&data, Mode::Fast, Some(FormatHint::Json)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed, data, "citm_catalog roundtrip failed");
+
+        // Check that raw fallback was used (empty transform metadata in header).
+        let mut cursor = Cursor::new(&compressed);
+        let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
+        assert!(
+            header.transform_metadata.is_empty(),
+            "citm_catalog should use raw fallback (empty transform metadata), \
+             but got {} bytes of metadata",
+            header.transform_metadata.len()
+        );
+
+        // Verify the ratio is dramatically better than 16.9x baseline.
+        let ratio = data.len() as f64 / compressed.len() as f64;
+        assert!(
+            ratio > 50.0,
+            "citm_catalog with raw fallback should achieve >50x, got {ratio:.1}x"
+        );
+    }
+
+    #[test]
+    fn test_auto_fallback_preprocessed_wins_on_ndjson() {
+        // NDJSON with uniform schema should still prefer preprocessed path
+        // (columnar + typed encoding beats raw zstd for structured data).
+        let data = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../corpus/test-ndjson.ndjson"
+        ))
+        .unwrap();
+
+        let compressed =
+            compress_to_vec(&data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed, data, "test-ndjson roundtrip failed");
+
+        // Check that preprocessing was used (non-empty transform metadata).
+        let mut cursor = Cursor::new(&compressed);
+        let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
+        assert!(
+            !header.transform_metadata.is_empty(),
+            "test-ndjson should prefer preprocessed path (non-empty transform metadata)"
+        );
+    }
+
+    #[test]
+    fn test_auto_fallback_roundtrip() {
+        // Verify both raw and preprocessed paths produce correct roundtrips.
+        // Use citm_catalog (raw wins) and test-ndjson (preprocessed wins).
+        let citm = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../corpus/json-bench/citm_catalog.json"
+        ))
+        .unwrap();
+        let ndjson = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../corpus/test-ndjson.ndjson"
+        ))
+        .unwrap();
+
+        // citm_catalog — raw path
+        let compressed_citm =
+            compress_to_vec(&citm, Mode::Fast, Some(FormatHint::Json)).unwrap();
+        let decompressed_citm = decompress_from_slice(&compressed_citm).unwrap();
+        assert_eq!(decompressed_citm, citm, "citm_catalog roundtrip (raw path) failed");
+
+        // test-ndjson — preprocessed path
+        let compressed_ndjson =
+            compress_to_vec(&ndjson, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
+        let decompressed_ndjson = decompress_from_slice(&compressed_ndjson).unwrap();
+        assert_eq!(
+            decompressed_ndjson, ndjson,
+            "test-ndjson roundtrip (preprocessed path) failed"
+        );
+    }
+
+    // ─── Adaptive level tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_adaptive_level_small_data() {
+        // <256KB should use level 19.
+        assert_eq!(adaptive_fast_level(100_000, None), 19);
+        assert_eq!(adaptive_fast_level(262_144, None), 19);
+        assert_eq!(adaptive_fast_level(0, None), 19);
+    }
+
+    #[test]
+    fn test_adaptive_level_medium_data() {
+        // 256KB-1MB should use level 15.
+        assert_eq!(adaptive_fast_level(262_145, None), 15);
+        assert_eq!(adaptive_fast_level(500_000, None), 15);
+        assert_eq!(adaptive_fast_level(1_048_576, None), 15);
+    }
+
+    #[test]
+    fn test_adaptive_level_large_data() {
+        // 1MB-10MB should use level 11, >10MB should use level 9.
+        assert_eq!(adaptive_fast_level(1_048_577, None), 11);
+        assert_eq!(adaptive_fast_level(5_000_000, None), 11);
+        assert_eq!(adaptive_fast_level(10_485_760, None), 11);
+        assert_eq!(adaptive_fast_level(10_485_761, None), 9);
+        assert_eq!(adaptive_fast_level(100_000_000, None), 9);
+    }
+
+    #[test]
+    fn test_adaptive_level_override() {
+        // --level flag should always override adaptive level.
+        assert_eq!(adaptive_fast_level(100, Some(3)), 3);
+        assert_eq!(adaptive_fast_level(100_000_000, Some(22)), 22);
+        assert_eq!(adaptive_fast_level(0, Some(1)), 1);
     }
 }
