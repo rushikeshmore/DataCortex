@@ -1251,13 +1251,27 @@ pub fn preprocess(data: &[u8]) -> Option<TransformResult> {
             // are compact and type-homogeneous columns compress much better.
             let num_rows = non_empty.len();
             if let Some((flat_data, nested_groups)) = flatten_nested_columns(&col_data, num_rows) {
-                // Append nested info to metadata.
-                let nested_bytes = serialize_nested_info(&nested_groups);
-                metadata.extend_from_slice(&nested_bytes);
-                return Some(TransformResult {
-                    data: flat_data,
-                    metadata,
-                });
+                // Verify roundtrip: unflatten must produce the exact original columnar
+                // data. Nested objects with varying sub-key sets or key ordering can
+                // cause the compact reconstruction to reorder keys, breaking byte-exact
+                // roundtrip. Only apply if the unflatten is provably lossless.
+                let total_flat_cols = flat_data.split(|&b| b == COL_SEP).count();
+                let unflattened = unflatten_nested_columns(
+                    &flat_data,
+                    &nested_groups,
+                    num_rows,
+                    total_flat_cols,
+                );
+                if unflattened == col_data {
+                    // Append nested info to metadata.
+                    let nested_bytes = serialize_nested_info(&nested_groups);
+                    metadata.extend_from_slice(&nested_bytes);
+                    return Some(TransformResult {
+                        data: flat_data,
+                        metadata,
+                    });
+                }
+                // else: roundtrip not exact — skip nested flatten.
             }
             // No nested objects found — append has_nested=0.
             metadata.push(0u8); // has_nested = 0

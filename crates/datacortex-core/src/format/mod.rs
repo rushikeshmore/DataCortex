@@ -104,12 +104,29 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
             {
                 // Build metadata: num_rows + total_flat_cols + serialized nested info.
                 let total_flat_cols = flat_data.split(|&b| b == 0x00).count() as u16;
-                let mut nested_meta = Vec::new();
-                nested_meta.extend_from_slice(&(num_rows as u32).to_le_bytes());
-                nested_meta.extend_from_slice(&total_flat_cols.to_le_bytes());
-                nested_meta.extend_from_slice(&ndjson::serialize_nested_info(&nested_groups));
-                chain.push(TRANSFORM_NESTED_FLATTEN, nested_meta);
-                current = flat_data;
+
+                // Verify roundtrip: unflatten must produce the exact original columnar
+                // data. Nested objects with varying sub-key sets or key ordering can
+                // cause the compact reconstruction to reorder keys, breaking byte-exact
+                // roundtrip. Only apply if the unflatten is provably lossless.
+                let unflattened = ndjson::unflatten_nested_columns(
+                    &flat_data,
+                    &nested_groups,
+                    num_rows,
+                    total_flat_cols as usize,
+                );
+                if unflattened == current {
+                    let mut nested_meta = Vec::new();
+                    nested_meta.extend_from_slice(&(num_rows as u32).to_le_bytes());
+                    nested_meta.extend_from_slice(&total_flat_cols.to_le_bytes());
+                    nested_meta
+                        .extend_from_slice(&ndjson::serialize_nested_info(&nested_groups));
+                    chain.push(TRANSFORM_NESTED_FLATTEN, nested_meta);
+                    current = flat_data;
+                }
+                // else: roundtrip not exact — skip nested flatten (data stays columnar
+                // without sub-column decomposition, still benefits from typed encoding
+                // and value dict on the outer columns).
             }
         }
     }
@@ -517,5 +534,62 @@ mod tests {
 
         let restored = reverse_preprocess(&preprocessed, &chain);
         assert_eq!(restored, data.to_vec(), "byte-exact roundtrip failed");
+    }
+
+    #[test]
+    fn test_nested_flatten_varying_subkeys_roundtrip() {
+        // Regression test for npm_search.json roundtrip bug:
+        // JSON array of uniform objects where nested dicts have VARYING sub-keys
+        // across rows (e.g., some rows have "license", some don't; "links" has
+        // 5 different schemas). The nested flatten must verify its roundtrip is
+        // byte-exact before applying, because compact reconstruction reorders
+        // keys to discovery order instead of preserving the original order.
+        let mut json = String::from(r#"{"objects":["#);
+        for i in 0..250 {
+            if i > 0 {
+                json.push(',');
+            }
+            // Nested dict with optional key (missing for first 6 rows)
+            let license = if i >= 6 {
+                r#","license":"MIT""#
+            } else {
+                ""
+            };
+            // Nested dict with varying key sets across rows
+            let links = match i % 5 {
+                0 => format!(r#"{{"homepage":"h{i}","repository":"r{i}","bugs":"b{i}","npm":"n{i}"}}"#),
+                1 => format!(r#"{{"homepage":"h{i}","npm":"n{i}","repository":"r{i}"}}"#),
+                2 => format!(r#"{{"npm":"n{i}"}}"#),
+                3 => format!(r#"{{"bugs":"b{i}","homepage":"h{i}","npm":"n{i}"}}"#),
+                _ => format!(r#"{{"npm":"n{i}","repository":"r{i}"}}"#),
+            };
+            let publisher = if i % 3 == 0 {
+                format!(r#"{{"email":"u{i}@t.com","username":"u{i}","actor":"a{i}"}}"#)
+            } else {
+                format!(r#"{{"email":"u{i}@t.com","username":"u{i}"}}"#)
+            };
+            json.push_str(&format!(
+                r#"{{"dl":{{"m":{},"w":{}}},"dep":"{}","sc":{},"pkg":{{"name":"p{i}","kw":["j","t"],"ver":"{i}.0","pub":{publisher},"mnt":[{{"u":"u{i}"}}]{license},"links":{links}}},"score":{{"f":0.5,"d":{{"q":0.8}}}},"flags":{{"x":0}}}}"#,
+                1000 * (i + 1),
+                250 * (i + 1),
+                i * 5,
+                1697.0894 + i as f64 * 0.1,
+            ));
+        }
+        json.push_str(r#"],"total":250}"#);
+
+        let data = json.as_bytes();
+
+        for mode in [Mode::Fast, Mode::Balanced] {
+            let (preprocessed, chain) = preprocess(data, FormatHint::Json, mode);
+            assert!(!chain.is_empty(), "should apply transforms in {mode} mode");
+            let restored = reverse_preprocess(&preprocessed, &chain);
+            assert_eq!(
+                restored.len(),
+                data.len(),
+                "length mismatch in {mode} mode",
+            );
+            assert_eq!(restored, data.to_vec(), "roundtrip failed in {mode} mode");
+        }
     }
 }
