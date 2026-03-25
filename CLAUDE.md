@@ -98,16 +98,16 @@ Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` i
 
 ### Risk Map
 **High-risk files:**
-- `CLAUDE.md` — 33 changes, 4 bug-fixes, volatile
-- `.codecortex/constitution.md` — 28 changes, 4 bug-fixes, volatile
-- `.codecortex/cortex.yaml` — 28 changes, 4 bug-fixes, volatile
-- `.codecortex/graph.json` — 28 changes, 4 bug-fixes, volatile
-- `.codecortex/hotspots.md` — 28 changes, 4 bug-fixes, volatile
+- `CLAUDE.md` — 34 changes, 4 bug-fixes, volatile
+- `.codecortex/constitution.md` — 29 changes, 4 bug-fixes, volatile
+- `.codecortex/cortex.yaml` — 29 changes, 4 bug-fixes, volatile
+- `.codecortex/graph.json` — 29 changes, 4 bug-fixes, volatile
+- `.codecortex/hotspots.md` — 29 changes, 4 bug-fixes, volatile
 
 **Hidden couplings (co-change, no import):**
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (67% co-change)
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` (86% co-change)
-- `Cargo.toml` ↔ `crates/datacortex-core/Cargo.toml` (67% co-change)
+- `Cargo.toml` ↔ `crates/datacortex-core/Cargo.toml` (62% co-change)
 
 **Bug-prone files:**
 - `.codecortex/symbols.json` — 4 bug-fix commits
