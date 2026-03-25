@@ -1167,6 +1167,35 @@ pub fn reverse(data: &[u8], _metadata: &[u8]) -> Vec<u8> {
     output
 }
 
+// ─── Mixed-type guard ───────────────────────────────────────────────────────
+
+/// Check whether a String-typed column contains a mix of quoted and unquoted
+/// values (excluding nulls).  When schema inference falls back to String for a
+/// column with integers, booleans, AND quoted strings, the string encoder would
+/// strip quotes from quoted values but leave unquoted ones as-is.  The decoder
+/// then unconditionally re-adds quotes, corrupting the unquoted values.
+///
+/// Returns `true` when the column has BOTH quoted and unquoted non-null values,
+/// meaning it must be encoded as RAW to preserve byte-exact roundtrip.
+fn has_mixed_quoting(values: &[&[u8]]) -> bool {
+    let mut has_quoted = false;
+    let mut has_unquoted = false;
+    for val in values {
+        if *val == b"null" {
+            continue;
+        }
+        if val.len() >= 2 && val[0] == b'"' && val[val.len() - 1] == b'"' {
+            has_quoted = true;
+        } else {
+            has_unquoted = true;
+        }
+        if has_quoted && has_unquoted {
+            return true;
+        }
+    }
+    false
+}
+
 // ─── Column Encoding Dispatch ───────────────────────────────────────────────
 
 /// Choose and apply the appropriate encoder for a column based on its type.
@@ -1215,6 +1244,12 @@ fn encode_column(values: &[&[u8]], col_type: &ColumnType) -> (u8, Vec<u8>) {
             }
         }
         ColumnType::String { nullable } => {
+            // Guard: if this "String" column actually contains a mix of quoted
+            // and unquoted values (e.g. integers, booleans alongside strings),
+            // fall back to RAW passthrough to avoid roundtrip corruption.
+            if has_mixed_quoting(values) {
+                return (ENC_RAW, encode_raw(values));
+            }
             if *nullable {
                 // For nullable strings, extract non-null values and try hex prefix.
                 let non_null: Vec<&[u8]> =
@@ -2155,6 +2190,129 @@ mod tests {
         assert_eq!(decoded.len(), values.len());
         for (i, val) in values.iter().enumerate() {
             assert_eq!(decoded[i], val.to_vec());
+        }
+    }
+
+    // ─── Mixed-type column roundtrip tests ─────────────────────────────────
+
+    #[test]
+    fn test_mixed_type_column_roundtrip() {
+        // The exact failing case: column with integer, boolean, null, and
+        // quoted string values.  Schema inference classifies this as String.
+        // Without the mixed-quoting guard, unquoted values get wrapped in
+        // quotes on decode (e.g. 0 -> "0", true -> "true").
+        let values: &[&[u8]] = &[b"0", b"true", b"null", b"\"str\""];
+        let col_type = ColumnType::String { nullable: true };
+        let (enc_type, enc_data) = encode_column(values, &col_type);
+
+        // Must fall back to RAW because of mixed quoting.
+        assert_eq!(
+            enc_type, ENC_RAW,
+            "mixed-type column should use RAW encoding, got {enc_type}"
+        );
+
+        let decoded = decode_column(enc_type, &enc_data);
+        assert_eq!(decoded.len(), values.len());
+        for (i, val) in values.iter().enumerate() {
+            assert_eq!(
+                decoded[i],
+                val.to_vec(),
+                "mixed-type roundtrip mismatch at index {i}: expected {:?}, got {:?}",
+                String::from_utf8_lossy(val),
+                String::from_utf8_lossy(&decoded[i])
+            );
+        }
+    }
+
+    #[test]
+    fn test_mixed_type_large() {
+        // 1000 rows cycling through integer, boolean, null, and quoted string.
+        let mut values: Vec<Vec<u8>> = Vec::with_capacity(1000);
+        for i in 0..1000 {
+            let v = match i % 4 {
+                0 => format!("{i}").into_bytes(),
+                1 => b"true".to_vec(),
+                2 => b"null".to_vec(),
+                3 => format!("\"row_{i}\"").into_bytes(),
+                _ => unreachable!(),
+            };
+            values.push(v);
+        }
+        let refs: Vec<&[u8]> = values.iter().map(|v| v.as_slice()).collect();
+        let col_type = ColumnType::String { nullable: true };
+        let (enc_type, enc_data) = encode_column(&refs, &col_type);
+
+        assert_eq!(
+            enc_type, ENC_RAW,
+            "large mixed-type column should use RAW encoding"
+        );
+
+        let decoded = decode_column(enc_type, &enc_data);
+        assert_eq!(decoded.len(), refs.len());
+        for (i, val) in refs.iter().enumerate() {
+            assert_eq!(
+                decoded[i],
+                val.to_vec(),
+                "large mixed-type roundtrip mismatch at index {i}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_pure_string_still_works() {
+        // Ensure that an all-quoted-string column still gets ENC_STRING (no
+        // regression from the mixed-quoting guard).
+        let values: &[&[u8]] = &[
+            b"\"alpha\"",
+            b"\"bravo\"",
+            b"\"charlie\"",
+            b"\"delta\"",
+            b"\"echo\"",
+        ];
+        let col_type = ColumnType::String { nullable: false };
+        let (enc_type, enc_data) = encode_column(values, &col_type);
+
+        // Should NOT fall back to RAW — all values are quoted.
+        assert_ne!(
+            enc_type, ENC_RAW,
+            "pure string column should not use RAW encoding"
+        );
+
+        let decoded = decode_column(enc_type, &enc_data);
+        assert_eq!(decoded.len(), values.len());
+        for (i, val) in values.iter().enumerate() {
+            assert_eq!(
+                decoded[i],
+                val.to_vec(),
+                "pure string roundtrip mismatch at index {i}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_pure_integer_still_works() {
+        // Ensure pure integer columns still get ENC_DELTA_VARINT.
+        let values: &[&[u8]] = &[b"0", b"1", b"2", b"3", b"4", b"5"];
+        let col_type = ColumnType::Integer {
+            min: 0,
+            max: 5,
+            nullable: false,
+        };
+        let (enc_type, enc_data) = encode_column(values, &col_type);
+
+        assert_eq!(
+            enc_type, ENC_DELTA_VARINT,
+            "pure integer column should use DELTA_VARINT encoding"
+        );
+
+        let decoded = decode_column(enc_type, &enc_data);
+        assert_eq!(decoded.len(), values.len());
+        for (i, val) in values.iter().enumerate() {
+            assert_eq!(
+                decoded[i],
+                val.to_vec(),
+                "pure integer roundtrip mismatch at index {i}"
+            );
         }
     }
 }
