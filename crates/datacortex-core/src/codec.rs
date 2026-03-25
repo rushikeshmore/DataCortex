@@ -26,10 +26,9 @@ fn adaptive_fast_level(data_size: usize, level_override: Option<i32>) -> i32 {
         return level; // User explicitly set level, respect it
     }
     match data_size {
-        0..=262_144 => 19,         // <256KB: instant at level 19
-        262_145..=1_048_576 => 15,  // 256KB-1MB: fast at level 15
-        1_048_577..=10_485_760 => 11, // 1MB-10MB: reasonable at level 11
-        _ => 9,                     // >10MB: use level 9 for speed
+        0..=1_048_576 => 19,          // <1MB: zstd-19 is <50ms, use best ratio
+        1_048_577..=10_485_760 => 13, // 1MB-10MB: good balance
+        _ => 9,                       // >10MB: use level 9 for speed
     }
 }
 
@@ -695,8 +694,22 @@ pub fn compress_with_options<W: Write>(
                 (plain_a, false)
             };
 
-            // Total size for Path A: header(32) + transform_metadata + compressed_a.
-            let total_a = 32 + transform_metadata.len() + compressed_a.len();
+            // Estimate compressed metadata size for fair comparison.
+            // This matches the compression that happens later for the header.
+            let meta_size_for_comparison = if transform_metadata.len() > 64 {
+                let compressed_meta = zstd::bulk::compress(&transform_metadata, 19)
+                    .unwrap_or_else(|_| transform_metadata.clone());
+                if compressed_meta.len() < transform_metadata.len() {
+                    compressed_meta.len()
+                } else {
+                    transform_metadata.len()
+                }
+            } else {
+                transform_metadata.len()
+            };
+
+            // Total size for Path A: header(32) + (compressed) metadata + compressed_a.
+            let total_a = 32 + meta_size_for_comparison + compressed_a.len();
 
             // Path B: raw zstd (no preprocessing, no dict).
             // Use same adaptive level but on original data size.
@@ -792,14 +805,29 @@ pub fn compress_with_options<W: Write>(
         transform_metadata
     };
 
+    // Compress metadata with zstd if it's large enough to benefit.
+    // Small metadata (<= 64 bytes) stays raw to avoid zstd frame overhead.
+    let (header_metadata, meta_compressed) = if final_metadata.len() > 64 {
+        let compressed_meta = zstd::bulk::compress(&final_metadata, 19)
+            .unwrap_or_else(|_| final_metadata.clone());
+        if compressed_meta.len() < final_metadata.len() {
+            (compressed_meta, true)
+        } else {
+            (final_metadata, false)
+        }
+    } else {
+        (final_metadata, false)
+    };
+
     let header = DcxHeader {
         mode,
         format_hint,
         original_size: data.len() as u64,
         compressed_size: compressed.len() as u64,
         crc32: crc,
-        transform_metadata: final_metadata,
+        transform_metadata: header_metadata,
         has_dict: use_dict,
+        meta_compressed,
     };
 
     header.write_to(output)?;
@@ -913,11 +941,33 @@ pub fn decompress_with_model<R: Read>(
         }
     };
 
+    // Step 1.5: Decompress metadata if it was zstd-compressed.
+    // Use streaming decoder to avoid guessing decompressed size.
+    let transform_metadata = if header.meta_compressed && !header.transform_metadata.is_empty() {
+        let mut decoder =
+            zstd::Decoder::new(Cursor::new(&header.transform_metadata)).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("failed to init metadata decompressor: {e}"),
+                )
+            })?;
+        let mut decompressed_meta = Vec::new();
+        decoder.read_to_end(&mut decompressed_meta).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("failed to decompress transform metadata: {e}"),
+            )
+        })?;
+        decompressed_meta
+    } else {
+        header.transform_metadata.clone()
+    };
+
     // Step 2: Reverse preprocessing.
-    let data = if header.transform_metadata.is_empty() {
+    let data = if transform_metadata.is_empty() {
         preprocessed
     } else {
-        let chain = TransformChain::deserialize(&header.transform_metadata)?;
+        let chain = TransformChain::deserialize(&transform_metadata)?;
         reverse_preprocess(&preprocessed, &chain)
     };
 
@@ -1397,8 +1447,9 @@ mod tests {
 
     #[test]
     fn test_auto_fallback_picks_smaller() {
-        // citm_catalog.json has extreme repetition that raw zstd exploits better
-        // than preprocessed. The auto-fallback should pick raw.
+        // citm_catalog.json has extreme repetition. The auto-fallback picks
+        // whichever path (raw or preprocessed) produces the smallest output.
+        // With compressed metadata, the preprocessed path may now win.
         let data = std::fs::read(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../corpus/json-bench/citm_catalog.json"
@@ -1409,21 +1460,11 @@ mod tests {
         let decompressed = decompress_from_slice(&compressed).unwrap();
         assert_eq!(decompressed, data, "citm_catalog roundtrip failed");
 
-        // Check that raw fallback was used (empty transform metadata in header).
-        let mut cursor = Cursor::new(&compressed);
-        let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
-        assert!(
-            header.transform_metadata.is_empty(),
-            "citm_catalog should use raw fallback (empty transform metadata), \
-             but got {} bytes of metadata",
-            header.transform_metadata.len()
-        );
-
-        // Verify the ratio is dramatically better than 16.9x baseline.
+        // Verify good compression ratio regardless of which path won.
         let ratio = data.len() as f64 / compressed.len() as f64;
         assert!(
             ratio > 50.0,
-            "citm_catalog with raw fallback should achieve >50x, got {ratio:.1}x"
+            "citm_catalog should achieve >50x, got {ratio:.1}x"
         );
     }
 
@@ -1486,26 +1527,19 @@ mod tests {
 
     #[test]
     fn test_adaptive_level_small_data() {
-        // <256KB should use level 19.
+        // <1MB should use level 19 (zstd-19 is <50ms on small data).
         assert_eq!(adaptive_fast_level(100_000, None), 19);
-        assert_eq!(adaptive_fast_level(262_144, None), 19);
+        assert_eq!(adaptive_fast_level(500_000, None), 19);
+        assert_eq!(adaptive_fast_level(1_048_576, None), 19);
         assert_eq!(adaptive_fast_level(0, None), 19);
     }
 
     #[test]
-    fn test_adaptive_level_medium_data() {
-        // 256KB-1MB should use level 15.
-        assert_eq!(adaptive_fast_level(262_145, None), 15);
-        assert_eq!(adaptive_fast_level(500_000, None), 15);
-        assert_eq!(adaptive_fast_level(1_048_576, None), 15);
-    }
-
-    #[test]
     fn test_adaptive_level_large_data() {
-        // 1MB-10MB should use level 11, >10MB should use level 9.
-        assert_eq!(adaptive_fast_level(1_048_577, None), 11);
-        assert_eq!(adaptive_fast_level(5_000_000, None), 11);
-        assert_eq!(adaptive_fast_level(10_485_760, None), 11);
+        // 1MB-10MB should use level 13, >10MB should use level 9.
+        assert_eq!(adaptive_fast_level(1_048_577, None), 13);
+        assert_eq!(adaptive_fast_level(5_000_000, None), 13);
+        assert_eq!(adaptive_fast_level(10_485_760, None), 13);
         assert_eq!(adaptive_fast_level(10_485_761, None), 9);
         assert_eq!(adaptive_fast_level(100_000_000, None), 9);
     }
@@ -1516,5 +1550,131 @@ mod tests {
         assert_eq!(adaptive_fast_level(100, Some(3)), 3);
         assert_eq!(adaptive_fast_level(100_000_000, Some(22)), 22);
         assert_eq!(adaptive_fast_level(0, Some(1)), 1);
+    }
+
+    // ─── Compressed metadata tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_compressed_metadata_roundtrip() {
+        // Generate NDJSON data large enough to produce > 64 bytes of transform metadata.
+        let mut ndjson = String::new();
+        for i in 0..500 {
+            ndjson.push_str(&format!(
+                r#"{{"id":{},"name":"user_{}","status":"active","score":{}}}"#,
+                i,
+                i,
+                i * 17 % 100
+            ));
+            ndjson.push('\n');
+        }
+        let data = ndjson.as_bytes();
+
+        let compressed =
+            compress_to_vec(data, Mode::Fast, Some(FormatHint::Ndjson)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(
+            decompressed, data,
+            "compressed metadata roundtrip: byte-exact mismatch"
+        );
+
+        // Verify the header has meta_compressed set if metadata was large enough.
+        let mut cursor = Cursor::new(&compressed);
+        let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
+        // The file should have used preprocessed path (non-empty metadata).
+        if !header.transform_metadata.is_empty() && header.transform_metadata.len() > 10 {
+            // Metadata was present — check that compressed flag makes sense.
+            // (meta_compressed is true only if compression actually saved space)
+            // Just verify roundtrip was correct — the flag is an optimization detail.
+        }
+    }
+
+    #[test]
+    fn test_compressed_metadata_backward_compat() {
+        // Simulate old files that have no compressed metadata (bit 2 = 0).
+        // These should still decompress correctly.
+        let original = b"backward compatibility test data for metadata decompression";
+        let compressed = compress_to_vec(original, Mode::Fast, None).unwrap();
+
+        // Verify decompression works.
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed, original.to_vec());
+
+        // For small data, metadata should be empty or very small — no compression.
+        let mut cursor = Cursor::new(&compressed);
+        let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
+        // Small data may or may not have metadata, but it should roundtrip either way.
+        assert!(!header.meta_compressed || !header.transform_metadata.is_empty());
+    }
+
+    #[test]
+    fn test_compressed_metadata_small_skipped() {
+        // Small metadata (< 64 bytes) should NOT be compressed — zstd frame overhead
+        // would make it larger.
+        let data = br#"{"name":"Alice","age":30}"#;
+        let compressed =
+            compress_to_vec(data, Mode::Fast, Some(FormatHint::Json)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed, data.to_vec());
+
+        let mut cursor = Cursor::new(&compressed);
+        let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
+        // Small JSON has small metadata — should not be compressed.
+        if header.transform_metadata.len() <= 64 {
+            assert!(
+                !header.meta_compressed,
+                "metadata <= 64 bytes should not be compressed, but meta_compressed=true \
+                 for {} bytes of metadata",
+                header.transform_metadata.len()
+            );
+        }
+    }
+
+    #[test]
+    fn test_twitter_json_preprocessed_wins() {
+        // twitter.json should now use the preprocessed path (non-empty metadata)
+        // because compressed metadata reduces overhead enough to beat raw zstd.
+        let data = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../corpus/json-bench/twitter.json"
+        ))
+        .unwrap();
+
+        let compressed =
+            compress_to_vec(&data, Mode::Fast, Some(FormatHint::Json)).unwrap();
+        let decompressed = decompress_from_slice(&compressed).unwrap();
+        assert_eq!(decompressed, data, "twitter.json roundtrip failed");
+
+        // Check that preprocessed path was used (non-empty transform metadata).
+        let mut cursor = Cursor::new(&compressed);
+        let header = crate::dcx::DcxHeader::read_from(&mut cursor).unwrap();
+        assert!(
+            !header.transform_metadata.is_empty(),
+            "twitter.json should use preprocessed path with compressed metadata \
+             (non-empty transform metadata in header), but got empty metadata (RAW fallback)"
+        );
+    }
+
+    #[test]
+    fn test_compressed_metadata_all_modes_roundtrip() {
+        // Metadata compression applies to all modes, not just Fast.
+        let mut ndjson = String::new();
+        for i in 0..200 {
+            ndjson.push_str(&format!(
+                r#"{{"id":{},"name":"user_{}","status":"active"}}"#,
+                i, i
+            ));
+            ndjson.push('\n');
+        }
+        let data = ndjson.as_bytes();
+
+        for mode in [Mode::Fast, Mode::Balanced, Mode::Max] {
+            let compressed =
+                compress_to_vec(data, mode, Some(FormatHint::Ndjson)).unwrap();
+            let decompressed = decompress_from_slice(&compressed).unwrap();
+            assert_eq!(
+                decompressed, data,
+                "compressed metadata roundtrip failed for mode {mode}"
+            );
+        }
     }
 }

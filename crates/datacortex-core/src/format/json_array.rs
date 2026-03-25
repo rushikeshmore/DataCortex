@@ -39,11 +39,18 @@
 //!   \x01 = value separator within a column
 
 use super::transform::TransformResult;
+use std::collections::HashMap;
 
 const COL_SEP: u8 = 0x00;
 const VAL_SEP: u8 = 0x01;
-const METADATA_VERSION: u8 = 1;
+const METADATA_VERSION_UNIFORM: u8 = 1;
+const METADATA_VERSION_GROUPED: u8 = 2;
 const MIN_ROWS: usize = 5;
+/// Minimum elements in a schema group for it to be columnarized (not residual).
+const MIN_GROUP_ELEMENTS: usize = 3;
+
+/// A schema group: template parts + list of (element_index, parsed_values).
+type SchemaGroup = (Vec<Vec<u8>>, Vec<(usize, Vec<Vec<u8>>)>);
 
 /// Find the position and span of the largest array of objects in the JSON.
 ///
@@ -373,10 +380,12 @@ fn extract_value_no_ws(data: &[u8], pos: usize) -> Option<(Vec<u8>, usize)> {
 
 /// Forward transform: nested JSON array columnar reorg.
 ///
+/// Strategy 1 (uniform): All elements share the same schema. Output is \x00/\x01 columnar.
+/// Strategy 2 (grouped): Elements have diverse schemas. Groups by schema, columnarizes each.
+///
 /// Returns None if:
 /// - No suitable array of objects found
 /// - Fewer than MIN_ROWS elements
-/// - Inconsistent schema across elements
 /// - Transform doesn't save space
 pub fn preprocess(data: &[u8]) -> Option<TransformResult> {
     if data.is_empty() {
@@ -385,6 +394,54 @@ pub fn preprocess(data: &[u8]) -> Option<TransformResult> {
 
     let span = find_object_array(data)?;
 
+    // Try Strategy 1 (uniform) first.
+    if let Some(result) = preprocess_uniform(data, &span) {
+        return Some(result);
+    }
+
+    // Strategy 1 failed (schema mismatch). Try Strategy 2 (grouped).
+    preprocess_grouped(data, &span)
+}
+
+/// Build uniform columnar data + metadata for a set of elements sharing the same template.
+/// Used by both Strategy 1 (full array) and Strategy 2 (per-group).
+fn build_uniform_columnar(
+    template_parts: &[Vec<u8>],
+    columns: &[Vec<Vec<u8>>],
+    num_rows: usize,
+) -> (Vec<u8>, Vec<u8>) {
+    let num_cols = columns.len();
+
+    // Build column data: values separated by \x01, columns separated by \x00.
+    let mut col_data = Vec::new();
+    for (ci, col) in columns.iter().enumerate() {
+        for (ri, val) in col.iter().enumerate() {
+            col_data.extend_from_slice(val);
+            if ri < num_rows - 1 {
+                col_data.push(VAL_SEP);
+            }
+        }
+        if ci < num_cols - 1 {
+            col_data.push(COL_SEP);
+        }
+    }
+
+    // Build metadata: version + num_rows + num_cols + template parts.
+    let mut metadata = Vec::new();
+    metadata.push(METADATA_VERSION_UNIFORM);
+    metadata.extend_from_slice(&(num_rows as u32).to_le_bytes());
+    metadata.extend_from_slice(&(num_cols as u16).to_le_bytes());
+    metadata.extend_from_slice(&(template_parts.len() as u16).to_le_bytes());
+    for part in template_parts {
+        metadata.extend_from_slice(&(part.len() as u16).to_le_bytes());
+        metadata.extend_from_slice(part);
+    }
+
+    (col_data, metadata)
+}
+
+/// Strategy 1: Uniform schema — all elements must have the same template.
+fn preprocess_uniform(data: &[u8], span: &ArraySpan) -> Option<TransformResult> {
     // Parse the first element to get the template.
     let first_elem = &data[span.elements[0].0..span.elements[0].1];
     let (template_parts, first_values) = parse_element(first_elem)?;
@@ -422,8 +479,9 @@ pub fn preprocess(data: &[u8]) -> Option<TransformResult> {
     }
 
     let num_rows = span.elements.len();
+    let num_cols = first_values.len();
 
-    // Build column data.
+    // Build column data: values separated by \x01, columns separated by \x00.
     let mut col_data = Vec::with_capacity(data.len());
     for (ci, col) in columns.iter().enumerate() {
         for (ri, val) in col.iter().enumerate() {
@@ -437,17 +495,13 @@ pub fn preprocess(data: &[u8]) -> Option<TransformResult> {
         }
     }
 
-    // Prefix = everything before the array bracket `[`.
-    // Actually we need: everything before first element content.
-    // prefix = data[0..bracket_open] + `[` + pre_first
+    // Build the full metadata with prefix/suffix/separators.
     let prefix = &data[..span.elements[0].0];
     let suffix_start = span.elements[num_rows - 1].1;
-    // suffix = post_last + `]` + everything after
     let suffix = &data[suffix_start..];
 
-    // Build metadata.
     let mut metadata = Vec::new();
-    metadata.push(METADATA_VERSION);
+    metadata.push(METADATA_VERSION_UNIFORM);
     metadata.extend_from_slice(&(num_rows as u32).to_le_bytes());
     metadata.extend_from_slice(&(num_cols as u16).to_le_bytes());
 
@@ -493,15 +547,290 @@ pub fn preprocess(data: &[u8]) -> Option<TransformResult> {
     })
 }
 
+/// Strategy 2: Group-by-schema — group elements by template, columnarize each group.
+///
+/// Metadata format (version=2):
+///   version: u8 = 2
+///   prefix_len: u32 LE
+///   prefix: bytes (JSON before the array content)
+///   suffix_len: u32 LE
+///   suffix: bytes (JSON after the array content)
+///   separator_len: u16 LE
+///   separator: bytes (most common separator between elements)
+///   num_groups: u16 LE
+///   for each group:
+///     num_elements: u32 LE
+///     element_indices: [u32 LE * num_elements]
+///     group_metadata_len: u32 LE
+///     group_metadata: bytes (Strategy 1 uniform columnar metadata)
+///     group_data_len: u32 LE
+///     group_data: bytes (columnar data for this group)
+///   residual_count: u32 LE
+///   residual_indices: [u32 LE * residual_count]
+///   residual_data_len: u32 LE
+///   residual_data: bytes (raw JSON elements joined by separator)
+///
+/// The element_indices + residual_indices together form a permutation of 0..N,
+/// allowing byte-exact reconstruction of the original array order.
+fn preprocess_grouped(data: &[u8], span: &ArraySpan) -> Option<TransformResult> {
+    let num_elements = span.elements.len();
+    if num_elements < MIN_ROWS {
+        return None;
+    }
+
+    // Parse all elements and group by template (key set).
+    let mut parsed: Vec<Option<ParsedElement>> = Vec::with_capacity(num_elements);
+    for &(start, end) in &span.elements {
+        parsed.push(parse_element(&data[start..end]));
+    }
+
+    // Group by template. Key = serialized template parts.
+    let mut group_map: HashMap<Vec<u8>, SchemaGroup> = HashMap::new();
+    let mut residual_indices: Vec<usize> = Vec::new();
+
+    for (idx, parsed_elem) in parsed.into_iter().enumerate() {
+        if let Some((parts, values)) = parsed_elem {
+            // Build a hashable key from the template parts.
+            let mut key = Vec::new();
+            for part in &parts {
+                key.extend_from_slice(&(part.len() as u32).to_le_bytes());
+                key.extend_from_slice(part);
+            }
+            group_map
+                .entry(key)
+                .or_insert_with(|| (parts, Vec::new()))
+                .1
+                .push((idx, values));
+        } else {
+            residual_indices.push(idx);
+        }
+    }
+
+    // Separate groups into qualifying (>= MIN_GROUP_ELEMENTS) and residual.
+    let mut groups: Vec<SchemaGroup> = Vec::new();
+    for (_key, (template_parts, rows)) in group_map {
+        if rows.len() >= MIN_GROUP_ELEMENTS {
+            groups.push((template_parts, rows));
+        } else {
+            for (idx, _) in &rows {
+                residual_indices.push(*idx);
+            }
+        }
+    }
+
+    // Need at least 1 qualifying group.
+    if groups.is_empty() {
+        return None;
+    }
+
+    // Sort groups by first element index for deterministic output.
+    groups.sort_by_key(|(_, rows)| rows[0].0);
+    residual_indices.sort_unstable();
+
+    // Build per-group columnar data and metadata.
+    struct GroupOutput {
+        element_indices: Vec<u32>,
+        col_data: Vec<u8>,
+        group_metadata: Vec<u8>,
+    }
+
+    let mut group_outputs: Vec<GroupOutput> = Vec::with_capacity(groups.len());
+
+    for (template_parts, rows) in &groups {
+        let num_cols = template_parts.len() - 1;
+        let mut columns: Vec<Vec<Vec<u8>>> = (0..num_cols).map(|_| Vec::new()).collect();
+        let mut element_indices: Vec<u32> = Vec::with_capacity(rows.len());
+
+        for (idx, values) in rows {
+            element_indices.push(*idx as u32);
+            for (col, val) in values.iter().enumerate() {
+                columns[col].push(val.clone());
+            }
+        }
+
+        let (col_data, group_metadata) =
+            build_uniform_columnar(template_parts, &columns, rows.len());
+
+        group_outputs.push(GroupOutput {
+            element_indices,
+            col_data,
+            group_metadata,
+        });
+    }
+
+    // Determine the most common separator (for reconstructing the array).
+    // All separators should be the same in well-formatted JSON (e.g., ",\n    ").
+    let separator = if span.separators.is_empty() {
+        b",".to_vec()
+    } else {
+        // Use the first separator as representative (most JSON is uniform).
+        span.separators[0].clone()
+    };
+
+    // Build residual data: raw JSON elements joined by a unique delimiter.
+    // We use \x00 as delimiter since it can't appear in JSON.
+    let mut residual_data = Vec::new();
+    for (i, &idx) in residual_indices.iter().enumerate() {
+        let (start, end) = span.elements[idx];
+        residual_data.extend_from_slice(&data[start..end]);
+        if i < residual_indices.len() - 1 {
+            residual_data.push(0x00); // delimiter between residual elements
+        }
+    }
+
+    // Build the combined metadata.
+    let prefix = &data[..span.elements[0].0];
+    let suffix_start = span.elements[num_elements - 1].1;
+    let suffix = &data[suffix_start..];
+
+    let mut metadata = Vec::new();
+    metadata.push(METADATA_VERSION_GROUPED);
+
+    // Prefix.
+    metadata.extend_from_slice(&(prefix.len() as u32).to_le_bytes());
+    metadata.extend_from_slice(prefix);
+
+    // Suffix.
+    metadata.extend_from_slice(&(suffix.len() as u32).to_le_bytes());
+    metadata.extend_from_slice(suffix);
+
+    // Separator.
+    metadata.extend_from_slice(&(separator.len() as u16).to_le_bytes());
+    metadata.extend_from_slice(&separator);
+
+    // Per-element separators: store all original separators for byte-exact roundtrip.
+    // Flag: 1 = all same (just store count), 0 = store individually.
+    let all_same = span.separators.windows(2).all(|w| w[0] == w[1]);
+    if all_same && !span.separators.is_empty() && span.separators[0] == separator {
+        metadata.push(1); // all separators match the stored one
+    } else {
+        metadata.push(0); // per-element separators
+        metadata.extend_from_slice(&(span.separators.len() as u32).to_le_bytes());
+        for sep in &span.separators {
+            metadata.extend_from_slice(&(sep.len() as u16).to_le_bytes());
+            metadata.extend_from_slice(sep);
+        }
+    }
+
+    // Number of groups.
+    metadata.extend_from_slice(&(group_outputs.len() as u16).to_le_bytes());
+
+    // Per-group: indices, metadata, data.
+    for group in &group_outputs {
+        metadata.extend_from_slice(&(group.element_indices.len() as u32).to_le_bytes());
+        for &idx in &group.element_indices {
+            metadata.extend_from_slice(&idx.to_le_bytes());
+        }
+        metadata.extend_from_slice(&(group.group_metadata.len() as u32).to_le_bytes());
+        metadata.extend_from_slice(&group.group_metadata);
+        metadata.extend_from_slice(&(group.col_data.len() as u32).to_le_bytes());
+        metadata.extend_from_slice(&group.col_data);
+    }
+
+    // Residual.
+    metadata.extend_from_slice(&(residual_indices.len() as u32).to_le_bytes());
+    for &idx in &residual_indices {
+        metadata.extend_from_slice(&(idx as u32).to_le_bytes());
+    }
+    metadata.extend_from_slice(&(residual_data.len() as u32).to_le_bytes());
+    metadata.extend_from_slice(&residual_data);
+
+    // For grouped, the "data" is empty — everything is in metadata.
+    // This is different from NDJSON grouped which puts data in the data blob.
+    // But for the pipeline, the data blob is what gets compressed. So we should
+    // put the group data + residual data in the data blob for better compression.
+    //
+    // Actually, let's follow the NDJSON pattern: group data blobs + residual in data,
+    // structural metadata in metadata.
+
+    // Rebuild: move group data + residual data into the data blob.
+    let mut data_out = Vec::new();
+    for group in &group_outputs {
+        data_out.extend_from_slice(&(group.col_data.len() as u32).to_le_bytes());
+        data_out.extend_from_slice(&group.col_data);
+    }
+    // Residual data.
+    data_out.extend_from_slice(&residual_data);
+
+    // Rebuild metadata WITHOUT the group data and residual data.
+    let mut metadata = Vec::new();
+    metadata.push(METADATA_VERSION_GROUPED);
+
+    // Prefix.
+    metadata.extend_from_slice(&(prefix.len() as u32).to_le_bytes());
+    metadata.extend_from_slice(prefix);
+
+    // Suffix.
+    metadata.extend_from_slice(&(suffix.len() as u32).to_le_bytes());
+    metadata.extend_from_slice(suffix);
+
+    // Separator.
+    metadata.extend_from_slice(&(separator.len() as u16).to_le_bytes());
+    metadata.extend_from_slice(&separator);
+
+    // Per-element separators.
+    if all_same && !span.separators.is_empty() && span.separators[0] == separator {
+        metadata.push(1);
+    } else {
+        metadata.push(0);
+        metadata.extend_from_slice(&(span.separators.len() as u32).to_le_bytes());
+        for sep in &span.separators {
+            metadata.extend_from_slice(&(sep.len() as u16).to_le_bytes());
+            metadata.extend_from_slice(sep);
+        }
+    }
+
+    // Number of groups.
+    metadata.extend_from_slice(&(group_outputs.len() as u16).to_le_bytes());
+
+    // Per-group: indices + group_metadata only (data is in the data blob).
+    for group in &group_outputs {
+        metadata.extend_from_slice(&(group.element_indices.len() as u32).to_le_bytes());
+        for &idx in &group.element_indices {
+            metadata.extend_from_slice(&idx.to_le_bytes());
+        }
+        metadata.extend_from_slice(&(group.group_metadata.len() as u32).to_le_bytes());
+        metadata.extend_from_slice(&group.group_metadata);
+    }
+
+    // Residual.
+    metadata.extend_from_slice(&(residual_indices.len() as u32).to_le_bytes());
+    for &idx in &residual_indices {
+        metadata.extend_from_slice(&(idx as u32).to_le_bytes());
+    }
+    metadata.extend_from_slice(&(residual_data.len() as u32).to_le_bytes());
+
+    // Size check: transform should be a net win.
+    if data_out.len() + metadata.len() >= data.len() {
+        return None;
+    }
+
+    Some(TransformResult {
+        data: data_out,
+        metadata,
+    })
+}
+
 /// Reverse transform: reconstruct JSON from columnar layout + metadata.
+/// Dispatches to Strategy 1 (uniform) or Strategy 2 (grouped) based on version byte.
 pub fn reverse(data: &[u8], metadata: &[u8]) -> Vec<u8> {
+    if metadata.is_empty() {
+        return data.to_vec();
+    }
+    match metadata[0] {
+        METADATA_VERSION_UNIFORM => reverse_uniform(data, metadata),
+        METADATA_VERSION_GROUPED => reverse_grouped(data, metadata),
+        _ => data.to_vec(),
+    }
+}
+
+/// Reverse Strategy 1: uniform schema.
+fn reverse_uniform(data: &[u8], metadata: &[u8]) -> Vec<u8> {
     if metadata.len() < 7 {
         return data.to_vec();
     }
 
-    let mut mpos = 0;
-    let _version = metadata[mpos];
-    mpos += 1;
+    let mut mpos = 1; // Skip version byte.
     let num_rows = u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
     mpos += 4;
     let num_cols = u16::from_le_bytes(metadata[mpos..mpos + 2].try_into().unwrap()) as usize;
@@ -637,6 +966,291 @@ pub fn reverse(data: &[u8], metadata: &[u8]) -> Vec<u8> {
 
     // Suffix (everything after the last element).
     output.extend_from_slice(suffix);
+
+    output
+}
+
+/// Parse Strategy 1 (uniform) group metadata into (parts, num_rows, num_cols).
+/// Used by reverse_grouped to decode per-group metadata.
+fn parse_group_metadata(metadata: &[u8]) -> Option<(Vec<Vec<u8>>, usize, usize)> {
+    if metadata.len() < 9 {
+        return None;
+    }
+    let mut pos = 1; // Skip version byte.
+    let num_rows = u32::from_le_bytes(metadata[pos..pos + 4].try_into().unwrap()) as usize;
+    pos += 4;
+    let num_cols = u16::from_le_bytes(metadata[pos..pos + 2].try_into().unwrap()) as usize;
+    pos += 2;
+    let num_parts = u16::from_le_bytes(metadata[pos..pos + 2].try_into().unwrap()) as usize;
+    pos += 2;
+
+    let mut parts = Vec::with_capacity(num_parts);
+    for _ in 0..num_parts {
+        if pos + 2 > metadata.len() {
+            return None;
+        }
+        let part_len = u16::from_le_bytes(metadata[pos..pos + 2].try_into().unwrap()) as usize;
+        pos += 2;
+        if pos + part_len > metadata.len() {
+            return None;
+        }
+        parts.push(metadata[pos..pos + part_len].to_vec());
+        pos += part_len;
+    }
+
+    if parts.len() != num_cols + 1 || num_rows == 0 || num_cols == 0 {
+        return None;
+    }
+
+    Some((parts, num_rows, num_cols))
+}
+
+/// Reverse Strategy 2: grouped schema.
+fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
+    if metadata.len() < 2 {
+        return data.to_vec();
+    }
+
+    let mut mpos = 1; // Skip version byte.
+
+    // Read prefix.
+    if mpos + 4 > metadata.len() {
+        return data.to_vec();
+    }
+    let prefix_len = u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+    mpos += 4;
+    if mpos + prefix_len > metadata.len() {
+        return data.to_vec();
+    }
+    let prefix = metadata[mpos..mpos + prefix_len].to_vec();
+    mpos += prefix_len;
+
+    // Read suffix.
+    if mpos + 4 > metadata.len() {
+        return data.to_vec();
+    }
+    let suffix_len = u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+    mpos += 4;
+    if mpos + suffix_len > metadata.len() {
+        return data.to_vec();
+    }
+    let suffix = metadata[mpos..mpos + suffix_len].to_vec();
+    mpos += suffix_len;
+
+    // Read separator.
+    if mpos + 2 > metadata.len() {
+        return data.to_vec();
+    }
+    let sep_len = u16::from_le_bytes(metadata[mpos..mpos + 2].try_into().unwrap()) as usize;
+    mpos += 2;
+    if mpos + sep_len > metadata.len() {
+        return data.to_vec();
+    }
+    let default_separator = metadata[mpos..mpos + sep_len].to_vec();
+    mpos += sep_len;
+
+    // Read per-element separator info.
+    if mpos >= metadata.len() {
+        return data.to_vec();
+    }
+    let sep_flag = metadata[mpos];
+    mpos += 1;
+
+    let per_element_separators: Option<Vec<Vec<u8>>> = if sep_flag == 1 {
+        // All separators are the same as default_separator.
+        None
+    } else {
+        // Per-element separators stored.
+        if mpos + 4 > metadata.len() {
+            return data.to_vec();
+        }
+        let sep_count = u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+        mpos += 4;
+        let mut seps = Vec::with_capacity(sep_count);
+        for _ in 0..sep_count {
+            if mpos + 2 > metadata.len() {
+                return data.to_vec();
+            }
+            let s_len = u16::from_le_bytes(metadata[mpos..mpos + 2].try_into().unwrap()) as usize;
+            mpos += 2;
+            if mpos + s_len > metadata.len() {
+                return data.to_vec();
+            }
+            seps.push(metadata[mpos..mpos + s_len].to_vec());
+            mpos += s_len;
+        }
+        Some(seps)
+    };
+
+    // Read number of groups.
+    if mpos + 2 > metadata.len() {
+        return data.to_vec();
+    }
+    let num_groups = u16::from_le_bytes(metadata[mpos..mpos + 2].try_into().unwrap()) as usize;
+    mpos += 2;
+
+    // We need to figure out the total number of elements to allocate slots.
+    // We'll collect all element_indices and residual_indices first.
+    // Actually, we process groups + residual and collect (index, element_bytes).
+
+    // Track all element slots: index -> reconstructed element bytes.
+    let mut element_slots: Vec<(usize, Vec<u8>)> = Vec::new();
+
+    let mut dpos: usize = 0;
+
+    for _ in 0..num_groups {
+        // Read element indices for this group.
+        if mpos + 4 > metadata.len() {
+            return data.to_vec();
+        }
+        let group_count =
+            u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+        mpos += 4;
+
+        let mut element_indices = Vec::with_capacity(group_count);
+        for _ in 0..group_count {
+            if mpos + 4 > metadata.len() {
+                return data.to_vec();
+            }
+            let idx =
+                u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+            mpos += 4;
+            element_indices.push(idx);
+        }
+
+        // Read group metadata.
+        if mpos + 4 > metadata.len() {
+            return data.to_vec();
+        }
+        let gm_len =
+            u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+        mpos += 4;
+        if mpos + gm_len > metadata.len() {
+            return data.to_vec();
+        }
+        let group_metadata = &metadata[mpos..mpos + gm_len];
+        mpos += gm_len;
+
+        // Read group data from the data blob.
+        if dpos + 4 > data.len() {
+            return data.to_vec();
+        }
+        let gd_len =
+            u32::from_le_bytes(data[dpos..dpos + 4].try_into().unwrap()) as usize;
+        dpos += 4;
+        if dpos + gd_len > data.len() {
+            return data.to_vec();
+        }
+        let group_data = &data[dpos..dpos + gd_len];
+        dpos += gd_len;
+
+        // Decode this group using the uniform metadata parser.
+        let (parts, num_rows, num_cols) = match parse_group_metadata(group_metadata) {
+            Some(v) => v,
+            None => return data.to_vec(),
+        };
+
+        if num_rows != group_count {
+            return data.to_vec();
+        }
+
+        // Split columnar data.
+        let col_chunks: Vec<&[u8]> = group_data.split(|&b| b == COL_SEP).collect();
+        if col_chunks.len() != num_cols {
+            return data.to_vec();
+        }
+
+        let mut columns: Vec<Vec<&[u8]>> = Vec::with_capacity(num_cols);
+        for chunk in &col_chunks {
+            let vals: Vec<&[u8]> = chunk.split(|&b| b == VAL_SEP).collect();
+            if vals.len() != num_rows {
+                return data.to_vec();
+            }
+            columns.push(vals);
+        }
+
+        // Reconstruct each element for this group.
+        for (row_within_group, &original_idx) in element_indices.iter().enumerate() {
+            let mut elem = Vec::new();
+            elem.extend_from_slice(&parts[0]);
+            elem.extend_from_slice(columns[0][row_within_group]);
+            for col in 1..num_cols {
+                elem.extend_from_slice(&parts[col]);
+                elem.extend_from_slice(columns[col][row_within_group]);
+            }
+            elem.extend_from_slice(&parts[num_cols]);
+
+            element_slots.push((original_idx, elem));
+        }
+    }
+
+    // Read residual.
+    if mpos + 4 > metadata.len() {
+        return data.to_vec();
+    }
+    let residual_count =
+        u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+    mpos += 4;
+
+    let mut residual_indices = Vec::with_capacity(residual_count);
+    for _ in 0..residual_count {
+        if mpos + 4 > metadata.len() {
+            return data.to_vec();
+        }
+        let idx =
+            u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+        mpos += 4;
+        residual_indices.push(idx);
+    }
+
+    // Read residual data length.
+    if mpos + 4 > metadata.len() {
+        return data.to_vec();
+    }
+    let residual_data_len =
+        u32::from_le_bytes(metadata[mpos..mpos + 4].try_into().unwrap()) as usize;
+    mpos += 4;
+    let _ = mpos; // metadata fully consumed
+
+    // Remaining data is residual.
+    let residual_data = &data[dpos..dpos + residual_data_len.min(data.len() - dpos)];
+
+    if residual_count > 0 && !residual_data.is_empty() {
+        // Split residual data by \x00 delimiter.
+        let residual_elements: Vec<&[u8]> = residual_data.split(|&b| b == 0x00).collect();
+        if residual_elements.len() != residual_count {
+            return data.to_vec();
+        }
+        for (i, &idx) in residual_indices.iter().enumerate() {
+            element_slots.push((idx, residual_elements[i].to_vec()));
+        }
+    }
+
+    // Sort by original index.
+    element_slots.sort_by_key(|(idx, _)| *idx);
+
+    let total_elements = element_slots.len();
+
+    // Determine per-element separators.
+    // There are (total_elements - 1) separators between elements.
+    let separators: Vec<&[u8]> = if let Some(ref per_elem) = per_element_separators {
+        per_elem.iter().map(|s| s.as_slice()).collect()
+    } else {
+        vec![default_separator.as_slice(); total_elements.saturating_sub(1)]
+    };
+
+    // Reconstruct the full JSON.
+    let mut output = Vec::with_capacity(data.len() * 2);
+    output.extend_from_slice(&prefix);
+
+    for (i, (_idx, elem)) in element_slots.iter().enumerate() {
+        output.extend_from_slice(elem);
+        if i < total_elements - 1 && i < separators.len() {
+            output.extend_from_slice(separators[i]);
+        }
+    }
+
+    output.extend_from_slice(&suffix);
 
     output
 }
@@ -822,5 +1436,158 @@ mod tests {
             String::from_utf8_lossy(data),
         );
         assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn test_grouped_json_array_diverse_schemas() {
+        // Array with 2 different schemas: schema A (id, name, score) and schema B (id, tag, active).
+        // Each group has enough elements (>= MIN_GROUP_ELEMENTS=3) to be columnarized.
+        let mut json = String::from(r#"{"data": ["#);
+        for i in 0..30 {
+            if i > 0 {
+                json.push_str(", ");
+            }
+            if i % 3 == 0 {
+                // Schema B: 10 elements
+                json.push_str(&format!(
+                    r#"{{"id": {}, "tag": "tag_{}", "active": {}}}"#,
+                    i, i, if i % 2 == 0 { "true" } else { "false" }
+                ));
+            } else {
+                // Schema A: 20 elements
+                json.push_str(&format!(
+                    r#"{{"id": {}, "name": "item_{}", "score": {}}}"#,
+                    i, i, i * 10
+                ));
+            }
+        }
+        json.push_str(r#"], "meta": {"count": 30}}"#);
+
+        let data = json.as_bytes();
+        let result = preprocess(data).expect("should produce grouped transform for diverse schemas");
+
+        // Verify it's Strategy 2 (grouped).
+        assert_eq!(result.metadata[0], METADATA_VERSION_GROUPED, "should use grouped strategy");
+
+        // Verify roundtrip.
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(
+            String::from_utf8_lossy(&restored),
+            String::from_utf8_lossy(data),
+        );
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn test_grouped_json_array_roundtrip() {
+        // Byte-exact roundtrip on a diverse array with pretty-printing.
+        let data = br#"{"statuses": [
+    {"id": 1, "text": "hello", "user": "alice"},
+    {"id": 2, "text": "world", "user": "bob"},
+    {"id": 3, "text": "foo", "user": "charlie"},
+    {"id": 4, "text": "bar", "retweet": true},
+    {"id": 5, "text": "baz", "retweet": false},
+    {"id": 6, "text": "qux", "retweet": true},
+    {"id": 7, "text": "quux", "user": "dave"},
+    {"id": 8, "text": "corge", "user": "eve"},
+    {"id": 9, "text": "grault", "user": "frank"},
+    {"id": 10, "text": "garply", "user": "grace"}
+], "count": 10}"#;
+        let result = preprocess(data).expect("should produce grouped transform");
+
+        // Verify byte-exact roundtrip.
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(
+            String::from_utf8_lossy(&restored),
+            String::from_utf8_lossy(data),
+        );
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn test_grouped_json_array_with_residuals() {
+        // Array where some elements don't fit any group (residuals).
+        // Schema A: 20 elements, Schema B: 8 elements, Schema C: 2 elements (residual).
+        let mut json = String::from(r#"{"items": ["#);
+        for i in 0..30 {
+            if i > 0 {
+                json.push_str(", ");
+            }
+            if i == 10 || i == 20 {
+                // Schema C: only 2 elements — below MIN_GROUP_ELEMENTS, will be residual.
+                json.push_str(&format!(
+                    r#"{{"id": {}, "special": true, "data": "unique_{}", "extra": {}}}"#,
+                    i, i, i * 100
+                ));
+            } else if i % 3 == 0 {
+                // Schema B: ~8 elements
+                json.push_str(&format!(
+                    r#"{{"id": {}, "category": "cat_{}", "weight": {}}}"#,
+                    i, i, i as f64 * 1.5
+                ));
+            } else {
+                // Schema A: ~20 elements
+                json.push_str(&format!(
+                    r#"{{"id": {}, "name": "item_{}", "value": {}}}"#,
+                    i, i, i * 10
+                ));
+            }
+        }
+        json.push_str(r#"]}"#);
+
+        let data = json.as_bytes();
+        let result = preprocess(data).expect("should produce grouped transform with residuals");
+
+        // Verify it's grouped.
+        assert_eq!(result.metadata[0], METADATA_VERSION_GROUPED);
+
+        // Verify byte-exact roundtrip.
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(
+            String::from_utf8_lossy(&restored),
+            String::from_utf8_lossy(data),
+        );
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn test_twitter_json_roundtrip() {
+        // Compress corpus/json-bench/twitter.json, decompress, verify match.
+        let twitter_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../corpus/json-bench/twitter.json"
+        );
+        let data = match std::fs::read(twitter_path) {
+            Ok(d) => d,
+            Err(_) => {
+                eprintln!("Skipping test_twitter_json_roundtrip: twitter.json not found");
+                return;
+            }
+        };
+
+        let result = preprocess(&data).expect("twitter.json should be transformable with grouped strategy");
+
+        // Should be grouped (twitter has diverse schemas).
+        assert_eq!(result.metadata[0], METADATA_VERSION_GROUPED, "twitter.json should use grouped strategy");
+
+        // Verify byte-exact roundtrip.
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(
+            restored.len(),
+            data.len(),
+            "roundtrip length mismatch: got {}, expected {}",
+            restored.len(),
+            data.len()
+        );
+        assert_eq!(restored, data, "twitter.json roundtrip is not byte-exact");
+
+        // Verify size improvement.
+        let compressed_size = result.data.len() + result.metadata.len();
+        assert!(
+            compressed_size < data.len(),
+            "grouped transform should be smaller: {} vs {}",
+            compressed_size,
+            data.len()
+        );
     }
 }
