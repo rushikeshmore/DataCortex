@@ -25,38 +25,21 @@ On larger structured logs:
 
 > Higher is better. DataCortex wins on every file. Lossless — byte-exact decompression guaranteed.
 
-## How it works
-
-```
-Input JSON/NDJSON
-  → Format detection (JSON vs NDJSON vs generic)
-  → Schema inference (auto-detect column types)
-  → Columnar reorg (group values by field)
-  → Nested decomposition (flatten objects into sub-columns)
-  → Type-specific encoding:
-      Integers → delta + ZigZag + LEB128 varint
-      Booleans → bitmap (8 per byte)
-      Timestamps → epoch micros + delta varint
-      Enums → frequency-sorted ordinal dictionary
-      Strings → quote strip + length prefix
-      UUIDs → 16-byte binary
-  → Auto-select best entropy coder (zstd or brotli)
-  → .dcx output
-```
-
-The auto-fallback tries 6+ compression paths and picks the absolute smallest output. You always get the best result.
-
 ## Installation
 
 ```bash
-# From source
+cargo install datacortex-cli
+```
+
+Or from source:
+
+```bash
 git clone https://github.com/rushikeshmore/DataCortex
 cd DataCortex
 cargo build --release
-# Binary at target/release/datacortex
 ```
 
-Requires Rust 1.85+ (edition 2024).
+Requires Rust 1.85+.
 
 ## Usage
 
@@ -90,35 +73,6 @@ datacortex info data.dcx
 **Fast mode** is recommended for JSON/NDJSON. It runs the full preprocessing pipeline (schema inference, columnar reorg, typed encoding) then picks the best entropy coder automatically.
 
 **Balanced/Max modes** use a bit-level context mixing engine with 13 specialized models. Better for general text but slower.
-
-## Why DataCortex beats zstd on JSON
-
-General-purpose compressors (zstd, brotli, gzip) treat JSON as opaque bytes. They find repeated patterns via LZ77 sliding window matching but don't understand the structure.
-
-DataCortex understands JSON:
-
-1. **Schema inference** — auto-detects that `timestamp` is a timestamp, `status` is a low-cardinality enum, `user_id` is a string
-2. **Columnar reorg** — groups all timestamps together, all status codes together (like Parquet, but automatic)
-3. **Type-specific encoding** — timestamps become tiny delta-encoded varints, booleans become bitmaps, enums become 1-byte ordinals
-4. **The preprocessed data compresses dramatically better** — zstd/brotli on columnar+typed data achieves 2-3x better ratios than on raw JSON
-
-## Architecture
-
-```
-datacortex/
-  crates/
-    datacortex-core/          Core compression library
-      src/
-        format/               Schema inference, columnar transforms, typed encoding
-        model/                CM engine (13 context models)
-        mixer/                Triple logistic mixer + 7-stage APM
-        entropy/              Binary arithmetic coder
-        codec.rs              Pipeline orchestrator + auto-fallback
-        dcx.rs                .dcx file format (v3)
-    datacortex-cli/           CLI binary
-  corpus/                     Test corpus (JSON, NDJSON, text)
-  benchmarks/                 Baseline measurements
-```
 
 ## Development
 
