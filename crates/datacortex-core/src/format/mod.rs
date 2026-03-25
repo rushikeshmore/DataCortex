@@ -13,7 +13,7 @@ pub mod value_dict;
 
 use crate::dcx::{FormatHint, Mode};
 use transform::{
-    TRANSFORM_JSON_ARRAY_COLUMNAR, TRANSFORM_JSON_KEY_INTERN,
+    TRANSFORM_JSON_ARRAY_COLUMNAR, TRANSFORM_JSON_KEY_INTERN, TRANSFORM_NESTED_FLATTEN,
     TRANSFORM_NDJSON_COLUMNAR, TRANSFORM_TYPED_ENCODING, TRANSFORM_VALUE_DICT,
     TransformChain,
 };
@@ -87,6 +87,32 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
         }
     }
 
+    // Nested flatten: decompose nested objects into sub-columns.
+    // Works on any \x00/\x01 columnar data. Only for non-NDJSON paths because
+    // the NDJSON uniform path already handles its own nested flatten internally.
+    if columnar_applied && !ndjson_transform_applied {
+        // Extract num_rows from the json_array metadata (offset 1, u32 LE).
+        let ja_meta = &chain.records.last().unwrap().metadata;
+        if ja_meta.len() >= 5 {
+            let num_rows =
+                u32::from_le_bytes(ja_meta[1..5].try_into().unwrap()) as usize;
+            if let Some((flat_data, nested_groups)) =
+                ndjson::flatten_nested_columns(&current, num_rows)
+            {
+                // Build metadata: num_rows + total_flat_cols + serialized nested info.
+                let total_flat_cols =
+                    flat_data.split(|&b| b == 0x00).count() as u16;
+                let mut nested_meta = Vec::new();
+                nested_meta.extend_from_slice(&(num_rows as u32).to_le_bytes());
+                nested_meta.extend_from_slice(&total_flat_cols.to_le_bytes());
+                nested_meta
+                    .extend_from_slice(&ndjson::serialize_nested_info(&nested_groups));
+                chain.push(TRANSFORM_NESTED_FLATTEN, nested_meta);
+                current = flat_data;
+            }
+        }
+    }
+
     // Typed encoding: Fast mode ONLY. CM mode doesn't benefit (gotcha #35 confirmed).
     // Binary encoding disrupts CM's learned text patterns. But zstd benefits from
     // smaller raw data (delta varints, boolean bitmaps).
@@ -148,6 +174,27 @@ pub fn reverse_preprocess(data: &[u8], chain: &TransformChain) -> Vec<u8> {
             }
             TRANSFORM_TYPED_ENCODING => {
                 current = typed_encoding::reverse(&current, &record.metadata);
+            }
+            TRANSFORM_NESTED_FLATTEN => {
+                // Metadata: num_rows (u32 LE) + total_flat_cols (u16 LE) + nested_info.
+                if record.metadata.len() >= 6 {
+                    let num_rows = u32::from_le_bytes(
+                        record.metadata[0..4].try_into().unwrap(),
+                    ) as usize;
+                    let total_flat_cols = u16::from_le_bytes(
+                        record.metadata[4..6].try_into().unwrap(),
+                    ) as usize;
+                    if let Some((nested_groups, _)) =
+                        ndjson::deserialize_nested_info(&record.metadata[6..])
+                    {
+                        current = ndjson::unflatten_nested_columns(
+                            &current,
+                            &nested_groups,
+                            num_rows,
+                            total_flat_cols,
+                        );
+                    }
+                }
             }
             _ => {} // Unknown/legacy transform — skip.
         }
@@ -312,5 +359,127 @@ mod tests {
         let (preprocessed, chain) = preprocess(data, FormatHint::Generic, Mode::Fast);
         assert!(chain.is_empty());
         assert_eq!(preprocessed, data.to_vec());
+    }
+
+    #[test]
+    fn test_json_array_nested_flatten_roundtrip() {
+        // JSON array with nested objects — should apply json_array columnar + nested flatten.
+        let mut json = String::from(r#"{"data": ["#);
+        for i in 0..10 {
+            if i > 0 {
+                json.push_str(", ");
+            }
+            json.push_str(&format!(
+                r#"{{"id": {}, "name": "item_{}", "meta": {{"score": {}, "active": {}, "tag": "t{}"}}}}"#,
+                i, i, i * 10, if i % 2 == 0 { "true" } else { "false" }, i
+            ));
+        }
+        json.push_str(r#"], "total": 10}"#);
+
+        let data = json.as_bytes();
+        let (preprocessed, chain) = preprocess(data, FormatHint::Json, Mode::Fast);
+        assert!(!chain.is_empty());
+        assert_eq!(
+            chain.records[0].id,
+            transform::TRANSFORM_JSON_ARRAY_COLUMNAR,
+            "should apply json_array columnar first"
+        );
+
+        // Check that nested flatten was applied.
+        let has_nested_flatten = chain
+            .records
+            .iter()
+            .any(|r| r.id == transform::TRANSFORM_NESTED_FLATTEN);
+        assert!(
+            has_nested_flatten,
+            "should apply nested flatten for objects with nested fields"
+        );
+
+        // Verify byte-exact roundtrip.
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(
+            String::from_utf8_lossy(&restored),
+            String::from_utf8_lossy(data),
+        );
+        assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn test_json_array_nested_flatten_improves_ratio() {
+        // Build a dataset where nested flatten demonstrably helps:
+        // many rows with a nested object having repeated/similar values.
+        let mut json = String::from(r#"{"items": ["#);
+        for i in 0..50 {
+            if i > 0 {
+                json.push_str(", ");
+            }
+            json.push_str(&format!(
+                r#"{{"id": {}, "user": {{"name": "user_{}", "role": "admin", "level": {}, "verified": true, "email": "user_{}@test.com"}}}}"#,
+                i, i, i % 5, i
+            ));
+        }
+        json.push_str(r#"]}"#);
+
+        let data = json.as_bytes();
+
+        // Preprocess WITH nested flatten (current code).
+        let (preprocessed_with, chain_with) = preprocess(data, FormatHint::Json, Mode::Fast);
+        assert!(
+            chain_with
+                .records
+                .iter()
+                .any(|r| r.id == transform::TRANSFORM_NESTED_FLATTEN),
+            "nested flatten should activate"
+        );
+
+        // Verify roundtrip.
+        let restored = reverse_preprocess(&preprocessed_with, &chain_with);
+        assert_eq!(restored, data.to_vec());
+
+        // The preprocessed data should have more columns (sub-columns from nested objects).
+        let num_cols_with = preprocessed_with.split(|&b| b == 0x00).count();
+        // Without nested flatten, json_array produces 2 columns (id, user).
+        // With nested flatten, user is decomposed into 5 sub-columns, so total = 1 + 5 = 6.
+        assert!(
+            num_cols_with > 2,
+            "nested flatten should produce more columns: got {}",
+            num_cols_with
+        );
+    }
+
+    #[test]
+    fn test_ndjson_unaffected() {
+        // NDJSON with nested objects — should use NDJSON path, NOT the standalone nested flatten.
+        let mut ndjson = String::new();
+        for i in 0..10 {
+            ndjson.push_str(&format!(
+                r#"{{"id":{},"user":{{"name":"u{}","level":{}}}}}"#,
+                i, i, i % 3
+            ));
+            ndjson.push('\n');
+        }
+
+        let data = ndjson.as_bytes();
+        let (preprocessed, chain) = preprocess(data, FormatHint::Ndjson, Mode::Fast);
+        assert!(!chain.is_empty());
+        assert_eq!(
+            chain.records[0].id,
+            transform::TRANSFORM_NDJSON_COLUMNAR,
+            "NDJSON should use its own columnar transform"
+        );
+
+        // Should NOT have standalone TRANSFORM_NESTED_FLATTEN in chain.
+        let has_standalone_nested = chain
+            .records
+            .iter()
+            .any(|r| r.id == transform::TRANSFORM_NESTED_FLATTEN);
+        assert!(
+            !has_standalone_nested,
+            "NDJSON path should NOT use standalone nested flatten (it handles nesting internally)"
+        );
+
+        // Verify roundtrip.
+        let restored = reverse_preprocess(&preprocessed, &chain);
+        assert_eq!(restored, data.to_vec());
     }
 }

@@ -504,11 +504,14 @@ fn preprocess_grouped(non_empty: &[&[u8]], has_trailing_newline: bool) -> Option
 }
 
 /// Metadata describing which columns were flattened from nested objects.
-struct NestedGroupInfo {
+pub(crate) struct NestedGroupInfo {
     /// Index of the original column that was expanded.
-    original_col_index: u16,
+    pub(crate) original_col_index: u16,
     /// Sub-key names for the expanded sub-columns.
-    sub_keys: Vec<Vec<u8>>,
+    pub(crate) sub_keys: Vec<Vec<u8>>,
+    /// Template parts for reconstructing nested objects (preserves original formatting).
+    /// If empty, compact format `{"key":val,...}` is used (NDJSON compatibility).
+    pub(crate) nested_template: Vec<Vec<u8>>,
 }
 
 /// Attempt to flatten nested JSON objects in columnar data (depth-1).
@@ -516,7 +519,7 @@ struct NestedGroupInfo {
 /// Takes columnar data (\x00/\x01 separated) and returns expanded columnar data
 /// with nested objects decomposed into sub-columns.
 /// Returns None if no nested objects found.
-fn flatten_nested_columns(
+pub(crate) fn flatten_nested_columns(
     col_data: &[u8],
     num_rows: usize,
 ) -> Option<(Vec<u8>, Vec<NestedGroupInfo>)> {
@@ -560,7 +563,9 @@ fn flatten_nested_columns(
 
         // This column contains nested objects — decompose depth-1.
         // Parse all values and collect all unique sub-keys (preserving discovery order).
+        // Also capture the template from the first non-null object to preserve formatting.
         let mut all_sub_keys: Vec<Vec<u8>> = Vec::new();
+        let mut nested_template: Vec<Vec<u8>> = Vec::new();
         type KvPairs = Vec<(Vec<u8>, Vec<u8>)>;
         let mut parsed_rows: Vec<Option<KvPairs>> = Vec::with_capacity(num_rows);
 
@@ -569,24 +574,38 @@ fn flatten_nested_columns(
                 parsed_rows.push(None);
                 continue;
             }
-            // Parse the nested object's key-value pairs.
-            match parse_nested_object_kv(val) {
-                Some(kv_pairs) => {
-                    for (key, _) in &kv_pairs {
-                        if !all_sub_keys.iter().any(|k| k == key) {
-                            all_sub_keys.push(key.clone());
+            if nested_template.is_empty() {
+                // First non-null: use template-preserving parser.
+                match parse_nested_object_with_template(val) {
+                    Some((template, kv_pairs)) => {
+                        for (key, _) in &kv_pairs {
+                            if !all_sub_keys.iter().any(|k| k == key) {
+                                all_sub_keys.push(key.clone());
+                            }
                         }
+                        nested_template = template;
+                        parsed_rows.push(Some(kv_pairs));
                     }
-                    parsed_rows.push(Some(kv_pairs));
+                    None => {
+                        all_sub_keys.clear();
+                        break;
+                    }
                 }
-                None => {
-                    // Failed to parse — bail out on this column entirely.
-                    // Put it back as-is.
-                    parsed_rows.push(None);
-                    // Actually, if any row fails to parse as an object, this
-                    // column is not fully decomposable. Bail.
-                    all_sub_keys.clear();
-                    break;
+            } else {
+                // Subsequent rows: use simpler kv parser (template already captured).
+                match parse_nested_object_kv(val) {
+                    Some(kv_pairs) => {
+                        for (key, _) in &kv_pairs {
+                            if !all_sub_keys.iter().any(|k| k == key) {
+                                all_sub_keys.push(key.clone());
+                            }
+                        }
+                        parsed_rows.push(Some(kv_pairs));
+                    }
+                    None => {
+                        all_sub_keys.clear();
+                        break;
+                    }
                 }
             }
         }
@@ -625,6 +644,7 @@ fn flatten_nested_columns(
         nested_groups.push(NestedGroupInfo {
             original_col_index: col_idx as u16,
             sub_keys: all_sub_keys,
+            nested_template,
         });
 
         for sc in sub_columns {
@@ -652,6 +672,114 @@ fn flatten_nested_columns(
     }
 
     Some((out, nested_groups))
+}
+
+/// Parse a nested JSON object into (template_parts, kv_pairs).
+/// Template parts include all structural bytes (braces, keys, colons, whitespace) —
+/// preserving the original formatting so the object can be reconstructed exactly.
+/// Keys are returned WITHOUT quotes. Values are the exact bytes from the JSON.
+#[allow(clippy::type_complexity)]
+fn parse_nested_object_with_template(
+    obj: &[u8],
+) -> Option<(Vec<Vec<u8>>, Vec<(Vec<u8>, Vec<u8>)>)> {
+    let mut pos = 0;
+
+    // Skip whitespace.
+    while pos < obj.len() && obj[pos].is_ascii_whitespace() {
+        pos += 1;
+    }
+    if pos >= obj.len() || obj[pos] != b'{' {
+        return None;
+    }
+    pos += 1;
+
+    let mut parts: Vec<Vec<u8>> = Vec::new();
+    let mut pairs: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+    let mut part_start = 0;
+
+    loop {
+        // Skip whitespace.
+        while pos < obj.len() && obj[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+        if pos >= obj.len() {
+            return None;
+        }
+        if obj[pos] == b'}' {
+            parts.push(obj[part_start..].to_vec());
+            break;
+        }
+
+        // Expect a key string.
+        if obj[pos] != b'"' {
+            return None;
+        }
+        let key_str_start = pos + 1;
+        pos += 1;
+        let mut escaped = false;
+        while pos < obj.len() {
+            if escaped {
+                escaped = false;
+            } else if obj[pos] == b'\\' {
+                escaped = true;
+            } else if obj[pos] == b'"' {
+                break;
+            }
+            pos += 1;
+        }
+        if pos >= obj.len() {
+            return None;
+        }
+        let key = obj[key_str_start..pos].to_vec();
+        pos += 1; // skip closing quote
+
+        // Skip whitespace, expect colon.
+        while pos < obj.len() && obj[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+        if pos >= obj.len() || obj[pos] != b':' {
+            return None;
+        }
+        pos += 1;
+
+        // Skip whitespace between colon and value — include in template.
+        while pos < obj.len() && obj[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+
+        // Template part: everything from part_start to here (includes key, colon, post-colon ws).
+        parts.push(obj[part_start..pos].to_vec());
+
+        // Extract the value (no whitespace skipping — already consumed above).
+        let value_start = pos;
+        // Use extract_value but we've already consumed whitespace.
+        let (value, value_end) = extract_value(obj, value_start)?;
+        pos = value_end;
+        pairs.push((key, value));
+
+        part_start = pos;
+
+        // Skip whitespace.
+        while pos < obj.len() && obj[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+        if pos >= obj.len() {
+            return None;
+        }
+        if obj[pos] == b',' {
+            pos += 1;
+        } else if obj[pos] == b'}' {
+            parts.push(obj[part_start..].to_vec());
+            break;
+        } else {
+            return None;
+        }
+    }
+
+    if pairs.is_empty() {
+        return None;
+    }
+    Some((parts, pairs))
 }
 
 /// Parse a nested JSON object into its key-value pairs (depth-1 only).
@@ -746,7 +874,7 @@ fn parse_nested_object_kv(obj: &[u8]) -> Option<Vec<(Vec<u8>, Vec<u8>)>> {
 ///
 /// Takes flattened columnar data and nested group info, merges sub-columns
 /// back into the original nested object columns.
-fn unflatten_nested_columns(
+pub(crate) fn unflatten_nested_columns(
     flat_data: &[u8],
     nested_groups: &[NestedGroupInfo],
     num_rows: usize,
@@ -810,8 +938,25 @@ fn unflatten_nested_columns(
                 });
                 if all_null {
                     merged_col.push(b"null".to_vec());
+                } else if !group.nested_template.is_empty()
+                    && group.nested_template.len() == num_sub + 1
+                {
+                    // Template-based reconstruction: preserves original formatting.
+                    let mut obj = Vec::new();
+                    obj.extend_from_slice(&group.nested_template[0]);
+                    if flat_idx < flat_col_values.len() {
+                        obj.extend_from_slice(flat_col_values[flat_idx][row]);
+                    }
+                    for si in 1..num_sub {
+                        obj.extend_from_slice(&group.nested_template[si]);
+                        if flat_idx + si < flat_col_values.len() {
+                            obj.extend_from_slice(flat_col_values[flat_idx + si][row]);
+                        }
+                    }
+                    obj.extend_from_slice(&group.nested_template[num_sub]);
+                    merged_col.push(obj);
                 } else {
-                    // Build a JSON object from the sub-keys and values.
+                    // Compact reconstruction (NDJSON compatibility / no template).
                     let mut obj = Vec::new();
                     obj.push(b'{');
                     let mut first = true;
@@ -871,9 +1016,12 @@ fn unflatten_nested_columns(
 }
 
 /// Serialize nested group info into bytes for storage in metadata.
-fn serialize_nested_info(groups: &[NestedGroupInfo]) -> Vec<u8> {
+/// Version 1 (has_nested=1): sub_keys only (backward compat, NDJSON path).
+/// Version 2 (has_nested=2): sub_keys + nested_template (preserves formatting).
+pub(crate) fn serialize_nested_info(groups: &[NestedGroupInfo]) -> Vec<u8> {
+    let has_template = groups.iter().any(|g| !g.nested_template.is_empty());
     let mut out = Vec::new();
-    out.push(1u8); // has_nested = 1
+    out.push(if has_template { 2u8 } else { 1u8 });
     out.push(groups.len() as u8);
     for group in groups {
         out.extend_from_slice(&group.original_col_index.to_le_bytes());
@@ -882,22 +1030,31 @@ fn serialize_nested_info(groups: &[NestedGroupInfo]) -> Vec<u8> {
             out.extend_from_slice(&(key.len() as u16).to_le_bytes());
             out.extend_from_slice(key);
         }
+        if has_template {
+            out.extend_from_slice(&(group.nested_template.len() as u16).to_le_bytes());
+            for part in &group.nested_template {
+                out.extend_from_slice(&(part.len() as u16).to_le_bytes());
+                out.extend_from_slice(part);
+            }
+        }
     }
     out
 }
 
 /// Deserialize nested group info from metadata bytes.
 /// Returns (nested_groups, bytes_consumed).
-fn deserialize_nested_info(data: &[u8]) -> Option<(Vec<NestedGroupInfo>, usize)> {
+/// Handles version 1 (no template) and version 2 (with template).
+pub(crate) fn deserialize_nested_info(data: &[u8]) -> Option<(Vec<NestedGroupInfo>, usize)> {
     if data.is_empty() {
         return None;
     }
     let mut pos = 0;
-    let has_nested = data[pos];
+    let version = data[pos];
     pos += 1;
-    if has_nested != 1 {
+    if version != 1 && version != 2 {
         return None;
     }
+    let has_template = version == 2;
     if pos >= data.len() {
         return None;
     }
@@ -928,9 +1085,36 @@ fn deserialize_nested_info(data: &[u8]) -> Option<(Vec<NestedGroupInfo>, usize)>
             pos += key_len;
         }
 
+        let nested_template = if has_template {
+            if pos + 2 > data.len() {
+                return None;
+            }
+            let num_parts =
+                u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
+            pos += 2;
+            let mut parts = Vec::with_capacity(num_parts);
+            for _ in 0..num_parts {
+                if pos + 2 > data.len() {
+                    return None;
+                }
+                let part_len =
+                    u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
+                pos += 2;
+                if pos + part_len > data.len() {
+                    return None;
+                }
+                parts.push(data[pos..pos + part_len].to_vec());
+                pos += part_len;
+            }
+            parts
+        } else {
+            Vec::new()
+        };
+
         groups.push(NestedGroupInfo {
             original_col_index,
             sub_keys,
+            nested_template,
         });
     }
 
@@ -1047,8 +1231,8 @@ fn reverse_uniform(data: &[u8], metadata: &[u8]) -> Vec<u8> {
 
     // Check for nested metadata after template parts.
     let remaining_metadata = &metadata[pos..];
-    if !remaining_metadata.is_empty() && remaining_metadata[0] == 1 {
-        // has_nested == 1: unflatten before reconstructing rows.
+    if !remaining_metadata.is_empty() && (remaining_metadata[0] == 1 || remaining_metadata[0] == 2) {
+        // has_nested == 1 or 2: unflatten before reconstructing rows.
         if let Some((nested_groups, _)) = deserialize_nested_info(remaining_metadata) {
             // Calculate total number of flat columns.
             let total_flat_cols = data.split(|&b| b == COL_SEP).count();
