@@ -18,6 +18,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 zstd = { workspace = true }
 brotli = { workspace = true }
+rayon = { workspace = true }
 
 [features]
 default = []

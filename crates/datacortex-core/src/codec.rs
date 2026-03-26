@@ -717,105 +717,24 @@ pub fn compress_with_options<W: Write>(
         // saves the separate metadata overhead (~150 bytes), because brotli compresses
         // the 4-byte length prefix + raw metadata nearly for free.
         Mode::Fast => {
+            // Fast mode: auto-fallback with PARALLEL path evaluation.
+            // All 6+ compression paths run concurrently via rayon, then we
+            // keep whichever produces the smallest output.
+            use std::sync::Mutex;
+
             let level = adaptive_fast_level(preprocessed.len(), zstd_level_override);
-
-            // Path A: preprocessed + zstd (with optional dict).
-            let plain_a = zstd::bulk::compress(&preprocessed, level).map_err(io::Error::other)?;
-
-            let (compressed_a, dict_a) = if preprocessed.len() >= DICT_MIN_DATA_SIZE {
-                if let Some(dict_payload) = try_dict_compress(&preprocessed, level, plain_a.len()) {
-                    (dict_payload, true)
-                } else {
-                    (plain_a, false)
-                }
-            } else {
-                (plain_a, false)
-            };
+            let raw_level = adaptive_fast_level(data.len(), zstd_level_override);
 
             // Estimate compressed metadata size for fair comparison.
-            // This matches the compression that happens later for the header.
             let meta_size_for_comparison = if transform_metadata.len() > 64 {
                 let compressed_meta = zstd::bulk::compress(&transform_metadata, 19)
                     .unwrap_or_else(|_| transform_metadata.clone());
-                if compressed_meta.len() < transform_metadata.len() {
-                    compressed_meta.len()
-                } else {
-                    transform_metadata.len()
-                }
+                compressed_meta.len().min(transform_metadata.len())
             } else {
                 transform_metadata.len()
             };
 
-            // Total size for Path A: header(32) + (compressed) metadata + compressed_a.
-            let total_a = 32 + meta_size_for_comparison + compressed_a.len();
-
-            // Path B: raw zstd (no preprocessing, no dict).
-            // Use same adaptive level but on original data size.
-            let raw_level = adaptive_fast_level(data.len(), zstd_level_override);
-            let compressed_b = zstd::bulk::compress(data, raw_level).map_err(io::Error::other)?;
-
-            // Total size for Path B: header(32) + 0 (empty metadata) + compressed_b.
-            let total_b = 32 + compressed_b.len();
-
-            // Start with best of zstd paths.
-            let (
-                mut best_compressed,
-                mut best_total,
-                mut best_dict,
-                mut best_raw,
-                mut best_brotli,
-                mut best_embedded,
-            ) = if total_b < total_a {
-                (compressed_b, total_b, false, true, false, false)
-            } else {
-                (compressed_a, total_a, dict_a, false, false, false)
-            };
-
-            // Path C: raw + brotli (TEXT mode — raw JSON is UTF-8 text).
-            // Use quality 11 for files <= 1MB, 9 for larger (speed tradeoff).
-            let brotli_quality = if data.len() <= 1_048_576 { 11 } else { 9 };
-            if let Ok(brotli_raw) = brotli_compress(data, brotli_quality, BROTLI_MODE_TEXT) {
-                let brotli_raw_total = 32 + brotli_raw.len();
-                if brotli_raw_total < best_total {
-                    best_compressed = brotli_raw;
-                    best_total = brotli_raw_total;
-                    best_dict = false;
-                    best_raw = true;
-                    best_brotli = true;
-                    best_embedded = false;
-                }
-            }
-
-            // Path D: preprocessed + brotli (separate metadata, GENERIC mode).
-            // Try both quality 11 and 10 — sometimes q10 is smaller on binary-mixed data.
-            {
-                let brotli_prep_max_q = if preprocessed.len() <= 1_048_576 {
-                    11
-                } else {
-                    9
-                };
-                let qualities = if brotli_prep_max_q == 11 {
-                    &[11u32, 10][..]
-                } else {
-                    &[brotli_prep_max_q as u32][..]
-                };
-                for &q in qualities {
-                    if let Ok(brotli_prep) = brotli_compress(&preprocessed, q, BROTLI_MODE_GENERIC)
-                    {
-                        let brotli_prep_total = 32 + meta_size_for_comparison + brotli_prep.len();
-                        if brotli_prep_total < best_total {
-                            best_compressed = brotli_prep;
-                            best_total = brotli_prep_total;
-                            best_dict = false;
-                            best_raw = false;
-                            best_brotli = true;
-                            best_embedded = false;
-                        }
-                    }
-                }
-            }
-
-            // Build the embedded metadata payload once for Paths E and F.
+            // Build embedded metadata payload (shared read-only across threads).
             let embedded_payload = if !transform_metadata.is_empty() {
                 let mut ep = Vec::with_capacity(4 + transform_metadata.len() + preprocessed.len());
                 ep.extend_from_slice(&(transform_metadata.len() as u32).to_le_bytes());
@@ -826,70 +745,135 @@ pub fn compress_with_options<W: Write>(
                 None
             };
 
-            // Path E: preprocessed + brotli with EMBEDDED metadata (GENERIC mode).
-            // Only attempt when transforms were applied (non-empty metadata).
-            // The metadata is prepended to the preprocessed data as:
-            //   [meta_len: u32 LE][raw_metadata][preprocessed_data]
-            // and the whole thing is brotli-compressed together. This eliminates
-            // separate metadata overhead in the header.
-            // Try both quality 11 and 10 (same dual-quality as Path D).
-            if let Some(ref embedded_payload) = embedded_payload {
-                let embed_max_q = if embedded_payload.len() <= 1_048_576 {
-                    11
-                } else {
-                    9
-                };
-                let qualities = if embed_max_q == 11 {
-                    &[11u32, 10][..]
-                } else {
-                    &[embed_max_q as u32][..]
-                };
-                for &q in qualities {
-                    if let Ok(brotli_embedded) =
-                        brotli_compress(embedded_payload, q, BROTLI_MODE_GENERIC)
-                    {
-                        // Total: header(32) + 0 (no separate metadata) + brotli_embedded.
-                        let brotli_embedded_total = 32 + brotli_embedded.len();
-                        if brotli_embedded_total < best_total {
-                            best_compressed = brotli_embedded;
-                            best_total = brotli_embedded_total;
-                            best_dict = false;
-                            best_raw = false;
-                            best_brotli = true;
-                            best_embedded = true;
+            // Each path result: (compressed_bytes, total_size, use_dict, use_raw, use_brotli, use_embedded)
+            type PathResult = (Vec<u8>, usize, bool, bool, bool, bool);
+            let results = Mutex::new(Vec::<PathResult>::with_capacity(8));
+
+            rayon::scope(|s| {
+                // Path A: preprocessed + zstd (with optional dict).
+                s.spawn(|_| {
+                    if let Ok(plain) = zstd::bulk::compress(&preprocessed, level) {
+                        let (compressed, is_dict) = if preprocessed.len() >= DICT_MIN_DATA_SIZE {
+                            if let Some(dict_payload) =
+                                try_dict_compress(&preprocessed, level, plain.len())
+                            {
+                                (dict_payload, true)
+                            } else {
+                                (plain, false)
+                            }
+                        } else {
+                            (plain, false)
+                        };
+                        let total = 32 + meta_size_for_comparison + compressed.len();
+                        results
+                            .lock()
+                            .unwrap()
+                            .push((compressed, total, is_dict, false, false, false));
+                    }
+                });
+
+                // Path B: raw zstd (no preprocessing).
+                s.spawn(|_| {
+                    if let Ok(compressed) = zstd::bulk::compress(data, raw_level) {
+                        let total = 32 + compressed.len();
+                        results
+                            .lock()
+                            .unwrap()
+                            .push((compressed, total, false, true, false, false));
+                    }
+                });
+
+                // Path C: raw + brotli (TEXT mode).
+                s.spawn(|_| {
+                    let q = if data.len() <= 1_048_576 { 11 } else { 9 };
+                    if let Ok(compressed) = brotli_compress(data, q, BROTLI_MODE_TEXT) {
+                        let total = 32 + compressed.len();
+                        results
+                            .lock()
+                            .unwrap()
+                            .push((compressed, total, false, true, true, false));
+                    }
+                });
+
+                // Path D: preprocessed + brotli (GENERIC mode, dual quality).
+                s.spawn(|_| {
+                    let max_q = if preprocessed.len() <= 1_048_576 {
+                        11
+                    } else {
+                        9
+                    };
+                    let qualities: &[u32] = if max_q == 11 {
+                        &[11, 10]
+                    } else {
+                        &[max_q as u32]
+                    };
+                    let mut best: Option<PathResult> = None;
+                    for &q in qualities {
+                        if let Ok(compressed) =
+                            brotli_compress(&preprocessed, q, BROTLI_MODE_GENERIC)
+                        {
+                            let total = 32 + meta_size_for_comparison + compressed.len();
+                            if best.as_ref().is_none_or(|b| total < b.1) {
+                                best = Some((compressed, total, false, false, true, false));
+                            }
                         }
                     }
-                }
-            }
-
-            // Path F: preprocessed + zstd with EMBEDDED metadata (no dict).
-            // When transforms were applied and dict was NOT the winner, try
-            // compressing [meta_len:u32][raw_metadata][preprocessed_data] with zstd.
-            // IMPORTANT: do NOT embed metadata when dict compression is active —
-            // the dict format has its own layout (dict + chunks) and embedding
-            // metadata would break it.
-            if let Some(ref embedded_payload) = embedded_payload {
-                let embed_level = adaptive_fast_level(embedded_payload.len(), zstd_level_override);
-                if let Ok(zstd_embedded) = zstd::bulk::compress(embedded_payload, embed_level) {
-                    // Total: header(32) + 0 (no separate metadata) + zstd_embedded.
-                    let zstd_embedded_total = 32 + zstd_embedded.len();
-                    if zstd_embedded_total < best_total {
-                        best_compressed = zstd_embedded;
-                        best_total = zstd_embedded_total;
-                        best_dict = false;
-                        best_raw = false;
-                        best_brotli = false;
-                        best_embedded = true;
+                    if let Some(r) = best {
+                        results.lock().unwrap().push(r);
                     }
-                }
-            }
+                });
 
-            let _ = best_total; // used only for comparisons
-            use_dict = best_dict;
-            use_raw_fallback = best_raw;
-            use_brotli = best_brotli;
-            use_meta_embedded = best_embedded;
-            best_compressed
+                // Path E: embedded metadata + brotli (GENERIC mode, dual quality).
+                if let Some(ref ep) = embedded_payload {
+                    s.spawn(|_| {
+                        let max_q = if ep.len() <= 1_048_576 { 11 } else { 9 };
+                        let qualities: &[u32] = if max_q == 11 {
+                            &[11, 10]
+                        } else {
+                            &[max_q as u32]
+                        };
+                        let mut best: Option<PathResult> = None;
+                        for &q in qualities {
+                            if let Ok(compressed) = brotli_compress(ep, q, BROTLI_MODE_GENERIC) {
+                                let total = 32 + compressed.len();
+                                if best.as_ref().is_none_or(|b| total < b.1) {
+                                    best = Some((compressed, total, false, false, true, true));
+                                }
+                            }
+                        }
+                        if let Some(r) = best {
+                            results.lock().unwrap().push(r);
+                        }
+                    });
+                }
+
+                // Path F: embedded metadata + zstd.
+                if let Some(ref ep) = embedded_payload {
+                    s.spawn(|_| {
+                        let embed_level = adaptive_fast_level(ep.len(), zstd_level_override);
+                        if let Ok(compressed) = zstd::bulk::compress(ep, embed_level) {
+                            let total = 32 + compressed.len();
+                            results
+                                .lock()
+                                .unwrap()
+                                .push((compressed, total, false, false, false, true));
+                        }
+                    });
+                }
+            });
+
+            // Pick the smallest result.
+            let results = results.into_inner().unwrap();
+            let best = results
+                .into_iter()
+                .min_by_key(|r| r.1)
+                .ok_or_else(|| io::Error::other("all compression paths failed"))?;
+
+            use_dict = best.2;
+            use_raw_fallback = best.3;
+            use_brotli = best.4;
+            use_meta_embedded = best.5;
+            best.0
         }
         // Balanced mode: dual-path CM + GRU byte predictor.
         Mode::Balanced => {
