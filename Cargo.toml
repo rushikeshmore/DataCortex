@@ -8,7 +8,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.4.1"
+version = "0.4.2"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/RushikeshMore/datacortex"
@@ -17,7 +17,7 @@ authors = ["Rushikesh More"]
 rust-version = "1.85"
 
 [workspace.dependencies]
-datacortex-core = { path = "crates/datacortex-core", version = "0.4.1" }
+datacortex-core = { path = "crates/datacortex-core", version = "0.4.2" }
 datacortex-neural = { path = "crates/datacortex-neural" }
 crc32fast = "1"
 clap = { version = "4", features = ["derive"] }
