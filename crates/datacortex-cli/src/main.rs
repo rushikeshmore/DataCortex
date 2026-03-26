@@ -5,8 +5,7 @@ use std::time::Instant;
 
 use clap::{Parser, Subcommand};
 use datacortex_core::{
-    codec::compress_to_vec,
-    compress_with_options,
+    codec::{compress_to_vec, compress_with_full_options, train_dict},
     dcx::{FormatHint, Mode},
     decompress_with_model, detect_format,
     format::detect_from_extension,
@@ -73,6 +72,9 @@ enum Command {
         /// Enables bounded-memory compression of large files.
         #[arg(long)]
         chunk_rows: Option<usize>,
+        /// Use a pre-trained dictionary for compression (from train-dict command).
+        #[arg(long)]
+        dict: Option<PathBuf>,
     },
     /// Decompress a .dcx file (supports multi-frame files)
     Decompress {
@@ -80,6 +82,17 @@ enum Command {
         input: PathBuf,
         /// Output file path (use - for stdout)
         output: PathBuf,
+    },
+    /// Train a compression dictionary from sample files
+    TrainDict {
+        /// Sample files to train on (JSON/NDJSON)
+        samples: Vec<PathBuf>,
+        /// Output dictionary file
+        #[arg(short, long, default_value = "datacortex.dict")]
+        output: PathBuf,
+        /// Maximum dictionary size in bytes
+        #[arg(long, default_value = "65536")]
+        max_size: usize,
     },
     /// Benchmark compression on a corpus directory
     Bench {
@@ -133,6 +146,61 @@ fn parse_format(s: &str) -> io::Result<FormatHint> {
     }
 }
 
+fn cmd_train_dict(
+    samples: &[PathBuf],
+    output: &Path,
+    max_size: usize,
+    quiet: bool,
+) -> io::Result<()> {
+    if samples.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "no sample files provided",
+        ));
+    }
+
+    let mut sample_data: Vec<Vec<u8>> = Vec::new();
+    let mut total_bytes: u64 = 0;
+
+    for path in samples {
+        if !path.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("sample file not found: {}", path.display()),
+            ));
+        }
+        let data = fs::read(path)?;
+        total_bytes += data.len() as u64;
+        sample_data.push(data);
+    }
+
+    if !quiet {
+        eprintln!(
+            "Training dictionary from {} files ({} bytes)...",
+            samples.len(),
+            total_bytes
+        );
+    }
+
+    let refs: Vec<&[u8]> = sample_data.iter().map(|d| d.as_slice()).collect();
+    let start = Instant::now();
+    let dict = train_dict(&refs, max_size)?;
+    let elapsed = start.elapsed();
+
+    fs::write(output, &dict)?;
+
+    if !quiet {
+        println!(
+            "Dictionary trained: {} bytes, saved to {} ({:.1}ms)",
+            dict.len(),
+            output.display(),
+            elapsed.as_secs_f64() * 1000.0,
+        );
+    }
+
+    Ok(())
+}
+
 fn is_stdin(p: &Path) -> bool {
     p.as_os_str() == "-"
 }
@@ -160,6 +228,7 @@ fn cmd_compress(
     model_path: Option<&str>,
     zstd_level_override: Option<i32>,
     chunk_rows: Option<usize>,
+    dict_path: Option<&Path>,
     quiet: bool,
     verbose: bool,
 ) -> io::Result<()> {
@@ -199,6 +268,19 @@ fn cmd_compress(
     };
 
     let writing_stdout = is_stdout(&output_path);
+
+    // Load external dictionary if provided.
+    let dict_data = if let Some(dp) = dict_path {
+        Some(fs::read(dp).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("cannot read dictionary '{}': {}", dp.display(), e),
+            )
+        })?)
+    } else {
+        None
+    };
+    let ext_dict = dict_data.as_deref();
 
     // Detect format.
     let format = format_override.unwrap_or_else(|| {
@@ -258,12 +340,13 @@ fn cmd_compress(
             }
             chunk_data.push(b'\n');
 
-            compress_with_options(
+            compress_with_full_options(
                 &chunk_data,
                 mode,
                 Some(format),
                 model_path,
                 zstd_level_override,
+                ext_dict,
                 &mut out,
             )?;
 
@@ -317,12 +400,13 @@ fn cmd_compress(
         Box::new(BufWriter::new(fs::File::create(&output_path)?))
     };
 
-    compress_with_options(
+    compress_with_full_options(
         &data,
         mode,
         Some(format),
         model_path,
         zstd_level_override,
+        ext_dict,
         &mut out,
     )?;
     out.flush()?;
@@ -788,6 +872,7 @@ fn main() {
             format,
             level,
             chunk_rows,
+            dict,
         } => {
             let mode = parse_mode(mode).unwrap_or_else(|e| {
                 eprintln!("Error: {e}");
@@ -807,6 +892,7 @@ fn main() {
                 cli.model_path.as_deref(),
                 *level,
                 *chunk_rows,
+                dict.as_deref(),
                 cli.quiet,
                 cli.verbose,
             )
@@ -814,6 +900,11 @@ fn main() {
         Command::Decompress { input, output } => {
             cmd_decompress(input, output, cli.model_path.as_deref(), cli.quiet)
         }
+        Command::TrainDict {
+            samples,
+            output,
+            max_size,
+        } => cmd_train_dict(samples, output, *max_size, cli.quiet),
         Command::Bench {
             dir,
             mode,

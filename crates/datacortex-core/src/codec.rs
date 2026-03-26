@@ -652,6 +652,63 @@ fn resolve_model_path(explicit: Option<&str>) -> Option<String> {
     None
 }
 
+/// Train a zstd dictionary from multiple sample files.
+///
+/// Each sample should be a complete JSON/NDJSON file's bytes. The function
+/// splits them into training fragments and calls `zstd::dict::from_samples`.
+///
+/// `max_dict_size` controls the max dictionary size in bytes (typical: 32768-131072).
+/// Returns the trained dictionary bytes.
+pub fn train_dict(samples: &[&[u8]], max_dict_size: usize) -> io::Result<Vec<u8>> {
+    if samples.is_empty() {
+        return Err(io::Error::other(
+            "no samples provided for dictionary training",
+        ));
+    }
+
+    // Collect training fragments: split each sample into reasonable chunks.
+    let mut fragments: Vec<&[u8]> = Vec::new();
+    for sample in samples {
+        if sample.is_empty() {
+            continue;
+        }
+        // For NDJSON: split by newlines (each line is a training fragment).
+        let lines: Vec<&[u8]> = sample
+            .split(|&b| b == b'\n')
+            .filter(|l| !l.is_empty())
+            .collect();
+        if lines.len() >= 5 {
+            fragments.extend(lines);
+        } else {
+            // For non-NDJSON: use fixed-size blocks.
+            let chunk_size = 4096.min(sample.len());
+            let mut offset = 0;
+            while offset < sample.len() {
+                let end = (offset + chunk_size).min(sample.len());
+                fragments.push(&sample[offset..end]);
+                offset = end;
+            }
+        }
+    }
+
+    if fragments.len() < 5 {
+        return Err(io::Error::other(
+            "not enough training data (need at least 5 fragments)",
+        ));
+    }
+
+    let dict = zstd::dict::from_samples(&fragments, max_dict_size)
+        .map_err(|e| io::Error::other(format!("dictionary training failed: {e}")))?;
+
+    if dict.is_empty() {
+        return Err(io::Error::other(
+            "dictionary training produced empty dictionary",
+        ));
+    }
+
+    Ok(dict)
+}
+
 /// Compress `data` into .dcx format, writing to `output`.
 pub fn compress<W: Write>(
     data: &[u8],
@@ -680,6 +737,27 @@ pub fn compress_with_options<W: Write>(
     format_override: Option<FormatHint>,
     model_path: Option<&str>,
     zstd_level_override: Option<i32>,
+    output: &mut W,
+) -> io::Result<()> {
+    compress_with_full_options(
+        data,
+        mode,
+        format_override,
+        model_path,
+        zstd_level_override,
+        None,
+        output,
+    )
+}
+
+/// Compress with all options including external dictionary.
+pub fn compress_with_full_options<W: Write>(
+    data: &[u8],
+    mode: Mode,
+    format_override: Option<FormatHint>,
+    model_path: Option<&str>,
+    zstd_level_override: Option<i32>,
+    external_dict: Option<&[u8]>,
     output: &mut W,
 ) -> io::Result<()> {
     let format_hint = format_override.unwrap_or_else(|| detect_format(data));
@@ -753,7 +831,53 @@ pub fn compress_with_options<W: Write>(
                 // Path A: preprocessed + zstd (with optional dict).
                 s.spawn(|_| {
                     if let Ok(plain) = zstd::bulk::compress(&preprocessed, level) {
-                        let (compressed, is_dict) = if preprocessed.len() >= DICT_MIN_DATA_SIZE {
+                        let (compressed, is_dict) = if let Some(ext_dict) = external_dict {
+                            // Use externally provided dictionary.
+                            let chunk_size = dict_chunk_size(preprocessed.len());
+                            let chunks = split_into_chunks(&preprocessed, chunk_size);
+                            if let Ok(mut compressor) =
+                                zstd::bulk::Compressor::with_dictionary(level, ext_dict)
+                            {
+                                let mut ok = true;
+                                let mut cc_list = Vec::with_capacity(chunks.len());
+                                for chunk in &chunks {
+                                    match compressor.compress(chunk) {
+                                        Ok(cc) => cc_list.push(cc),
+                                        Err(_) => {
+                                            ok = false;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if ok {
+                                    let total_cc: usize = cc_list.iter().map(|c| 4 + c.len()).sum();
+                                    let payload_size = 4 + ext_dict.len() + 4 + total_cc;
+                                    if payload_size < plain.len() {
+                                        let mut payload = Vec::with_capacity(payload_size);
+                                        payload.extend_from_slice(
+                                            &(ext_dict.len() as u32).to_le_bytes(),
+                                        );
+                                        payload.extend_from_slice(ext_dict);
+                                        payload.extend_from_slice(
+                                            &(cc_list.len() as u32).to_le_bytes(),
+                                        );
+                                        for cc in &cc_list {
+                                            payload.extend_from_slice(
+                                                &(cc.len() as u32).to_le_bytes(),
+                                            );
+                                            payload.extend_from_slice(cc);
+                                        }
+                                        (payload, true)
+                                    } else {
+                                        (plain, false)
+                                    }
+                                } else {
+                                    (plain, false)
+                                }
+                            } else {
+                                (plain, false)
+                            }
+                        } else if preprocessed.len() >= DICT_MIN_DATA_SIZE {
                             if let Some(dict_payload) =
                                 try_dict_compress(&preprocessed, level, plain.len())
                             {
