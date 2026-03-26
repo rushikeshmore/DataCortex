@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{self, BufReader, BufWriter};
+use std::io::{self, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -187,6 +187,8 @@ fn cmd_compress(
         zstd_level_override,
         &mut out,
     )?;
+    out.flush()?;
+    drop(out);
     let elapsed = start.elapsed();
 
     let output_size = fs::metadata(&output_path)?.len();
