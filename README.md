@@ -10,11 +10,11 @@ DataCortex auto-infers your JSON schema, applies columnar reorg + type-specific 
 
 | File | Size | DataCortex | zstd -19 | brotli -11 | vs best |
 |------|------|-----------|----------|------------|---------|
-| NDJSON (analytics) | 107 KB | **22.4x** | 15.6x | 16.6x | **+35%** |
+| NDJSON (analytics) | 107 KB | **22.0x** | 15.6x | 16.6x | **+32%** |
 | NDJSON (10K rows) | 3.3 MB | **27.8x** | 16.0x | 16.4x | **+70%** |
 | JSON API response | 36 KB | **16.0x** | 13.2x | 15.0x | **+7%** |
 | Twitter API (nested) | 617 KB | **19.7x** | 16.7x | 18.9x | **+4%** |
-| Event tickets (repetitive) | 1.7 MB | **222.3x** | 176.0x | 190.0x | **+17%** |
+| Event tickets (repetitive) | 1.7 MB | **221.7x** | 176.0x | 190.0x | **+17%** |
 
 On larger structured logs:
 
@@ -77,7 +77,7 @@ datacortex info data.dcx
 ## Development
 
 ```bash
-cargo test                                      # 354 tests
+cargo test                                      # 374 tests
 cargo clippy --all-targets -- -D warnings       # lint (0 warnings)
 cargo fmt --check                               # formatting
 cargo build --release                           # optimized build
