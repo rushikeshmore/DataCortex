@@ -413,17 +413,30 @@ fn micros_to_iso8601(
 ///   frac_digits: u8
 ///   count: u32 LE (4 bytes)
 /// Followed by delta+zigzag+LEB128 varint stream.
-fn encode_timestamp_column(values: &[&[u8]]) -> Vec<u8> {
+fn encode_timestamp_column(values: &[&[u8]]) -> Option<Vec<u8>> {
     if values.is_empty() {
-        return Vec::new();
+        return Some(Vec::new());
     }
 
     // Parse first value to get format metadata.
-    let first = match parse_iso8601_to_micros(values[0]) {
-        Some(v) => v,
-        None => return encode_raw(values), // Fallback.
-    };
+    let first = parse_iso8601_to_micros(values[0])?;
     let (base_micros, format_byte, tz_offset_minutes, frac_digits) = first;
+
+    // Verify ALL values share the same format_byte, tz_offset, and frac_digits.
+    // The decoder uses a single set of these values from the column header to
+    // reconstruct every timestamp. If values have varying timezone offsets
+    // (e.g., "-04:00" vs "+12:00") or fractional digits, the local
+    // representation would change on roundtrip. Fall back to RAW in that case.
+    let mut parsed_micros: Vec<u64> = Vec::with_capacity(values.len());
+    parsed_micros.push(base_micros);
+
+    for val in &values[1..] {
+        let (m, fb, tz, fd) = parse_iso8601_to_micros(val)?;
+        if fb != format_byte || tz != tz_offset_minutes || fd != frac_digits {
+            return None;
+        }
+        parsed_micros.push(m);
+    }
 
     let mut out = Vec::with_capacity(16 + values.len() * 2);
 
@@ -437,22 +450,16 @@ fn encode_timestamp_column(values: &[&[u8]]) -> Vec<u8> {
     // Delta encode: first value has delta=0, subsequent values are delta from prev.
     let mut prev_micros = base_micros;
 
-    for (i, val) in values.iter().enumerate() {
-        let micros = if i == 0 {
-            base_micros
-        } else {
-            match parse_iso8601_to_micros(val) {
-                Some((m, _, _, _)) => m,
-                None => prev_micros, // Fallback: repeat previous.
-            }
-        };
+    for (i, &micros) in parsed_micros.iter().enumerate() {
         let delta = micros as i64 - prev_micros as i64;
         let zz = zigzag_encode(delta);
         leb128_encode(zz, &mut out);
-        prev_micros = micros;
+        if i > 0 {
+            prev_micros = micros;
+        }
     }
 
-    out
+    Some(out)
 }
 
 /// Decode a timestamp column from delta+zigzag+LEB128 back to quoted ISO 8601 strings.
@@ -517,9 +524,9 @@ fn decode_timestamp_column(data: &[u8]) -> Vec<Vec<u8>> {
 ///   for each entry: len (u32 LE) + bytes (includes quotes)
 ///   count: u32 LE
 /// Followed by one ordinal byte per value.
-fn encode_enum_column(values: &[&[u8]]) -> Vec<u8> {
+fn encode_enum_column(values: &[&[u8]]) -> Option<Vec<u8>> {
     if values.is_empty() {
-        return Vec::new();
+        return Some(Vec::new());
     }
 
     // Count frequency of each unique value.
@@ -537,7 +544,7 @@ fn encode_enum_column(values: &[&[u8]]) -> Vec<u8> {
 
     // Limit to 256 entries.
     if freq.len() > 256 {
-        return encode_raw(values); // Fallback.
+        return None;
     }
 
     let dict_count = freq.len() as u8;
@@ -561,7 +568,7 @@ fn encode_enum_column(values: &[&[u8]]) -> Vec<u8> {
         out.push(idx as u8);
     }
 
-    out
+    Some(out)
 }
 
 /// Decode an enum column from dictionary + ordinal bytes back to original strings.
@@ -751,23 +758,18 @@ fn bytes_to_uuid(bytes: &[u8; 16]) -> Vec<u8> {
 /// Output: count (u32 LE) + raw 16-byte values concatenated.
 ///
 /// Saves 22 bytes per UUID (38 → 16 = 58% reduction).
-fn encode_uuid_column(values: &[&[u8]]) -> Vec<u8> {
+fn encode_uuid_column(values: &[&[u8]]) -> Option<Vec<u8>> {
     let count = values.len();
     let mut out = Vec::with_capacity(4 + count * 16);
 
     out.extend_from_slice(&(count as u32).to_le_bytes());
 
     for val in values {
-        match parse_uuid_to_bytes(val) {
-            Some(bytes) => out.extend_from_slice(&bytes),
-            None => {
-                // If any UUID fails to parse, fall back to raw encoding.
-                return encode_raw(values);
-            }
-        }
+        let bytes = parse_uuid_to_bytes(val)?;
+        out.extend_from_slice(&bytes);
     }
 
-    out
+    Some(out)
 }
 
 /// Decode a UUID column from raw 16-byte values back to quoted UUID strings.
@@ -939,22 +941,31 @@ fn encode_nullable_column(values: &[&[u8]], sub_type: u8) -> Vec<u8> {
             let encoded = encode_boolean_column(&non_null_values);
             out.extend_from_slice(&encoded);
         }
-        ENC_TIMESTAMP => {
-            let encoded = encode_timestamp_column(&non_null_values);
-            out.extend_from_slice(&encoded);
-        }
-        ENC_ENUM => {
-            let encoded = encode_enum_column(&non_null_values);
-            out.extend_from_slice(&encoded);
-        }
+        ENC_TIMESTAMP => match encode_timestamp_column(&non_null_values) {
+            Some(encoded) => out.extend_from_slice(&encoded),
+            None => {
+                out[0] = ENC_STRING;
+                out.extend_from_slice(&encode_string_column(&non_null_values));
+            }
+        },
+        ENC_ENUM => match encode_enum_column(&non_null_values) {
+            Some(encoded) => out.extend_from_slice(&encoded),
+            None => {
+                out[0] = ENC_STRING;
+                out.extend_from_slice(&encode_string_column(&non_null_values));
+            }
+        },
         ENC_STRING => {
             let encoded = encode_string_column(&non_null_values);
             out.extend_from_slice(&encoded);
         }
-        ENC_UUID => {
-            let encoded = encode_uuid_column(&non_null_values);
-            out.extend_from_slice(&encoded);
-        }
+        ENC_UUID => match encode_uuid_column(&non_null_values) {
+            Some(encoded) => out.extend_from_slice(&encoded),
+            None => {
+                out[0] = ENC_STRING;
+                out.extend_from_slice(&encode_string_column(&non_null_values));
+            }
+        },
         ENC_HEX_PREFIX => {
             if let Some(encoded) = try_encode_hex_prefix(&non_null_values) {
                 out.extend_from_slice(&encoded);
@@ -1250,7 +1261,10 @@ fn encode_column(values: &[&[u8]], col_type: &ColumnType) -> (u8, Vec<u8>) {
                     encode_nullable_column(values, ENC_TIMESTAMP),
                 )
             } else {
-                (ENC_TIMESTAMP, encode_timestamp_column(values))
+                match encode_timestamp_column(values) {
+                    Some(data) => (ENC_TIMESTAMP, data),
+                    None => (ENC_RAW, encode_raw(values)),
+                }
             }
         }
         ColumnType::Timestamp { .. } => {
@@ -1261,7 +1275,10 @@ fn encode_column(values: &[&[u8]], col_type: &ColumnType) -> (u8, Vec<u8>) {
             if *nullable {
                 (ENC_NULL_TYPED, encode_nullable_column(values, ENC_ENUM))
             } else {
-                (ENC_ENUM, encode_enum_column(values))
+                match encode_enum_column(values) {
+                    Some(data) => (ENC_ENUM, data),
+                    None => (ENC_RAW, encode_raw(values)),
+                }
             }
         }
         ColumnType::String { nullable } => {
@@ -1303,7 +1320,10 @@ fn encode_column(values: &[&[u8]], col_type: &ColumnType) -> (u8, Vec<u8>) {
             if *nullable {
                 (ENC_NULL_TYPED, encode_nullable_column(values, ENC_UUID))
             } else {
-                (ENC_UUID, encode_uuid_column(values))
+                match encode_uuid_column(values) {
+                    Some(data) => (ENC_UUID, data),
+                    None => (ENC_RAW, encode_raw(values)),
+                }
             }
         }
         ColumnType::Null => {
@@ -1640,7 +1660,7 @@ mod tests {
             b"\"2026-03-15T10:30:00.707Z\"",
             b"\"2026-03-15T10:30:01.013Z\"",
         ];
-        let encoded = encode_timestamp_column(values);
+        let encoded = encode_timestamp_column(values).unwrap();
         let decoded = decode_timestamp_column(&encoded);
 
         assert_eq!(decoded.len(), values.len());
@@ -1670,7 +1690,7 @@ mod tests {
             b"\"2026-03-15T10:30:01.600Z\"",
             b"\"2026-03-15T10:30:01.800Z\"",
         ];
-        let encoded = encode_timestamp_column(values);
+        let encoded = encode_timestamp_column(values).unwrap();
 
         // Header is 16 bytes. Each delta (200000 micros) zigzag = 400000,
         // which is ~3 bytes LEB128. First delta is 0 (1 byte).
@@ -1702,7 +1722,7 @@ mod tests {
             b"\"scroll\"",
             b"\"page_view\"",
         ];
-        let encoded = encode_enum_column(values);
+        let encoded = encode_enum_column(values).unwrap();
         let decoded = decode_enum_column(&encoded);
 
         assert_eq!(decoded.len(), values.len());
@@ -1729,7 +1749,7 @@ mod tests {
             b"\"medium\"",
             b"\"medium\"",
         ];
-        let encoded = encode_enum_column(values);
+        let encoded = encode_enum_column(values).unwrap();
 
         // The dictionary should be: "common" (3), "rare" (2), "medium" (2).
         // After the dict, count(4 bytes), then ordinals.
@@ -1959,7 +1979,7 @@ mod tests {
             b"\"00000000-0000-0000-0000-000000000000\"",
             b"\"ffffffff-ffff-ffff-ffff-ffffffffffff\"",
         ];
-        let encoded = encode_uuid_column(values);
+        let encoded = encode_uuid_column(values).unwrap();
         let decoded = decode_uuid_column(&encoded);
 
         assert_eq!(decoded.len(), values.len());
@@ -1982,7 +2002,7 @@ mod tests {
             b"\"6ba7b810-9dad-11d1-80b4-00c04fd430c8\"",
             b"\"f47ac10b-58cc-4372-a567-0e02b2c3d479\"",
         ];
-        let encoded = encode_uuid_column(values);
+        let encoded = encode_uuid_column(values).unwrap();
 
         // Expected: 4 (count) + 3 * 16 (bytes) = 52 bytes.
         assert_eq!(
