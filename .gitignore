@@ -26,3 +26,5 @@ benchmarks/latest.json
 
 # Environment
 .env
+crates/datacortex-python/.venv/
+crates/datacortex-python/python/datacortex/*.so

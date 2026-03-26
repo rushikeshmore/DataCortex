@@ -4,6 +4,7 @@ members = [
     "crates/datacortex-core",
     "crates/datacortex-cli",
     "crates/datacortex-neural",
+    "crates/datacortex-python",
 ]
 
 [workspace.package]

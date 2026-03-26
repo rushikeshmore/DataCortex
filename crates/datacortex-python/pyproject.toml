@@ -1,0 +1,31 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "datacortex"
+dynamic = ["version"]
+description = "The best standalone JSON/NDJSON compressor. Beats zstd and brotli on every file."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+authors = [{ name = "Rushikesh More" }]
+keywords = ["compression", "json", "ndjson", "zstd", "brotli", "lossless"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Archiving :: Compression",
+]
+
+[project.urls]
+Homepage = "https://github.com/rushikeshmore/DataCortex"
+Repository = "https://github.com/rushikeshmore/DataCortex"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "datacortex._datacortex"

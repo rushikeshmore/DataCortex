@@ -1,0 +1,21 @@
+[package]
+name = "datacortex-python"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Python bindings for DataCortex JSON/NDJSON compressor"
+readme = "README.md"
+keywords = ["compression", "json", "ndjson", "python", "pyo3"]
+categories = ["compression", "api-bindings"]
+publish = false # Published via maturin to PyPI, not crates.io
+
+[lib]
+name = "datacortex"
+crate-type = ["cdylib"]
+
+[dependencies]
+datacortex-core = { workspace = true }
+pyo3 = { version = "0.23", features = ["extension-module"] }
