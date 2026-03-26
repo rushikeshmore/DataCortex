@@ -2407,4 +2407,36 @@ mod tests {
             "training samples average size should be >= 8, got {avg_len}"
         );
     }
+
+    #[test]
+    fn null_heavy_codec_roundtrip_fast() {
+        // Regression: null-heavy NDJSON (30+ rows with all-null columns) caused CRC mismatch.
+        // Python json.dumps produces spaces after colons: {"id": 0, "val": null}
+        let mut data = Vec::new();
+        for i in 0..30 {
+            data.extend_from_slice(format!("{{\"id\": {}, \"val\": null}}\n", i).as_bytes());
+        }
+        let mut compressed = Vec::new();
+        compress(&data, Mode::Fast, None, &mut compressed).unwrap();
+        let decompressed = decompress(&mut std::io::Cursor::new(&compressed)).unwrap();
+        assert_eq!(
+            decompressed, data,
+            "null-heavy 30-row fast mode roundtrip failed"
+        );
+    }
+
+    #[test]
+    fn null_heavy_codec_roundtrip_balanced() {
+        let mut data = Vec::new();
+        for i in 0..30 {
+            data.extend_from_slice(format!("{{\"id\": {}, \"val\": null}}\n", i).as_bytes());
+        }
+        let mut compressed = Vec::new();
+        compress(&data, Mode::Balanced, None, &mut compressed).unwrap();
+        let decompressed = decompress(&mut std::io::Cursor::new(&compressed)).unwrap();
+        assert_eq!(
+            decompressed, data,
+            "null-heavy 30-row balanced mode roundtrip failed"
+        );
+    }
 }

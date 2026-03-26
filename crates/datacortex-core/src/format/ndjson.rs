@@ -221,6 +221,13 @@ fn parse_line(line: &[u8]) -> Option<ParsedLine> {
         }
         pos += 1; // Skip colon.
 
+        // Skip whitespace after colon so it becomes part of the template.
+        // Without this, spaces in "key": value would be lost during reverse
+        // because extract_value also skips leading whitespace.
+        while pos < line.len() && line[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+
         // Everything from part_start up to here is a "template part".
         parts.push(line[part_start..pos].to_vec());
 
@@ -2162,5 +2169,46 @@ mod tests {
             std::str::from_utf8(data).unwrap(),
             "explicit null values must be preserved"
         );
+    }
+
+    #[test]
+    fn null_heavy_30_rows_roundtrip() {
+        // Regression test: 30 rows with all-null column caused CRC mismatch.
+        let mut data = Vec::new();
+        for i in 0..30 {
+            data.extend_from_slice(format!("{{\"id\":{},\"val\":null}}\n", i).as_bytes());
+        }
+        let result = preprocess(&data);
+        if let Some(result) = result {
+            let restored = reverse(&result.data, &result.metadata);
+            assert_eq!(
+                restored, data,
+                "null-heavy 30-row roundtrip failed.\nOriginal len={}, Restored len={}\nOrig first 200: {:?}\nRest first 200: {:?}",
+                data.len(), restored.len(),
+                String::from_utf8_lossy(&data[..data.len().min(200)]),
+                String::from_utf8_lossy(&restored[..restored.len().min(200)])
+            );
+        }
+    }
+
+    #[test]
+    fn null_heavy_60_rows_roundtrip() {
+        // Regression test: 60 rows with multiple all-null columns.
+        let mut data = Vec::new();
+        for i in 0..60 {
+            let name = if i % 10 == 0 {
+                format!("\"user_{}\"", i)
+            } else {
+                "null".to_string()
+            };
+            data.extend_from_slice(
+                format!("{{\"id\":{},\"name\":{},\"email\":null,\"score\":null,\"active\":null,\"tags\":null}}\n", i, name).as_bytes(),
+            );
+        }
+        let result = preprocess(&data);
+        if let Some(result) = result {
+            let restored = reverse(&result.data, &result.metadata);
+            assert_eq!(restored, data, "null-heavy 60-row ndjson roundtrip failed");
+        }
     }
 }
