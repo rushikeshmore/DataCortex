@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{self, BufReader, BufWriter, Write};
+use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -26,9 +26,12 @@ use datacortex_core::{
           max        — CM engine, 13 models, ~512MB (best compression, slower)",
     version,
     after_help = "Examples:\n  \
-        datacortex compress data.json -m balanced\n  \
+        datacortex compress data.json -m fast\n  \
+        datacortex compress data.json -o output.dcx -m fast\n  \
+        cat logs.ndjson | datacortex compress - -o logs.dcx -m fast\n  \
+        datacortex compress large.ndjson --chunk-rows 10000 -m fast\n  \
         datacortex decompress data.dcx output.json\n  \
-        datacortex bench corpus/ -m balanced --compare\n  \
+        datacortex bench corpus/ -m fast --compare\n  \
         datacortex info data.dcx"
 )]
 struct Cli {
@@ -50,11 +53,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Compress a file to .dcx format
+    /// Compress a file to .dcx format (use - for stdin)
     Compress {
-        /// Input file path
+        /// Input file path (use - for stdin)
         input: PathBuf,
-        /// Output file path (default: input.dcx)
+        /// Output file path (default: input.dcx, required when reading stdin)
+        #[arg(short, long)]
         output: Option<PathBuf>,
         /// Compression mode: max, balanced, fast
         #[arg(short, long, default_value = "balanced")]
@@ -65,12 +69,16 @@ enum Command {
         /// Override zstd compression level (Fast mode only; default: mode-based)
         #[arg(long)]
         level: Option<i32>,
+        /// Split NDJSON into chunks of N rows, each compressed as an independent frame.
+        /// Enables bounded-memory compression of large files.
+        #[arg(long)]
+        chunk_rows: Option<usize>,
     },
-    /// Decompress a .dcx file
+    /// Decompress a .dcx file (supports multi-frame files)
     Decompress {
-        /// Input .dcx file
+        /// Input .dcx file (use - for stdin)
         input: PathBuf,
-        /// Output file path
+        /// Output file path (use - for stdout)
         output: PathBuf,
     },
     /// Benchmark compression on a corpus directory
@@ -125,6 +133,24 @@ fn parse_format(s: &str) -> io::Result<FormatHint> {
     }
 }
 
+fn is_stdin(p: &Path) -> bool {
+    p.as_os_str() == "-"
+}
+
+fn is_stdout(p: &Path) -> bool {
+    p.as_os_str() == "-"
+}
+
+fn read_input(input: &Path) -> io::Result<Vec<u8>> {
+    if is_stdin(input) {
+        let mut data = Vec::new();
+        io::stdin().read_to_end(&mut data)?;
+        Ok(data)
+    } else {
+        fs::read(input)
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn cmd_compress(
     input: &Path,
@@ -133,38 +159,51 @@ fn cmd_compress(
     format_override: Option<FormatHint>,
     model_path: Option<&str>,
     zstd_level_override: Option<i32>,
+    chunk_rows: Option<usize>,
     quiet: bool,
     verbose: bool,
 ) -> io::Result<()> {
-    if !input.exists() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("file not found: {}", input.display()),
-        ));
-    }
-    if !input.is_file() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("not a file: {}", input.display()),
-        ));
+    if !is_stdin(input) {
+        if !input.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("file not found: {}", input.display()),
+            ));
+        }
+        if !input.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("not a file: {}", input.display()),
+            ));
+        }
     }
 
-    let data = fs::read(input)?;
+    let data = read_input(input)?;
     if data.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "input file is empty",
+            "input is empty",
         ));
     }
 
-    let output_path = output
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| input.with_extension("dcx"));
+    // Determine output path.
+    let output_path = if let Some(p) = output {
+        p.to_path_buf()
+    } else if is_stdin(input) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "output path required when reading from stdin (use -o)",
+        ));
+    } else {
+        input.with_extension("dcx")
+    };
 
-    // Use extension hint if content detection returns Generic.
+    let writing_stdout = is_stdout(&output_path);
+
+    // Detect format.
     let format = format_override.unwrap_or_else(|| {
         let detected = detect_format(&data);
-        if detected == FormatHint::Generic {
+        if detected == FormatHint::Generic && !is_stdin(input) {
             detect_from_extension(input.to_str().unwrap_or("")).unwrap_or(FormatHint::Generic)
         } else {
             detected
@@ -172,13 +211,112 @@ fn cmd_compress(
     });
 
     if verbose && !quiet {
-        eprintln!("  input:  {} ({} bytes)", input.display(), data.len());
+        let input_name = if is_stdin(input) {
+            "stdin".to_string()
+        } else {
+            input.display().to_string()
+        };
+        eprintln!("  input:  {} ({} bytes)", input_name, data.len());
         eprintln!("  mode:   {mode}");
         eprintln!("  format: {format}");
+        if let Some(cr) = chunk_rows {
+            eprintln!("  chunk:  {cr} rows per frame");
+        }
     }
 
     let start = Instant::now();
-    let mut out = BufWriter::new(fs::File::create(&output_path)?);
+
+    // Chunked mode: split NDJSON into N-row chunks, each compressed as independent frame.
+    if let Some(chunk_size) = chunk_rows {
+        if chunk_size == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "--chunk-rows must be > 0",
+            ));
+        }
+
+        let lines: Vec<&[u8]> = data
+            .split(|&b| b == b'\n')
+            .filter(|l| !l.is_empty())
+            .collect();
+        let num_chunks = lines.len().div_ceil(chunk_size);
+
+        let mut out: Box<dyn Write> = if writing_stdout {
+            Box::new(BufWriter::new(io::stdout().lock()))
+        } else {
+            Box::new(BufWriter::new(fs::File::create(&output_path)?))
+        };
+
+        let mut total_compressed: u64 = 0;
+        for (ci, chunk_lines) in lines.chunks(chunk_size).enumerate() {
+            let mut chunk_data = Vec::new();
+            for (i, line) in chunk_lines.iter().enumerate() {
+                if i > 0 {
+                    chunk_data.push(b'\n');
+                }
+                chunk_data.extend_from_slice(line);
+            }
+            chunk_data.push(b'\n');
+
+            compress_with_options(
+                &chunk_data,
+                mode,
+                Some(format),
+                model_path,
+                zstd_level_override,
+                &mut out,
+            )?;
+
+            if verbose && !quiet {
+                eprintln!(
+                    "  chunk {}/{}: {} rows, {} bytes",
+                    ci + 1,
+                    num_chunks,
+                    chunk_lines.len(),
+                    chunk_data.len()
+                );
+            }
+        }
+        out.flush()?;
+        drop(out);
+
+        let elapsed = start.elapsed();
+
+        if !writing_stdout {
+            total_compressed = fs::metadata(&output_path)?.len();
+        }
+
+        if !quiet && !writing_stdout {
+            let input_name = if is_stdin(input) {
+                "stdin".to_string()
+            } else {
+                input.display().to_string()
+            };
+            println!(
+                "{} -> {} ({} -> {} bytes, {:.2} bpb, {:.1}% ratio, mode={}, format={}, {} chunks, {:.1}ms)",
+                input_name,
+                output_path.display(),
+                data.len(),
+                total_compressed,
+                (total_compressed as f64 * 8.0) / data.len() as f64,
+                total_compressed as f64 / data.len() as f64 * 100.0,
+                mode,
+                format,
+                num_chunks,
+                elapsed.as_secs_f64() * 1000.0,
+            );
+        }
+
+        return Ok(());
+    }
+
+    // Single-frame mode (default).
+    let mut out: Box<dyn Write> = if writing_stdout {
+        Box::new(BufWriter::new(io::stdout().lock()))
+    } else {
+        Box::new(BufWriter::new(fs::File::create(&output_path)?))
+    };
+
     compress_with_options(
         &data,
         mode,
@@ -191,14 +329,18 @@ fn cmd_compress(
     drop(out);
     let elapsed = start.elapsed();
 
-    let output_size = fs::metadata(&output_path)?.len();
-    let bpb = (output_size as f64 * 8.0) / data.len() as f64;
-    let ratio = output_size as f64 / data.len() as f64;
-
-    if !quiet {
+    if !quiet && !writing_stdout {
+        let output_size = fs::metadata(&output_path)?.len();
+        let bpb = (output_size as f64 * 8.0) / data.len() as f64;
+        let ratio = output_size as f64 / data.len() as f64;
+        let input_name = if is_stdin(input) {
+            "stdin".to_string()
+        } else {
+            input.display().to_string()
+        };
         println!(
             "{} -> {} ({} -> {} bytes, {:.2} bpb, {:.1}% ratio, mode={}, format={}, {:.1}ms)",
-            input.display(),
+            input_name,
             output_path.display(),
             data.len(),
             output_size,
@@ -219,32 +361,71 @@ fn cmd_decompress(
     model_path: Option<&str>,
     quiet: bool,
 ) -> io::Result<()> {
-    if !input.exists() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("file not found: {}", input.display()),
-        ));
-    }
-    if !input.is_file() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("not a file: {}", input.display()),
-        ));
-    }
+    let writing_stdout = is_stdout(output);
 
-    let file = fs::File::open(input)?;
-    let mut reader = BufReader::new(file);
+    // Read input (file or stdin).
+    let file_data = if is_stdin(input) {
+        let mut data = Vec::new();
+        io::stdin().read_to_end(&mut data)?;
+        data
+    } else {
+        if !input.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("file not found: {}", input.display()),
+            ));
+        }
+        if !input.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("not a file: {}", input.display()),
+            ));
+        }
+        fs::read(input)?
+    };
 
     let start = Instant::now();
-    let data = decompress_with_model(&mut reader, model_path)?;
+
+    // Check for multi-frame: read first header, see if data extends beyond first frame.
+    let mut cursor = io::Cursor::new(&file_data);
+    let first_header = read_header(&mut cursor)?;
+    let first_frame_end = cursor.position() as usize + first_header.compressed_size as usize;
+
+    let data = if first_frame_end < file_data.len() {
+        // Multi-frame: decompress all frames sequentially.
+        let mut output = Vec::new();
+        let mut pos = 0;
+        while pos < file_data.len() {
+            let mut frame_cursor = io::Cursor::new(&file_data[pos..]);
+            let frame_data = decompress_with_model(&mut frame_cursor, model_path)?;
+            pos += frame_cursor.position() as usize;
+            output.extend_from_slice(&frame_data);
+        }
+        output
+    } else {
+        // Single frame.
+        let mut reader = io::Cursor::new(&file_data);
+        decompress_with_model(&mut reader, model_path)?
+    };
+
     let elapsed = start.elapsed();
 
-    fs::write(output, &data)?;
+    if writing_stdout {
+        io::stdout().write_all(&data)?;
+        io::stdout().flush()?;
+    } else {
+        fs::write(output, &data)?;
+    }
 
-    if !quiet {
+    if !quiet && !writing_stdout {
+        let input_name = if is_stdin(input) {
+            "stdin".to_string()
+        } else {
+            input.display().to_string()
+        };
         println!(
             "{} -> {} ({} bytes, {:.1}ms)",
-            input.display(),
+            input_name,
             output.display(),
             data.len(),
             elapsed.as_secs_f64() * 1000.0,
@@ -288,7 +469,6 @@ fn cmd_bench(
         return Ok(());
     }
 
-    // Always compare with zstd in Fast mode; optionally in Balanced/Max mode.
     let show_zstd = compare || mode == Mode::Fast;
 
     if !quiet {
@@ -607,6 +787,7 @@ fn main() {
             mode,
             format,
             level,
+            chunk_rows,
         } => {
             let mode = parse_mode(mode).unwrap_or_else(|e| {
                 eprintln!("Error: {e}");
@@ -625,6 +806,7 @@ fn main() {
                 format,
                 cli.model_path.as_deref(),
                 *level,
+                *chunk_rows,
                 cli.quiet,
                 cli.verbose,
             )
