@@ -27,12 +27,17 @@ On larger structured logs:
 
 ## Installation
 
+**Rust:**
 ```bash
 cargo install datacortex-cli
 ```
 
-Or from source:
+**Python:**
+```bash
+pip install datacortex
+```
 
+**From source:**
 ```bash
 git clone https://github.com/rushikeshmore/DataCortex
 cd DataCortex
@@ -51,6 +56,17 @@ datacortex compress logs.ndjson -m fast          # explicit fast mode
 
 # Decompress
 datacortex decompress data.dcx output.ndjson
+
+# Streaming (pipe-friendly)
+cat logs.ndjson | datacortex compress - -o compressed.dcx
+datacortex decompress compressed.dcx -o -        # stdout
+
+# Chunked compression (for large NDJSON)
+datacortex compress logs.ndjson -o out.dcx --chunk-rows 10000
+
+# Custom dictionary (for known schemas)
+datacortex train-dict corpus/*.ndjson --output my.dict
+datacortex compress logs.ndjson --dict my.dict
 
 # Benchmark against zstd
 datacortex bench corpus/ -m fast --compare
@@ -74,10 +90,36 @@ datacortex info data.dcx
 
 **Balanced/Max modes** use a bit-level context mixing engine with 13 specialized models. Better for general text but slower.
 
+## Python
+
+```python
+import datacortex
+
+compressed = datacortex.compress(json_bytes, mode="fast")
+original = datacortex.decompress(compressed)
+
+# File-based
+datacortex.compress_file("logs.ndjson", "logs.dcx", mode="fast")
+datacortex.decompress_file("logs.dcx", "logs.json")
+
+# Format detection
+fmt = datacortex.detect_format(data)  # "ndjson", "json", "generic"
+```
+
+## How it works
+
+1. **Format detection** - auto-identifies JSON, NDJSON, or generic data
+2. **Schema inference** - discovers column types (integer, boolean, timestamp, enum, string, etc.)
+3. **Columnar reorg** - transposes row-oriented NDJSON into column-oriented layout
+4. **Type-specific encoding** - delta+varint for integers, bitmaps for booleans, epoch deltas for timestamps
+5. **Auto-fallback** - tries 6+ compression paths (zstd, brotli, with/without preprocessing) and picks the smallest
+
+No schema files. No configuration. Fully automatic.
+
 ## Development
 
 ```bash
-cargo test                                      # 374 tests
+cargo test                                      # 381 tests
 cargo clippy --all-targets -- -D warnings       # lint (0 warnings)
 cargo fmt --check                               # formatting
 cargo build --release                           # optimized build
