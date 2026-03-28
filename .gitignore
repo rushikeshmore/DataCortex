@@ -28,3 +28,6 @@ benchmarks/latest.json
 .env
 crates/datacortex-python/.venv/
 crates/datacortex-python/python/datacortex/*.so
+
+# Site
+site/

@@ -5,35 +5,44 @@
 ## Project
 - **Name:** datacortex
 - **Languages:** rust, python
-- **Files:** 50
-- **Symbols:** 1105
-- **Modules:** 3
-- **Last updated:** 2026-03-25T21:54:24.984Z
+- **Files:** 53
+- **Symbols:** 1127
+- **Modules:** 4
+- **Last updated:** 2026-03-28T10:35:33.722Z
 
 ## Architecture
 
-**Modules (3):**
-- **datacortex-core** (44 files, 20858 lines) — rust
+**Modules (4):**
+- **datacortex-core** (45 files, 21141 lines) — rust
+- **datacortex-cli** (1 files, 928 lines) — rust
 - **datacortex-neural** (3 files, 773 lines) — rust
-- **datacortex-cli** (1 files, 653 lines) — rust
+- **datacortex-python** (2 files, 213 lines) — python
 
 ## Risk Map
 
 **Hottest files (most changes):**
-- `CLAUDE.md` — 36 changes, VOLATILE
-- `.codecortex/constitution.md` — 31 changes, VOLATILE
-- `.codecortex/cortex.yaml` — 31 changes, VOLATILE
-- `.codecortex/graph.json` — 31 changes, VOLATILE
-- `.codecortex/hotspots.md` — 31 changes, VOLATILE
+- `CLAUDE.md` — 37 changes, VOLATILE
+- `.codecortex/constitution.md` — 32 changes, VOLATILE
+- `.codecortex/cortex.yaml` — 32 changes, VOLATILE
+- `.codecortex/graph.json` — 32 changes, VOLATILE
+- `.codecortex/hotspots.md` — 32 changes, VOLATILE
 
 **Hidden dependencies (co-change but no import):**
-- `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` — 12 co-changes (63%)
+- `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` — 12 co-changes (60%)
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` — 12 co-changes (86%)
-- `Cargo.toml` ↔ `crates/datacortex-core/Cargo.toml` — 8 co-changes (57%)
 - `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` — 8 co-changes (57%)
-- `crates/datacortex-cli/src/main.rs` ↔ `crates/datacortex-core/src/lib.rs` — 6 co-changes (75%)
+- `crates/datacortex-cli/src/main.rs` ↔ `crates/datacortex-core/src/lib.rs` — 6 co-changes (55%)
+- `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/mod.rs` — 6 co-changes (50%)
 
 **Bug-prone files:**
+- `crates/datacortex-core/src/format/ndjson.rs` — 4 fix commits
+  - preserve whitespace after colon in NDJSON columnar roundtrip
+  - nested flatten reorders sub-keys with varying presence (critical)
+  - 3 adversarial bugs — singleton arrays, long strings, identical rows
+- `.../datacortex-core/src/format/typed_encoding.rs` — 4 fix commits
+  - encoder fallback type mismatch causing infinite hang + display bug
+  - 3 adversarial bugs — singleton arrays, long strings, identical rows
+  - schema misclassifies i32::MAX as epoch timestamp (critical)
 - `.codecortex/constitution.md` — 4 fix commits
   - 3 adversarial bugs — singleton arrays, long strings, identical rows
   - schema misclassifies i32::MAX as epoch timestamp (critical)
@@ -46,18 +55,10 @@
   - 3 adversarial bugs — singleton arrays, long strings, identical rows
   - schema misclassifies i32::MAX as epoch timestamp (critical)
   - mixed-type column roundtrip corruption (critical)
-- `.codecortex/hotspots.md` — 4 fix commits
-  - 3 adversarial bugs — singleton arrays, long strings, identical rows
-  - schema misclassifies i32::MAX as epoch timestamp (critical)
-  - mixed-type column roundtrip corruption (critical)
-- `.codecortex/symbols.json` — 4 fix commits
-  - 3 adversarial bugs — singleton arrays, long strings, identical rows
-  - schema misclassifies i32::MAX as epoch timestamp (critical)
-  - mixed-type column roundtrip corruption (critical)
 
 ## Available Knowledge
 
-**Module docs:** `datacortex-cli`, `datacortex-core`, `datacortex-neural`
+**Module docs:** `datacortex-cli`, `datacortex-core`, `datacortex-neural`, `datacortex-python`
 **Decision records:** 1
 
 Read `.codecortex/modules/*.md` directly for module deep-dives.

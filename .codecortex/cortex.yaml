@@ -2,13 +2,13 @@ version: 1.0.0
 project: datacortex
 root: /Users/rushikeshmore/Desktop/personal-desk/03-projects/datacortex
 generated: 2026-03-24T11:04:44.370Z
-lastUpdated: 2026-03-25T21:54:24.984Z
+lastUpdated: 2026-03-28T10:35:33.722Z
 languages:
   - rust
   - python
-totalFiles: 50
-totalSymbols: 1105
-totalModules: 3
+totalFiles: 53
+totalSymbols: 1127
+totalModules: 4
 projectSize: small
 tiers:
   hot:
