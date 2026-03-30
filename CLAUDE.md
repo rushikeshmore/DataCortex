@@ -1,4 +1,4 @@
-# DataCortex — Claude Code Instructions
+# DataCortex - Claude Code Instructions
 
 ## What This Is
 JSON/NDJSON-focused lossless compression engine in Rust. Dual-pipeline: Fast mode (columnar + typed encoding + zstd/brotli auto-fallback) and Balanced mode (columnar + CM engine). Beats zstd-19 (+4% to +113%) and brotli-11 on every JSON file tested.
@@ -9,17 +9,17 @@ Input → Format Detection → NDJSON Columnar Reorg → [Nested Decomposition] 
 ```
 
 Key modules:
-- `format/ndjson.rs` — Columnar transform (uniform Strategy 1 + grouped Strategy 2)
-- `format/schema.rs` — Auto schema inference (8 types: Integer, Float, Boolean, Timestamp, UUID, Enum, String, Null)
-- `format/typed_encoding.rs` — Type-specific binary encoding (delta varint, bitmap, enum dict, timestamp delta, etc.)
-- `format/value_dict.rs` — Per-column dictionary encoding
-- `format/json.rs` — Key interning (Balanced/Max only)
-- `format/json_array.rs` — JSON array columnar
-- `model/` — CM engine: Order0-9, match, word, sparse, run, JSON, indirect, PPM, DMC models
-- `mixer/` — Triple logistic mixer + 7-stage APM + GRU MetaMixer
-- `entropy/` — Binary arithmetic coder (12-bit)
-- `codec.rs` — Pipeline orchestrator with zstd dict training
-- `dcx.rs` — .dcx v3 file format
+- `format/ndjson.rs` -Columnar transform (uniform Strategy 1 + grouped Strategy 2)
+- `format/schema.rs` -Auto schema inference (8 types: Integer, Float, Boolean, Timestamp, UUID, Enum, String, Null)
+- `format/typed_encoding.rs` -Type-specific binary encoding (delta varint, bitmap, enum dict, timestamp delta, etc.)
+- `format/value_dict.rs` -Per-column dictionary encoding
+- `format/json.rs` -Key interning (Balanced/Max only)
+- `format/json_array.rs` -JSON array columnar
+- `model/` -CM engine: Order0-9, match, word, sparse, run, JSON, indirect, PPM, DMC models
+- `mixer/` -Triple logistic mixer + 7-stage APM + GRU MetaMixer
+- `entropy/` -Binary arithmetic coder (12-bit)
+- `codec.rs` -Pipeline orchestrator with zstd dict training
+- `dcx.rs` -.dcx v3 file format
 
 ## Current Status
 **v0.4.3.** JSON/NDJSON focused. 381 tests. 93 commits. Published: crates.io (core + CLI v0.4.3), PyPI (datacortex v0.4.3). Site: datacortex-mocha.vercel.app.
@@ -75,15 +75,15 @@ cargo clippy --all-targets -- -D warnings
 - η=2 for fine mixer (64K weights), η=4 for coarse (4K).
 
 ## Corpus
-- `corpus/test-ndjson.ndjson` — 200 rows, 14 columns, uniform schema (primary test)
-- `corpus/test-api.json` — JSON API response
-- `corpus/test-config.json` — Small JSON config
-- `corpus/alice29.txt` — English prose (general text reference)
-- `corpus/json-bench/uniform-10k.ndjson` — 10K rows (scaling test)
-- `corpus/json-bench/gharchive-10mb.ndjson` — Real GH Archive (diverse schemas)
-- `corpus/json-bench/twitter.json` — simdjson benchmark
-- `corpus/json-bench/citm_catalog.json` — Highly repetitive JSON
-- `corpus/json-bench/canada.json` — GeoJSON (numeric-heavy)
+- `corpus/test-ndjson.ndjson` -200 rows, 14 columns, uniform schema (primary test)
+- `corpus/test-api.json` -JSON API response
+- `corpus/test-config.json` -Small JSON config
+- `corpus/alice29.txt` -English prose (general text reference)
+- `corpus/json-bench/uniform-10k.ndjson` -10K rows (scaling test)
+- `corpus/json-bench/gharchive-10mb.ndjson` -Real GH Archive (diverse schemas)
+- `corpus/json-bench/twitter.json` -simdjson benchmark
+- `corpus/json-bench/citm_catalog.json` -Highly repetitive JSON
+- `corpus/json-bench/canada.json` -GeoJSON (numeric-heavy)
 
 ## Typed Encoding (format/typed_encoding.rs)
 - Integer: delta + ZigZag + LEB128 varint
@@ -96,29 +96,29 @@ cargo clippy --all-targets -- -D warnings
 
 ## Full Documentation (Obsidian Vault)
 All detailed docs in `Rushikesh OS/2. Projects/06. DataCortex/`:
-- `Build SOP's/gotchas.md` — 47 institutional lessons
-- `Build SOP's/testing.md` — 4-tier pre-publish gate (unit, corpus, adversarial agent, real-world)
-- `Build SOP's/deployment.md`, `coding.md`, `surfaces.md` — SOPs
-- `Plan-Next-Phase.md` — roadmap (Phase 1-4)
+- `Build SOP's/gotchas.md` -47 institutional lessons
+- `Build SOP's/testing.md` -4-tier pre-publish gate (unit, corpus, adversarial agent, real-world)
+- `Build SOP's/deployment.md`, `coding.md`, `surfaces.md` -SOPs
+- `Plan-Next-Phase.md` -roadmap (Phase 1-4)
 - Session logs in `00. Logs/` (8 sessions, Mar 15-27)
 
 ## Commits
 Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` in commit messages.
 
 <!-- codecortex:start -->
-## CodeCortex — Project Knowledge (auto-updated)
+## CodeCortex -Project Knowledge (auto-updated)
 
 ### Architecture
-**datacortex** — rust, python — 53 files, 1127 symbols
+**datacortex** -rust, python -53 files, 1127 symbols
 - **Modules (4):** datacortex-core (21141loc), datacortex-cli (928loc), datacortex-neural (773loc), datacortex-python (213loc)
 
 ### Risk Map
 **High-risk files:**
-- `CLAUDE.md` — 37 changes, 4 bug-fixes, volatile
-- `.codecortex/constitution.md` — 32 changes, 4 bug-fixes, volatile
-- `.codecortex/cortex.yaml` — 32 changes, 4 bug-fixes, volatile
-- `.codecortex/graph.json` — 32 changes, 4 bug-fixes, volatile
-- `.codecortex/hotspots.md` — 32 changes, 4 bug-fixes, volatile
+- `CLAUDE.md` -38 changes, 4 bug-fixes, volatile
+- `.codecortex/constitution.md` -33 changes, 4 bug-fixes, volatile
+- `.codecortex/cortex.yaml` -33 changes, 4 bug-fixes, volatile
+- `.codecortex/graph.json` -33 changes, 4 bug-fixes, volatile
+- `.codecortex/hotspots.md` -33 changes, 4 bug-fixes, volatile
 
 **Hidden couplings (co-change, no import):**
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (60% co-change)
@@ -126,9 +126,9 @@ Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` i
 - `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` (57% co-change)
 
 **Bug-prone files:**
-- `crates/datacortex-core/src/format/ndjson.rs` — 4 bug-fix commits
-- `.../datacortex-core/src/format/typed_encoding.rs` — 4 bug-fix commits
-- `.codecortex/symbols.json` — 4 bug-fix commits
+- `crates/datacortex-core/src/format/ndjson.rs` -4 bug-fix commits
+- `.../datacortex-core/src/format/typed_encoding.rs` -4 bug-fix commits
+- `.codecortex/symbols.json` -4 bug-fix commits
 
 ### Before Editing
 Check `.codecortex/hotspots.md` for risk-ranked files before editing.
@@ -137,17 +137,17 @@ If not, read `.codecortex/modules/<module>.md` for the relevant module's depende
 
 ### Project Knowledge
 Read these files directly (always available, no tool call needed):
-- `.codecortex/hotspots.md` — risk-ranked files with coupling + bug data
-- `.codecortex/modules/*.md` — module docs, dependencies, temporal signals
-- `.codecortex/constitution.md` — full architecture overview
-- `.codecortex/patterns.md` — coding conventions
-- `.codecortex/decisions/*.md` — architectural decisions
+- `.codecortex/hotspots.md` -risk-ranked files with coupling + bug data
+- `.codecortex/modules/*.md` -module docs, dependencies, temporal signals
+- `.codecortex/constitution.md` -full architecture overview
+- `.codecortex/patterns.md` -coding conventions
+- `.codecortex/decisions/*.md` -architectural decisions
 
 ### MCP Tools (if available)
 If a CodeCortex MCP server is connected, these tools provide live analysis:
-- `get_edit_briefing` — risk + coupling + bugs for files you plan to edit.
-- `get_change_coupling` — files that co-change (hidden dependencies).
-- `get_project_overview` — architecture + dependency graph summary.
-- `get_dependency_graph` — scoped import/call graph for file or module.
-- `lookup_symbol` — precise symbol search (name, kind, file filters).
+- `get_edit_briefing` -risk + coupling + bugs for files you plan to edit.
+- `get_change_coupling` -files that co-change (hidden dependencies).
+- `get_project_overview` -architecture + dependency graph summary.
+- `get_dependency_graph` -scoped import/call graph for file or module.
+- `lookup_symbol` -precise symbol search (name, kind, file filters).
 <!-- codecortex:end -->

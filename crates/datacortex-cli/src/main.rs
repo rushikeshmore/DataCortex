@@ -16,13 +16,13 @@ use datacortex_core::{
 #[command(
     name = "datacortex",
     about = "Lossless text compression engine with format-aware preprocessing and context mixing.",
-    long_about = "DataCortex — lossless text compression engine.\n\n\
-        Understands file structure (JSON, Markdown, NDJSON, logs, code) and applies\n\
-        format-aware preprocessing before bit-level context mixing with 13 models.\n\n\
+    long_about = "DataCortex - lossless JSON/NDJSON compression engine.\n\n\
+        Auto-infers schema, applies columnar reorg + type-specific encoding,\n\
+        then picks the optimal entropy coder. Beats zstd-19 and brotli-11.\n\n\
         Modes:\n  \
-          fast       — zstd backend with preprocessing (~3 bpb, fast)\n  \
-          balanced   — CM engine, 13 models, ~256MB (~2.2 bpb, slow)\n  \
-          max        — CM engine, 13 models, ~512MB (best compression, slower)",
+          fast       - columnar + typed encoding + zstd/brotli (recommended for JSON)\n  \
+          balanced   - CM engine, 13 models, ~256MB (general text, slower)\n  \
+          max        - CM engine, 13 models, ~512MB (best compression, slowest)",
     version,
     after_help = "Examples:\n  \
         datacortex compress data.json -m fast\n  \

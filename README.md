@@ -2,7 +2,9 @@
 
 The best standalone JSON/NDJSON compressor. Beats zstd-19 and brotli-11 on every file tested.
 
-DataCortex auto-infers your JSON schema, applies columnar reorg + type-specific encoding, then picks the optimal entropy coder (zstd or brotli). No schema files, no database, no configuration — just `datacortex compress data.json`.
+[Site](https://datacortex-mocha.vercel.app) | [crates.io](https://crates.io/crates/datacortex-cli) | [PyPI](https://pypi.org/project/datacortex/) | [Docs](https://github.com/rushikeshmore/DataCortex)
+
+DataCortex auto-infers your JSON schema, applies columnar reorg + type-specific encoding, then picks the optimal entropy coder (zstd or brotli). No schema files, no database, no configuration. Just `datacortex compress data.json`.
 
 ## Benchmarks
 
@@ -23,7 +25,7 @@ On larger structured logs:
 | k8s structured logs (100K rows) | 9.9 MB | **~40x** | 18.9x | **+113%** |
 | nginx access logs (100K rows) | 9.5 MB | **~28x** | 17.3x | **+62%** |
 
-> Higher is better. DataCortex wins on every file. Lossless — byte-exact decompression guaranteed.
+> Higher is better. DataCortex wins on every file. Lossless, byte-exact decompression guaranteed.
 
 ## Installation
 

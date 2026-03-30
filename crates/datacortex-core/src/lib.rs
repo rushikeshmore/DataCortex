@@ -1,4 +1,4 @@
-//! DataCortex — lossless text compression engine.
+//! DataCortex - lossless JSON/NDJSON compression engine.
 //!
 //! Format-aware preprocessing + bit-level context mixing + entropy coding.
 
