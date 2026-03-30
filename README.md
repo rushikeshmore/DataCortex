@@ -2,7 +2,7 @@
 
 The best standalone JSON/NDJSON compressor. Beats zstd-19 and brotli-11 on every file tested.
 
-[Site](https://datacortex-mocha.vercel.app) | [crates.io](https://crates.io/crates/datacortex-cli) | [PyPI](https://pypi.org/project/datacortex/) | [Docs](https://github.com/rushikeshmore/DataCortex)
+[Site](https://datacortex-dcx.vercel.app) | [crates.io](https://crates.io/crates/datacortex-cli) | [PyPI](https://pypi.org/project/datacortex/) | [Docs](https://github.com/rushikeshmore/DataCortex)
 
 DataCortex auto-infers your JSON schema, applies columnar reorg + type-specific encoding, then picks the optimal entropy coder (zstd or brotli). No schema files, no database, no configuration. Just `datacortex compress data.json`.
 

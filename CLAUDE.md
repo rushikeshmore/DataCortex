@@ -22,7 +22,7 @@ Key modules:
 - `dcx.rs` -.dcx v3 file format
 
 ## Current Status
-**v0.4.3.** JSON/NDJSON focused. 381 tests. 93 commits. Published: crates.io (core + CLI v0.4.3), PyPI (datacortex v0.4.3). Site: datacortex-mocha.vercel.app.
+**v0.4.3.** JSON/NDJSON focused. 381 tests. 93 commits. Published: crates.io (core + CLI v0.4.3), PyPI (datacortex v0.4.3). Site: datacortex-dcx.vercel.app.
 
 **Benchmark results:**
 | File | Size | DataCortex | zstd-19 | brotli-11 | vs best |
@@ -106,19 +106,19 @@ All detailed docs in `Rushikesh OS/2. Projects/06. DataCortex/`:
 Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` in commit messages.
 
 <!-- codecortex:start -->
-## CodeCortex -Project Knowledge (auto-updated)
+## CodeCortex — Project Knowledge (auto-updated)
 
 ### Architecture
-**datacortex** -rust, python -53 files, 1127 symbols
+**datacortex** — rust, python — 53 files, 1127 symbols
 - **Modules (4):** datacortex-core (21141loc), datacortex-cli (928loc), datacortex-neural (773loc), datacortex-python (213loc)
 
 ### Risk Map
 **High-risk files:**
-- `CLAUDE.md` -38 changes, 4 bug-fixes, volatile
-- `.codecortex/constitution.md` -33 changes, 4 bug-fixes, volatile
-- `.codecortex/cortex.yaml` -33 changes, 4 bug-fixes, volatile
-- `.codecortex/graph.json` -33 changes, 4 bug-fixes, volatile
-- `.codecortex/hotspots.md` -33 changes, 4 bug-fixes, volatile
+- `CLAUDE.md` — 39 changes, 4 bug-fixes, volatile
+- `.codecortex/constitution.md` — 34 changes, 4 bug-fixes, volatile
+- `.codecortex/cortex.yaml` — 34 changes, 4 bug-fixes, volatile
+- `.codecortex/graph.json` — 34 changes, 4 bug-fixes, volatile
+- `.codecortex/hotspots.md` — 34 changes, 4 bug-fixes, volatile
 
 **Hidden couplings (co-change, no import):**
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (60% co-change)
@@ -126,9 +126,9 @@ Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` i
 - `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` (57% co-change)
 
 **Bug-prone files:**
-- `crates/datacortex-core/src/format/ndjson.rs` -4 bug-fix commits
-- `.../datacortex-core/src/format/typed_encoding.rs` -4 bug-fix commits
-- `.codecortex/symbols.json` -4 bug-fix commits
+- `crates/datacortex-core/src/format/ndjson.rs` — 4 bug-fix commits
+- `.../datacortex-core/src/format/typed_encoding.rs` — 4 bug-fix commits
+- `.codecortex/symbols.json` — 4 bug-fix commits
 
 ### Before Editing
 Check `.codecortex/hotspots.md` for risk-ranked files before editing.
@@ -137,17 +137,17 @@ If not, read `.codecortex/modules/<module>.md` for the relevant module's depende
 
 ### Project Knowledge
 Read these files directly (always available, no tool call needed):
-- `.codecortex/hotspots.md` -risk-ranked files with coupling + bug data
-- `.codecortex/modules/*.md` -module docs, dependencies, temporal signals
-- `.codecortex/constitution.md` -full architecture overview
-- `.codecortex/patterns.md` -coding conventions
-- `.codecortex/decisions/*.md` -architectural decisions
+- `.codecortex/hotspots.md` — risk-ranked files with coupling + bug data
+- `.codecortex/modules/*.md` — module docs, dependencies, temporal signals
+- `.codecortex/constitution.md` — full architecture overview
+- `.codecortex/patterns.md` — coding conventions
+- `.codecortex/decisions/*.md` — architectural decisions
 
 ### MCP Tools (if available)
 If a CodeCortex MCP server is connected, these tools provide live analysis:
-- `get_edit_briefing` -risk + coupling + bugs for files you plan to edit.
-- `get_change_coupling` -files that co-change (hidden dependencies).
-- `get_project_overview` -architecture + dependency graph summary.
-- `get_dependency_graph` -scoped import/call graph for file or module.
-- `lookup_symbol` -precise symbol search (name, kind, file filters).
+- `get_edit_briefing` — risk + coupling + bugs for files you plan to edit.
+- `get_change_coupling` — files that co-change (hidden dependencies).
+- `get_project_overview` — architecture + dependency graph summary.
+- `get_dependency_graph` — scoped import/call graph for file or module.
+- `lookup_symbol` — precise symbol search (name, kind, file filters).
 <!-- codecortex:end -->
