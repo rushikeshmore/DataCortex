@@ -27,6 +27,21 @@ On larger structured logs:
 
 > Higher is better. DataCortex wins on every file. Lossless, byte-exact decompression guaranteed.
 
+## Performance
+
+Throughput on an Apple M-series chip (Fast mode, single run, release build):
+
+| File | Size | Ratio | Encode | Decode |
+|------|------|-------|--------|--------|
+| NDJSON (10K rows) | 3.3 MB | 27.6x | 4.0 MB/s | 128 MB/s |
+| GH Archive (diverse) | 10.0 MB | 7.0x | 5.1 MB/s | 272 MB/s |
+| Twitter API | 617 KB | 19.7x | 1.5 MB/s | 206 MB/s |
+| Event tickets | 1.7 MB | 221.6x | 7.4 MB/s | 953 MB/s |
+
+**Decode is near-instant** (128-953 MB/s). Encode trades speed for 2x better compression vs zstd. For throughput-critical pipelines, DataCortex is best suited as a batch compressor for log storage, not a real-time codec.
+
+Run `datacortex bench corpus/ -m fast --compare` to measure on your hardware.
+
 ## Installation
 
 **Rust:**
@@ -121,7 +136,7 @@ No schema files. No configuration. Fully automatic.
 ## Development
 
 ```bash
-cargo test                                      # 381 tests
+cargo test                                      # 389 tests
 cargo clippy --all-targets -- -D warnings       # lint (0 warnings)
 cargo fmt --check                               # formatting
 cargo build --release                           # optimized build
