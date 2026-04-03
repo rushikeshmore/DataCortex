@@ -33,12 +33,12 @@ Throughput on an Apple M-series chip (Fast mode, single run, release build):
 
 | File | Size | Ratio | Encode | Decode |
 |------|------|-------|--------|--------|
-| NDJSON (10K rows) | 3.3 MB | 27.6x | 4.0 MB/s | 128 MB/s |
-| GH Archive (diverse) | 10.0 MB | 7.0x | 5.1 MB/s | 272 MB/s |
-| Twitter API | 617 KB | 19.7x | 1.5 MB/s | 206 MB/s |
-| Event tickets | 1.7 MB | 221.6x | 7.4 MB/s | 953 MB/s |
+| NDJSON (10K rows) | 3.3 MB | 27.6x | 4.1 MB/s | 176 MB/s |
+| GH Archive (diverse) | 10.0 MB | 7.8x | 3.2 MB/s | 574 MB/s |
+| Twitter API | 617 KB | 19.7x | 2.3 MB/s | 384 MB/s |
+| Event tickets | 1.7 MB | 221.6x | 8.6 MB/s | 1124 MB/s |
 
-**Decode is near-instant** (128-953 MB/s). Encode trades speed for 2x better compression vs zstd. For throughput-critical pipelines, DataCortex is best suited as a batch compressor for log storage, not a real-time codec.
+**Decode is near-instant** (176-1124 MB/s). Encode trades speed for 2x better compression vs zstd. For throughput-critical pipelines, DataCortex is best suited as a batch compressor for log storage, not a real-time codec.
 
 Run `datacortex bench corpus/ -m fast --compare` to measure on your hardware.
 
@@ -136,7 +136,7 @@ No schema files. No configuration. Fully automatic.
 ## Development
 
 ```bash
-cargo test                                      # 389 tests
+cargo test                                      # 390 tests
 cargo clippy --all-targets -- -D warnings       # lint (0 warnings)
 cargo fmt --check                               # formatting
 cargo build --release                           # optimized build
