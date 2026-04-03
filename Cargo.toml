@@ -6,6 +6,9 @@ members = [
     "crates/datacortex-neural",
     "crates/datacortex-python",
 ]
+exclude = [
+    "vector-plugin",
+]
 
 [workspace.package]
 version = "0.4.3"

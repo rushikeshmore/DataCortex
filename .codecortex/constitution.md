@@ -8,7 +8,7 @@
 - **Files:** 53
 - **Symbols:** 1127
 - **Modules:** 4
-- **Last updated:** 2026-03-28T10:35:50.365Z
+- **Last updated:** 2026-03-30T06:51:59.943Z
 
 ## Architecture
 
@@ -21,20 +21,24 @@
 ## Risk Map
 
 **Hottest files (most changes):**
-- `CLAUDE.md` — 38 changes, VOLATILE
-- `.codecortex/constitution.md` — 33 changes, VOLATILE
-- `.codecortex/cortex.yaml` — 33 changes, VOLATILE
-- `.codecortex/graph.json` — 33 changes, VOLATILE
-- `.codecortex/hotspots.md` — 33 changes, VOLATILE
+- `CLAUDE.md` — 40 changes, VOLATILE
+- `.codecortex/constitution.md` — 34 changes, VOLATILE
+- `.codecortex/cortex.yaml` — 34 changes, VOLATILE
+- `.codecortex/graph.json` — 34 changes, VOLATILE
+- `.codecortex/hotspots.md` — 34 changes, VOLATILE
 
 **Hidden dependencies (co-change but no import):**
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` — 12 co-changes (60%)
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` — 12 co-changes (86%)
 - `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` — 8 co-changes (57%)
-- `crates/datacortex-cli/src/main.rs` ↔ `crates/datacortex-core/src/lib.rs` — 6 co-changes (55%)
+- `crates/datacortex-cli/src/main.rs` ↔ `crates/datacortex-core/src/lib.rs` — 7 co-changes (58%)
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/mod.rs` — 6 co-changes (50%)
 
 **Bug-prone files:**
+- `CLAUDE.md` — 5 fix commits
+  - correct site URL to datacortex-dcx.vercel.app
+  - 3 adversarial bugs — singleton arrays, long strings, identical rows
+  - schema misclassifies i32::MAX as epoch timestamp (critical)
 - `crates/datacortex-core/src/format/ndjson.rs` — 4 fix commits
   - preserve whitespace after colon in NDJSON columnar roundtrip
   - nested flatten reorders sub-keys with varying presence (critical)
@@ -48,10 +52,6 @@
   - schema misclassifies i32::MAX as epoch timestamp (critical)
   - mixed-type column roundtrip corruption (critical)
 - `.codecortex/cortex.yaml` — 4 fix commits
-  - 3 adversarial bugs — singleton arrays, long strings, identical rows
-  - schema misclassifies i32::MAX as epoch timestamp (critical)
-  - mixed-type column roundtrip corruption (critical)
-- `.codecortex/graph.json` — 4 fix commits
   - 3 adversarial bugs — singleton arrays, long strings, identical rows
   - schema misclassifies i32::MAX as epoch timestamp (critical)
   - mixed-type column roundtrip corruption (critical)

@@ -114,7 +114,7 @@ Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` i
 
 ### Risk Map
 **High-risk files:**
-- `CLAUDE.md` — 39 changes, 4 bug-fixes, volatile
+- `CLAUDE.md` — 40 changes, 5 bug-fixes, volatile
 - `.codecortex/constitution.md` — 34 changes, 4 bug-fixes, volatile
 - `.codecortex/cortex.yaml` — 34 changes, 4 bug-fixes, volatile
 - `.codecortex/graph.json` — 34 changes, 4 bug-fixes, volatile

@@ -31,3 +31,6 @@ crates/datacortex-python/python/datacortex/*.so
 
 # Site
 site/
+
+# Vector plugin (standalone surface, separate lifecycle)
+vector-plugin/
