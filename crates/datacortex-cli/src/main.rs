@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use clap::{Parser, Subcommand};
 use datacortex_core::{
-    codec::{compress_to_vec, compress_with_full_options, train_dict},
+    codec::{compress_to_vec, compress_with_full_options, decompress_from_slice, train_dict},
     dcx::{FormatHint, Mode},
     decompress_with_model, detect_format,
     format::detect_from_extension,
@@ -525,7 +525,7 @@ fn cmd_bench(
     compare: bool,
     save: bool,
     quiet: bool,
-    verbose: bool,
+    _verbose: bool,
 ) -> io::Result<()> {
     if !dir.exists() {
         return Err(io::Error::new(
@@ -567,23 +567,32 @@ fn cmd_bench(
 
         if show_zstd {
             println!(
-                "  {:<24} {:>8} {:>8} {:>7} {:>8} {:>7} {:>8} {:>8}",
-                "File", "Original", "DCX", "bpb", "zstd", "bpb", "vs zstd", "Format"
+                "  {:<24} {:>8} {:>8} {:>7} {:>9} {:>9} {:>8} {:>8} {:>8}",
+                "File",
+                "Original",
+                "DCX",
+                "bpb",
+                "Enc MB/s",
+                "Dec MB/s",
+                "zstd",
+                "vs zstd",
+                "Format"
             );
-            println!("  {}", "-".repeat(91));
+            println!("  {}", "-".repeat(107));
         } else {
             println!(
-                "  {:<24} {:>8} {:>8} {:>7} {:>9} {:>8}",
-                "File", "Original", "DCX", "bpb", "Time", "Format"
+                "  {:<24} {:>8} {:>8} {:>7} {:>9} {:>9} {:>8}",
+                "File", "Original", "DCX", "bpb", "Enc MB/s", "Dec MB/s", "Format"
             );
-            println!("  {}", "-".repeat(68));
+            println!("  {}", "-".repeat(84));
         }
     }
 
     let mut total_original: u64 = 0;
     let mut total_compressed: u64 = 0;
     let mut total_raw_zstd: u64 = 0;
-    let mut total_time_ms: f64 = 0.0;
+    let mut total_enc_ms: f64 = 0.0;
+    let mut total_dec_ms: f64 = 0.0;
     let mut results = Vec::new();
 
     for entry in &entries {
@@ -593,8 +602,11 @@ fn cmd_bench(
 
         let start = Instant::now();
         let compressed = compress_to_vec(&data, mode, None)?;
-        let elapsed = start.elapsed();
-        let time_ms = elapsed.as_secs_f64() * 1000.0;
+        let enc_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+        let dec_start = Instant::now();
+        let _ = decompress_from_slice(&compressed);
+        let dec_ms = dec_start.elapsed().as_secs_f64() * 1000.0;
 
         let orig_size = data.len() as u64;
         let comp_size = compressed.len() as u64;
@@ -603,12 +615,23 @@ fn cmd_bench(
         } else {
             (comp_size as f64 * 8.0) / orig_size as f64
         };
+        let enc_mbs = if enc_ms > 0.0 {
+            orig_size as f64 / 1_048_576.0 / (enc_ms / 1000.0)
+        } else {
+            0.0
+        };
+        let dec_mbs = if dec_ms > 0.0 {
+            orig_size as f64 / 1_048_576.0 / (dec_ms / 1000.0)
+        } else {
+            0.0
+        };
 
         let detected = detect_format(&data);
 
         total_original += orig_size;
         total_compressed += comp_size;
-        total_time_ms += time_ms;
+        total_enc_ms += enc_ms;
+        total_dec_ms += dec_ms;
 
         if show_zstd {
             let zstd_level = match mode {
@@ -633,20 +656,17 @@ fn cmd_bench(
 
             if !quiet {
                 println!(
-                    "  {:<24} {:>8} {:>8} {:>6.2}  {:>8} {:>6.2}  {:>+6.1}% {:>8}",
+                    "  {:<24} {:>8} {:>8} {:>6.2}  {:>8.1} {:>8.1}  {:>8} {:>+6.1}% {:>8}",
                     name,
                     format_size(orig_size),
                     format_size(comp_size),
                     bpb,
+                    enc_mbs,
+                    dec_mbs,
                     format_size(raw_size),
-                    raw_bpb,
                     delta_pct,
                     detected,
                 );
-            }
-
-            if verbose && !quiet {
-                eprintln!("    time: {time_ms:.1}ms");
             }
 
             results.push(serde_json::json!({
@@ -657,36 +677,23 @@ fn cmd_bench(
                 "raw_zstd_bytes": raw_size,
                 "raw_zstd_bpb": (raw_bpb * 1000.0).round() / 1000.0,
                 "improvement_pct": (delta_pct * 10.0).round() / 10.0,
-                "time_ms": (time_ms * 100.0).round() / 100.0,
+                "encode_mb_s": (enc_mbs * 10.0).round() / 10.0,
+                "decode_mb_s": (dec_mbs * 10.0).round() / 10.0,
+                "encode_ms": (enc_ms * 100.0).round() / 100.0,
+                "decode_ms": (dec_ms * 100.0).round() / 100.0,
                 "format": detected.to_string(),
             }));
         } else {
             if !quiet {
                 println!(
-                    "  {:<24} {:>8} {:>8} {:>6.3}  {:>7.1}ms {:>8}",
+                    "  {:<24} {:>8} {:>8} {:>6.3}  {:>8.1} {:>8.1} {:>8}",
                     name,
                     format_size(orig_size),
                     format_size(comp_size),
                     bpb,
-                    time_ms,
+                    enc_mbs,
+                    dec_mbs,
                     detected,
-                );
-            }
-
-            if verbose && !quiet {
-                let ratio = if orig_size == 0 {
-                    0.0
-                } else {
-                    comp_size as f64 / orig_size as f64
-                };
-                eprintln!(
-                    "    ratio: {:.1}% | speed: {:.1} KB/s",
-                    ratio * 100.0,
-                    if time_ms > 0.0 {
-                        orig_size as f64 / 1024.0 / (time_ms / 1000.0)
-                    } else {
-                        0.0
-                    },
                 );
             }
 
@@ -695,7 +702,10 @@ fn cmd_bench(
                 "original_bytes": orig_size,
                 "compressed_bytes": comp_size,
                 "bpb": (bpb * 1000.0).round() / 1000.0,
-                "time_ms": (time_ms * 100.0).round() / 100.0,
+                "encode_mb_s": (enc_mbs * 10.0).round() / 10.0,
+                "decode_mb_s": (dec_mbs * 10.0).round() / 10.0,
+                "encode_ms": (enc_ms * 100.0).round() / 100.0,
+                "decode_ms": (dec_ms * 100.0).round() / 100.0,
                 "format": detected.to_string(),
             }));
         }
@@ -707,38 +717,46 @@ fn cmd_bench(
         (total_compressed as f64 * 8.0) / total_original as f64
     };
 
+    let total_enc_mbs = if total_enc_ms > 0.0 {
+        total_original as f64 / 1_048_576.0 / (total_enc_ms / 1000.0)
+    } else {
+        0.0
+    };
+    let total_dec_mbs = if total_dec_ms > 0.0 {
+        total_original as f64 / 1_048_576.0 / (total_dec_ms / 1000.0)
+    } else {
+        0.0
+    };
+
     if !quiet {
         if show_zstd {
-            println!("  {}", "-".repeat(91));
-            let total_raw_bpb = if total_original == 0 {
-                0.0
-            } else {
-                (total_raw_zstd as f64 * 8.0) / total_original as f64
-            };
+            println!("  {}", "-".repeat(107));
             let total_delta = if total_raw_zstd == 0 {
                 0.0
             } else {
                 (1.0 - total_compressed as f64 / total_raw_zstd as f64) * 100.0
             };
             println!(
-                "  {:<24} {:>8} {:>8} {:>6.2}  {:>8} {:>6.2}  {:>+6.1}%",
+                "  {:<24} {:>8} {:>8} {:>6.2}  {:>8.1} {:>8.1}  {:>8} {:>+6.1}%",
                 "TOTAL",
                 format_size(total_original),
                 format_size(total_compressed),
                 total_bpb,
+                total_enc_mbs,
+                total_dec_mbs,
                 format_size(total_raw_zstd),
-                total_raw_bpb,
                 total_delta,
             );
         } else {
-            println!("  {}", "-".repeat(68));
+            println!("  {}", "-".repeat(84));
             println!(
-                "  {:<24} {:>8} {:>8} {:>6.3}  {:>7.1}ms",
+                "  {:<24} {:>8} {:>8} {:>6.3}  {:>8.1} {:>8.1}",
                 "TOTAL",
                 format_size(total_original),
                 format_size(total_compressed),
                 total_bpb,
-                total_time_ms,
+                total_enc_mbs,
+                total_dec_mbs,
             );
         }
 
@@ -749,9 +767,10 @@ fn cmd_bench(
         };
         println!();
         println!(
-            "  Overall: {:.1}% compression ratio | {:.1}ms total",
+            "  Overall: {:.1}% compression ratio | Enc: {:.1} MB/s | Dec: {:.1} MB/s",
             overall_ratio * 100.0,
-            total_time_ms,
+            total_enc_mbs,
+            total_dec_mbs,
         );
         println!();
     }
