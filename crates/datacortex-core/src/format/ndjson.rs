@@ -27,9 +27,22 @@ const COL_SEP: u8 = 0x00;
 const VAL_SEP: u8 = 0x01;
 const METADATA_VERSION_UNIFORM: u8 = 1;
 const METADATA_VERSION_GROUPED: u8 = 2;
+const METADATA_VERSION_SELECTIVE: u8 = 3;
 
 /// Minimum rows in a schema group for it to be columnarized (not residual).
 const MIN_GROUP_ROWS: usize = 5;
+
+/// Minimum average value length for a column to be kept inline (row-major).
+/// Only large unique values (like nested JSON payloads of 100+ bytes) benefit from
+/// inline storage. Moderate-length values (metadata objects, URLs) compress well
+/// in column-major order even at high cardinality because zstd can exploit shared
+/// structural patterns between adjacent values.
+const SELECTIVE_MIN_AVG_LEN: usize = 128;
+
+/// Maximum cardinality ratio (unique/total) for a column to be extracted into columnar format.
+/// Columns above this threshold AND above `SELECTIVE_MIN_AVG_LEN` are kept inline (row-major)
+/// to preserve inter-row locality that benefits zstd/brotli compression.
+const SELECTIVE_MAX_CARDINALITY: f64 = 0.7;
 
 /// A schema group: template parts + list of (row_index, parsed_values).
 type SchemaGroup = (Vec<Vec<u8>>, Vec<(usize, Vec<Vec<u8>>)>);
@@ -323,6 +336,113 @@ fn build_uniform_columnar(
     (col_data, metadata)
 }
 
+/// Analyze columns and classify as extract (columnar) or inline (row-major).
+/// Returns a bitmask: `true` = extract (column-major), `false` = inline (row-major).
+/// High-cardinality columns with long average values are kept inline to preserve
+/// inter-row locality that benefits zstd/brotli compression.
+fn classify_columns(columns: &[Vec<Vec<u8>>], num_rows: usize) -> Vec<bool> {
+    use std::collections::HashSet;
+    columns
+        .iter()
+        .map(|col_values| {
+            if num_rows < 10 {
+                return true; // Too few rows to measure cardinality meaningfully
+            }
+            let unique: HashSet<&[u8]> = col_values.iter().map(|v| v.as_slice()).collect();
+            let cardinality_ratio = unique.len() as f64 / num_rows as f64;
+            let avg_len = col_values.iter().map(|v| v.len()).sum::<usize>() / num_rows;
+            // Inline only if BOTH high-cardinality AND long values
+            !(cardinality_ratio > SELECTIVE_MAX_CARDINALITY && avg_len >= SELECTIVE_MIN_AVG_LEN)
+        })
+        .collect()
+}
+
+/// Build selective columnar data: low-cardinality columns in column-major order,
+/// high-cardinality columns in row-major order.
+///
+/// Data layout:
+///   [extracted_data_len: u32 LE]
+///   [extracted columnar: col vals separated by \x01, columns by \x00]
+///   [inline row data: per-row inline vals separated by \x01, rows by \x00]
+///
+/// Metadata (version=3):
+///   version(3) + num_rows + num_total_cols + trailing_newline +
+///   num_extracted + extracted_col_indices + template_parts
+fn build_selective_columnar(
+    template_parts: &[Vec<u8>],
+    columns: &[Vec<Vec<u8>>],
+    extract_mask: &[bool],
+    num_rows: usize,
+    has_trailing_newline: bool,
+) -> (Vec<u8>, Vec<u8>) {
+    let num_total_cols = columns.len();
+
+    let extracted_indices: Vec<u16> = (0..num_total_cols)
+        .filter(|&i| extract_mask[i])
+        .map(|i| i as u16)
+        .collect();
+    let inline_indices: Vec<u16> = (0..num_total_cols)
+        .filter(|&i| !extract_mask[i])
+        .map(|i| i as u16)
+        .collect();
+
+    // Build extracted columnar data (column-major).
+    let mut extracted_data = Vec::new();
+    for (ei, &col_idx) in extracted_indices.iter().enumerate() {
+        let col = &columns[col_idx as usize];
+        for (ri, val) in col.iter().enumerate() {
+            extracted_data.extend_from_slice(val);
+            if ri < num_rows - 1 {
+                extracted_data.push(VAL_SEP);
+            }
+        }
+        if ei < extracted_indices.len() - 1 {
+            extracted_data.push(COL_SEP);
+        }
+    }
+
+    // Build inline row data (row-major).
+    let mut inline_data = Vec::new();
+    if !inline_indices.is_empty() {
+        #[allow(clippy::needless_range_loop)]
+        for row in 0..num_rows {
+            for (ii, &col_idx) in inline_indices.iter().enumerate() {
+                inline_data.extend_from_slice(&columns[col_idx as usize][row]);
+                if ii < inline_indices.len() - 1 {
+                    inline_data.push(VAL_SEP);
+                }
+            }
+            if row < num_rows - 1 {
+                inline_data.push(COL_SEP);
+            }
+        }
+    }
+
+    // Combined data blob.
+    let mut data = Vec::with_capacity(4 + extracted_data.len() + inline_data.len());
+    data.extend_from_slice(&(extracted_data.len() as u32).to_le_bytes());
+    data.extend_from_slice(&extracted_data);
+    data.extend_from_slice(&inline_data);
+
+    // Build metadata (version=3).
+    let mut metadata = Vec::new();
+    metadata.push(METADATA_VERSION_SELECTIVE);
+    metadata.extend_from_slice(&(num_rows as u32).to_le_bytes());
+    metadata.extend_from_slice(&(num_total_cols as u16).to_le_bytes());
+    metadata.push(if has_trailing_newline { 1 } else { 0 });
+    metadata.extend_from_slice(&(extracted_indices.len() as u16).to_le_bytes());
+    for &idx in &extracted_indices {
+        metadata.extend_from_slice(&idx.to_le_bytes());
+    }
+    metadata.extend_from_slice(&(template_parts.len() as u16).to_le_bytes());
+    for part in template_parts {
+        metadata.extend_from_slice(&(part.len() as u16).to_le_bytes());
+        metadata.extend_from_slice(part);
+    }
+
+    (data, metadata)
+}
+
 /// Strategy 1: Uniform schema — all rows must have the same template.
 /// Returns None if schemas differ.
 fn preprocess_uniform(
@@ -359,12 +479,30 @@ fn preprocess_uniform(
         }
     }
 
-    Some(build_uniform_columnar(
-        &template_parts,
-        &columns,
-        non_empty.len(),
-        has_trailing_newline,
-    ))
+    // Check if selective columnar should be used (some columns high-cardinality).
+    // Selective columnar keeps high-cardinality columns in row-major order,
+    // preserving inter-row locality that benefits downstream compression (zstd/brotli).
+    // The raw size may be slightly larger due to metadata overhead, but the
+    // compression benefit typically outweighs this.
+    let extract_mask = classify_columns(&columns, non_empty.len());
+    let all_extracted = extract_mask.iter().all(|&e| e);
+
+    if all_extracted {
+        Some(build_uniform_columnar(
+            &template_parts,
+            &columns,
+            non_empty.len(),
+            has_trailing_newline,
+        ))
+    } else {
+        Some(build_selective_columnar(
+            &template_parts,
+            &columns,
+            &extract_mask,
+            non_empty.len(),
+            has_trailing_newline,
+        ))
+    }
 }
 
 /// Strategy 2: Group-by-schema — group rows by template, columnarize each group.
@@ -469,9 +607,15 @@ fn preprocess_grouped(
             }
         }
 
-        // Build columnar data for this group (trailing_newline=false for sub-groups).
-        let (col_data, group_metadata) =
-            build_uniform_columnar(template_parts, &columns, rows.len(), false);
+        // Decide: uniform (version=1) or selective (version=3) per group.
+        let extract_mask = classify_columns(&columns, rows.len());
+        let all_extracted = extract_mask.iter().all(|&e| e);
+
+        let (col_data, group_metadata) = if all_extracted {
+            build_uniform_columnar(template_parts, &columns, rows.len(), false)
+        } else {
+            build_selective_columnar(template_parts, &columns, &extract_mask, rows.len(), false)
+        };
 
         group_outputs.push(GroupOutput {
             row_indices,
@@ -1251,7 +1395,23 @@ pub fn preprocess(data: &[u8]) -> Option<TransformResult> {
 
     // Strategy 1: try uniform schema first.
     if let Some((col_data, mut metadata)) = preprocess_uniform(&non_empty, has_trailing_newline) {
-        if col_data.len() + metadata.len() < data.len() {
+        let is_selective = !metadata.is_empty() && metadata[0] == METADATA_VERSION_SELECTIVE;
+        // Selective columnar may be slightly larger raw (metadata overhead) but the
+        // row-major inline layout benefits downstream compression significantly.
+        // Allow up to 5% overhead for selective; strict for uniform.
+        let size_ok = if is_selective {
+            (col_data.len() + metadata.len()) * 100 <= data.len() * 105
+        } else {
+            col_data.len() + metadata.len() < data.len()
+        };
+        if size_ok {
+            // Selective columnar (version=3) has a different data layout — skip nested flatten.
+            if is_selective {
+                return Some(TransformResult {
+                    data: col_data,
+                    metadata,
+                });
+            }
             // Try depth-1 nested decomposition on the columnar output.
             // Even if the flattened data is slightly larger raw, the downstream
             // typed encoding + compression benefits are significant: null bitmaps
@@ -1309,6 +1469,7 @@ pub fn reverse(data: &[u8], metadata: &[u8]) -> Vec<u8> {
     match metadata[0] {
         METADATA_VERSION_UNIFORM => reverse_uniform(data, metadata),
         METADATA_VERSION_GROUPED => reverse_grouped(data, metadata),
+        METADATA_VERSION_SELECTIVE => reverse_selective(data, metadata),
         _ => data.to_vec(),
     }
 }
@@ -1406,6 +1567,187 @@ fn reverse_uniform_from_parts(
         output.extend_from_slice(&parts[num_cols]);
 
         if row < num_rows - 1 || has_trailing_newline {
+            output.push(b'\n');
+        }
+    }
+
+    output
+}
+
+/// Parsed selective metadata.
+struct SelectiveMetadata {
+    parts: Vec<Vec<u8>>,
+    num_rows: usize,
+    num_total_cols: usize,
+    has_trailing_newline: bool,
+    extracted_col_indices: Vec<u16>,
+}
+
+/// Parse version=3 (selective) metadata.
+fn parse_selective_metadata(metadata: &[u8]) -> Option<SelectiveMetadata> {
+    if metadata.len() < 12 {
+        return None;
+    }
+    let mut pos = 1; // Skip version byte.
+    let num_rows = u32::from_le_bytes(metadata[pos..pos + 4].try_into().unwrap()) as usize;
+    pos += 4;
+    let num_total_cols = u16::from_le_bytes(metadata[pos..pos + 2].try_into().unwrap()) as usize;
+    pos += 2;
+    let has_trailing_newline = metadata[pos] != 0;
+    pos += 1;
+    let num_extracted = u16::from_le_bytes(metadata[pos..pos + 2].try_into().unwrap()) as usize;
+    pos += 2;
+
+    let mut extracted_col_indices = Vec::with_capacity(num_extracted);
+    for _ in 0..num_extracted {
+        if pos + 2 > metadata.len() {
+            return None;
+        }
+        let idx = u16::from_le_bytes(metadata[pos..pos + 2].try_into().unwrap());
+        pos += 2;
+        extracted_col_indices.push(idx);
+    }
+
+    if pos + 2 > metadata.len() {
+        return None;
+    }
+    let num_parts = u16::from_le_bytes(metadata[pos..pos + 2].try_into().unwrap()) as usize;
+    pos += 2;
+
+    let mut parts = Vec::with_capacity(num_parts);
+    for _ in 0..num_parts {
+        if pos + 2 > metadata.len() {
+            return None;
+        }
+        let part_len = u16::from_le_bytes(metadata[pos..pos + 2].try_into().unwrap()) as usize;
+        pos += 2;
+        if pos + part_len > metadata.len() {
+            return None;
+        }
+        parts.push(metadata[pos..pos + part_len].to_vec());
+        pos += part_len;
+    }
+
+    if parts.len() != num_total_cols + 1 || num_rows == 0 || num_total_cols == 0 {
+        return None;
+    }
+
+    Some(SelectiveMetadata {
+        parts,
+        num_rows,
+        num_total_cols,
+        has_trailing_newline,
+        extracted_col_indices,
+    })
+}
+
+/// Reverse selective columnar: reconstruct rows from split extracted/inline sections.
+fn reverse_selective(data: &[u8], metadata: &[u8]) -> Vec<u8> {
+    let sm = match parse_selective_metadata(metadata) {
+        Some(v) => v,
+        None => return data.to_vec(),
+    };
+    reverse_selective_from_data(data, &sm)
+}
+
+/// Core selective reverse: reconstruct rows from selective columnar data.
+fn reverse_selective_from_data(data: &[u8], sm: &SelectiveMetadata) -> Vec<u8> {
+    if data.len() < 4 {
+        return data.to_vec();
+    }
+
+    // Read extracted_data_len from first 4 bytes.
+    let extracted_data_len = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
+    if 4 + extracted_data_len > data.len() {
+        return data.to_vec();
+    }
+    let extracted_section = &data[4..4 + extracted_data_len];
+    let inline_section = &data[4 + extracted_data_len..];
+
+    let num_extracted = sm.extracted_col_indices.len();
+    let num_inline = sm.num_total_cols - num_extracted;
+
+    // Parse extracted columns (column-major, split by \x00 then \x01).
+    let extracted_columns: Vec<Vec<&[u8]>> = if num_extracted > 0 && !extracted_section.is_empty() {
+        let col_chunks: Vec<&[u8]> = extracted_section.split(|&b| b == COL_SEP).collect();
+        if col_chunks.len() != num_extracted {
+            return data.to_vec();
+        }
+        let mut cols = Vec::with_capacity(num_extracted);
+        for chunk in &col_chunks {
+            let vals: Vec<&[u8]> = chunk.split(|&b| b == VAL_SEP).collect();
+            if vals.len() != sm.num_rows {
+                return data.to_vec();
+            }
+            cols.push(vals);
+        }
+        cols
+    } else if num_extracted > 0 {
+        // extracted section is empty but we expect columns — error
+        return data.to_vec();
+    } else {
+        Vec::new()
+    };
+
+    // Parse inline rows (row-major, split by \x00 then \x01).
+    let inline_rows: Vec<Vec<&[u8]>> = if num_inline > 0 && !inline_section.is_empty() {
+        let row_chunks: Vec<&[u8]> = inline_section.split(|&b| b == COL_SEP).collect();
+        if row_chunks.len() != sm.num_rows {
+            return data.to_vec();
+        }
+        let mut rows = Vec::with_capacity(sm.num_rows);
+        for chunk in &row_chunks {
+            let vals: Vec<&[u8]> = if num_inline > 1 {
+                chunk.split(|&b| b == VAL_SEP).collect()
+            } else {
+                vec![*chunk]
+            };
+            if vals.len() != num_inline {
+                return data.to_vec();
+            }
+            rows.push(vals);
+        }
+        rows
+    } else if num_inline > 0 {
+        // inline section is empty but we expect inline columns — error
+        return data.to_vec();
+    } else {
+        Vec::new()
+    };
+
+    // Build a lookup: for each total column index, is it extracted or inline?
+    // extracted_positions[col] = Some(index into extracted_columns)
+    // inline_positions[col] = Some(index into inline row values)
+    let mut extracted_positions = vec![None; sm.num_total_cols];
+    let mut inline_positions = vec![None; sm.num_total_cols];
+    for (ei, &col_idx) in sm.extracted_col_indices.iter().enumerate() {
+        if (col_idx as usize) < sm.num_total_cols {
+            extracted_positions[col_idx as usize] = Some(ei);
+        }
+    }
+    let mut ii = 0;
+    for col in 0..sm.num_total_cols {
+        if extracted_positions[col].is_none() {
+            inline_positions[col] = Some(ii);
+            ii += 1;
+        }
+    }
+
+    // Reconstruct rows.
+    let mut output = Vec::with_capacity(data.len() * 2);
+    for row in 0..sm.num_rows {
+        // Interleave template parts and column values.
+        output.extend_from_slice(&sm.parts[0]);
+        for col in 0..sm.num_total_cols {
+            if let Some(ei) = extracted_positions[col] {
+                output.extend_from_slice(extracted_columns[ei][row]);
+            } else if let Some(ii_idx) = inline_positions[col] {
+                output.extend_from_slice(inline_rows[row][ii_idx]);
+            }
+            output.extend_from_slice(&sm.parts[col + 1]);
+        }
+
+        if row < sm.num_rows - 1 || sm.has_trailing_newline {
             output.push(b'\n');
         }
     }
@@ -1513,44 +1855,69 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
         let group_data = &data[dpos..dpos + gd_len];
         dpos += gd_len;
 
-        // Decode this group using Strategy 1 reverse.
-        let (parts, num_rows, num_cols, _trailing) = match parse_uniform_metadata(group_metadata) {
-            Some(v) => v,
-            None => return data.to_vec(),
+        // Decode this group — dispatch on per-group metadata version byte.
+        let group_version = if group_metadata.is_empty() {
+            0
+        } else {
+            group_metadata[0]
         };
 
-        if num_rows != group_row_count {
-            return data.to_vec();
-        }
-
-        // Split columnar data into columns and values.
-        let col_chunks: Vec<&[u8]> = group_data.split(|&b| b == COL_SEP).collect();
-        if col_chunks.len() != num_cols {
-            return data.to_vec();
-        }
-
-        let mut columns: Vec<Vec<&[u8]>> = Vec::with_capacity(num_cols);
-        for chunk in &col_chunks {
-            let vals: Vec<&[u8]> = chunk.split(|&b| b == VAL_SEP).collect();
-            if vals.len() != num_rows {
+        if group_version == METADATA_VERSION_SELECTIVE {
+            // Selective columnar group (version=3).
+            let sm = match parse_selective_metadata(group_metadata) {
+                Some(v) => v,
+                None => return data.to_vec(),
+            };
+            if sm.num_rows != group_row_count {
                 return data.to_vec();
             }
-            columns.push(vals);
-        }
-
-        // Reconstruct each line for this group.
-        for (row_within_group, &original_idx) in row_indices.iter().enumerate() {
-            let mut line = Vec::new();
-            line.extend_from_slice(&parts[0]);
-            line.extend_from_slice(columns[0][row_within_group]);
-            for col in 1..num_cols {
-                line.extend_from_slice(&parts[col]);
-                line.extend_from_slice(columns[col][row_within_group]);
+            let reconstructed = reverse_selective_from_data(group_data, &sm);
+            // Split reconstructed into individual lines.
+            let lines: Vec<&[u8]> = reconstructed.split(|&b| b == b'\n').collect();
+            for (row_within_group, &original_idx) in row_indices.iter().enumerate() {
+                if row_within_group < lines.len() && original_idx < total_rows {
+                    output_lines[original_idx] = Some(lines[row_within_group].to_vec());
+                }
             }
-            line.extend_from_slice(&parts[num_cols]);
+        } else {
+            // Standard uniform group (version=1).
+            let (parts, num_rows, num_cols, _trailing) =
+                match parse_uniform_metadata(group_metadata) {
+                    Some(v) => v,
+                    None => return data.to_vec(),
+                };
 
-            if original_idx < total_rows {
-                output_lines[original_idx] = Some(line);
+            if num_rows != group_row_count {
+                return data.to_vec();
+            }
+
+            let col_chunks: Vec<&[u8]> = group_data.split(|&b| b == COL_SEP).collect();
+            if col_chunks.len() != num_cols {
+                return data.to_vec();
+            }
+
+            let mut columns: Vec<Vec<&[u8]>> = Vec::with_capacity(num_cols);
+            for chunk in &col_chunks {
+                let vals: Vec<&[u8]> = chunk.split(|&b| b == VAL_SEP).collect();
+                if vals.len() != num_rows {
+                    return data.to_vec();
+                }
+                columns.push(vals);
+            }
+
+            for (row_within_group, &original_idx) in row_indices.iter().enumerate() {
+                let mut line = Vec::new();
+                line.extend_from_slice(&parts[0]);
+                line.extend_from_slice(columns[0][row_within_group]);
+                for col in 1..num_cols {
+                    line.extend_from_slice(&parts[col]);
+                    line.extend_from_slice(columns[col][row_within_group]);
+                }
+                line.extend_from_slice(&parts[num_cols]);
+
+                if original_idx < total_rows {
+                    output_lines[original_idx] = Some(line);
+                }
             }
         }
     }
@@ -2182,9 +2549,11 @@ mod tests {
         if let Some(result) = result {
             let restored = reverse(&result.data, &result.metadata);
             assert_eq!(
-                restored, data,
+                restored,
+                data,
                 "null-heavy 30-row roundtrip failed.\nOriginal len={}, Restored len={}\nOrig first 200: {:?}\nRest first 200: {:?}",
-                data.len(), restored.len(),
+                data.len(),
+                restored.len(),
                 String::from_utf8_lossy(&data[..data.len().min(200)]),
                 String::from_utf8_lossy(&restored[..restored.len().min(200)])
             );
@@ -2210,5 +2579,141 @@ mod tests {
             let restored = reverse(&result.data, &result.metadata);
             assert_eq!(restored, data, "null-heavy 60-row ndjson roundtrip failed");
         }
+    }
+
+    #[test]
+    fn selective_columnar_roundtrip() {
+        // Data with one low-cardinality column (type) and one high-cardinality + long column (payload).
+        let mut data = Vec::new();
+        for i in 0..50 {
+            let event_type = match i % 3 {
+                0 => "push",
+                1 => "pull_request",
+                _ => "create",
+            };
+            // Payload is unique per row and > 128 bytes avg to trigger selective.
+            let payload = format!(
+                "{{\"commits\":[{{\"sha\":\"abc{:04}def\",\"message\":\"commit message number {} with extra text to make it long enough for selective columnar threshold of 128 bytes average value length\"}}]}}",
+                i, i
+            );
+            data.extend_from_slice(
+                format!(
+                    "{{\"id\":{},\"type\":\"{}\",\"payload\":{}}}\n",
+                    i, event_type, payload
+                )
+                .as_bytes(),
+            );
+        }
+        let result = preprocess(&data).expect("should preprocess");
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(restored, data, "selective columnar roundtrip failed");
+    }
+
+    #[test]
+    fn selective_columnar_uses_version3() {
+        // Verify that high-cardinality + long columns trigger version=3.
+        // Payload must exceed SELECTIVE_MIN_AVG_LEN (128) AND cardinality > 0.7.
+        let mut data = Vec::new();
+        for i in 0..50 {
+            let payload = format!(
+                "{{\"data\":\"unique_payload_{:04}\",\"extra\":\"padding_text_to_make_this_value_long_enough_to_exceed_the_128_byte_threshold_for_selective_columnar_detection_{:04}\"}}",
+                i,
+                i * 7
+            );
+            data.extend_from_slice(
+                format!("{{\"type\":\"event\",\"payload\":{}}}\n", payload).as_bytes(),
+            );
+        }
+        let result = preprocess(&data).expect("should preprocess");
+        // Version byte should be 3 (selective).
+        assert_eq!(
+            result.metadata[0], METADATA_VERSION_SELECTIVE,
+            "expected selective columnar (version=3), got version={}",
+            result.metadata[0]
+        );
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(restored, data, "selective columnar v3 roundtrip failed");
+    }
+
+    #[test]
+    fn selective_grouped_roundtrip() {
+        // Two schema groups, each with a high-cardinality column (>128 bytes avg).
+        let mut data = Vec::new();
+        for i in 0..30 {
+            let payload = format!(
+                "{{\"sha\":\"hash_{:04}\",\"msg\":\"unique commit message number {} that is quite long and needs to exceed the 128 byte threshold for selective columnar to activate on this column\"}}",
+                i, i
+            );
+            data.extend_from_slice(
+                format!(
+                    "{{\"id\":{},\"type\":\"push\",\"payload\":{}}}\n",
+                    i, payload
+                )
+                .as_bytes(),
+            );
+        }
+        for i in 0..20 {
+            let body = format!(
+                "{{\"title\":\"PR title {}\",\"body\":\"This is a long unique pull request body number {} with details and extra text to exceed the 128 byte threshold for the selective columnar transform\"}}",
+                i, i
+            );
+            data.extend_from_slice(
+                format!(
+                    "{{\"id\":{},\"type\":\"pr\",\"payload\":{},\"org\":\"myorg\"}}\n",
+                    100 + i,
+                    body
+                )
+                .as_bytes(),
+            );
+        }
+        let result = preprocess(&data).expect("should preprocess");
+        // Should use grouped (version=2 at top level).
+        assert_eq!(result.metadata[0], METADATA_VERSION_GROUPED);
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(restored, data, "selective grouped roundtrip failed");
+    }
+
+    #[test]
+    fn selective_all_low_cardinality_stays_uniform() {
+        // When all columns are low-cardinality, version=1 should still be used.
+        let mut data = Vec::new();
+        for i in 0..50 {
+            let status = match i % 2 {
+                0 => "active",
+                _ => "inactive",
+            };
+            data.extend_from_slice(
+                format!("{{\"type\":\"event\",\"status\":\"{}\"}}\n", status).as_bytes(),
+            );
+        }
+        let result = preprocess(&data).expect("should preprocess");
+        // Version should be 1 (uniform), not 3 (selective).
+        assert_eq!(
+            result.metadata[0], METADATA_VERSION_UNIFORM,
+            "low-cardinality data should use uniform (version=1)"
+        );
+    }
+
+    #[test]
+    fn selective_columnar_single_inline_column() {
+        // Only one column is inline (the rest extracted).
+        let mut data = Vec::new();
+        for i in 0..30 {
+            let unique_msg = format!(
+                "A unique message for row {} with enough text to exceed the 128 byte threshold for selective columnar detection, adding padding here to be safe: extra_{:04}",
+                i,
+                i * 13
+            );
+            data.extend_from_slice(
+                format!(
+                    "{{\"type\":\"log\",\"level\":\"info\",\"msg\":\"{}\"}}\n",
+                    unique_msg
+                )
+                .as_bytes(),
+            );
+        }
+        let result = preprocess(&data).expect("should preprocess");
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(restored, data, "single-inline-column roundtrip failed");
     }
 }

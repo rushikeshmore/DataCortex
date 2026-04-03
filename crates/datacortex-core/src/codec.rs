@@ -2439,4 +2439,30 @@ mod tests {
             "null-heavy 30-row balanced mode roundtrip failed"
         );
     }
+
+    #[test]
+    fn gharchive_selective_roundtrip() {
+        // Verify GH Archive roundtrip with selective columnar transform.
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../corpus/json-bench/gharchive-10mb.ndjson"
+        );
+        let data = match std::fs::read(path) {
+            Ok(d) => d,
+            Err(_) => return, // Skip if corpus not available
+        };
+        let mut compressed = Vec::new();
+        compress(
+            &data,
+            Mode::Fast,
+            Some(crate::dcx::FormatHint::Ndjson),
+            &mut compressed,
+        )
+        .unwrap();
+        let decompressed = decompress(&mut std::io::Cursor::new(&compressed)).unwrap();
+        assert_eq!(
+            decompressed, data,
+            "GH Archive selective columnar roundtrip failed"
+        );
+    }
 }
