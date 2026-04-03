@@ -213,6 +213,10 @@ pub struct CMEngine {
     run_len: u8,
     /// Distance since last newline (quantized).
     line_pos: u16,
+    /// Column index in columnar data (incremented on \x00 separator).
+    /// For raw (non-columnar) data, stays at 0. For columnar data, provides
+    /// column identity as additional context for prediction.
+    column_index: u16,
 }
 
 impl CMEngine {
@@ -264,6 +268,7 @@ impl CMEngine {
             bpos: 0,
             run_len: 0,
             line_pos: 0,
+            column_index: 0,
         }
     }
 
@@ -410,10 +415,14 @@ impl CMEngine {
         let apm6_ctx = (match_q as usize * 64 + bclass as usize * 8 + bpos as usize) & 2047;
         let after_apm6 = self.apm6.predict(after_apm5, apm6_ctx);
 
-        // Stage 7: Position-within-line + byte nibble context.
-        // (line_pos_q, c0_partial, bpos) — captures column-dependent patterns.
+        // Stage 7: Position/column-aware context.
+        // For columnar data: column_index provides column identity (line_pos stays 0).
+        // For raw data: line_pos provides position-within-line (column_index stays 0).
+        // Combined: exactly one is active, providing the right signal for each format.
         let line_pos_q = quantize_line_pos(self.line_pos);
-        let apm7_ctx = ((line_pos_q as usize).wrapping_mul(67) + (c0 as usize & 0xFF))
+        let pos_ctx = (line_pos_q as usize)
+            ^ ((self.column_index as usize & 0xF) << 2);
+        let apm7_ctx = (pos_ctx.wrapping_mul(67) + (c0 as usize & 0xFF))
             .wrapping_mul(67)
             .wrapping_add(bpos as usize)
             & 4095;
@@ -478,6 +487,10 @@ impl CMEngine {
                 self.line_pos = 0;
             } else {
                 self.line_pos = self.line_pos.saturating_add(1);
+            }
+            // Track column index for columnar data (\x00 = column separator).
+            if byte == 0x00 {
+                self.column_index = self.column_index.wrapping_add(1);
             }
 
             // Update PPM model at byte level (NOT per-bit).

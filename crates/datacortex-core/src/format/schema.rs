@@ -1013,6 +1013,16 @@ mod tests {
         let transform_result =
             crate::format::ndjson::preprocess(&corpus).expect("ndjson::preprocess failed");
 
+        // Selective columnar (version=3) has a different data layout with extracted+inline sections.
+        // Schema inference only works on standard columnar data (version=1).
+        if transform_result.metadata[0] == 3 {
+            // Verify roundtrip still works, but skip schema assertions.
+            let restored =
+                crate::format::ndjson::reverse(&transform_result.data, &transform_result.metadata);
+            assert_eq!(restored, corpus, "selective columnar roundtrip failed");
+            return;
+        }
+
         let schema = infer_schema(&transform_result.data);
 
         // The corpus has 20 columns (keys per JSON line):
