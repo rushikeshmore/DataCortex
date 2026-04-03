@@ -25,10 +25,22 @@ fn adaptive_fast_level(data_size: usize, level_override: Option<i32>) -> i32 {
     if let Some(level) = level_override {
         return level; // User explicitly set level, respect it
     }
+    // Empirically, zstd levels 9-15 produce nearly identical ratios on
+    // structured JSON (btlazy2 strategy plateau). The meaningful jump
+    // happens at level 16+ (btultra strategy). Level 13 wastes encode
+    // time without ratio gain over level 9.
+    //
+    // DataCortex benchmarks against zstd-19. Our preprocessing adds
+    // ~3-5% on top, but we need internal zstd at level 17+ to beat
+    // raw zstd-19 on diverse data like GH Archive.
+    //
+    // Encode time impact: preprocessing (columnar reorg, schema inference)
+    // dominates. With rayon parallelism the zstd level cost is marginal.
+    // Decode is completely unaffected by compression level.
     match data_size {
-        0..=1_048_576 => 19,          // <1MB: zstd-19 is <50ms, use best ratio
-        1_048_577..=10_485_760 => 13, // 1MB-10MB: good balance
-        _ => 9,                       // >10MB: use level 9 for speed
+        0..=16_777_216 => 19,          // ≤16MB: best ratio, <3s encode on 10MB
+        16_777_217..=67_108_864 => 16, // 16-64MB: btultra breakpoint, good ratio
+        _ => 9,                        // >64MB: skip 10-15 plateau, use fast
     }
 }
 
@@ -1814,7 +1826,7 @@ mod tests {
 
     #[test]
     fn test_adaptive_level_small_data() {
-        // <1MB should use level 19 (zstd-19 is <50ms on small data).
+        // ≤16MB should use level 19 — best ratio, preprocessing dominates encode time.
         assert_eq!(adaptive_fast_level(100_000, None), 19);
         assert_eq!(adaptive_fast_level(500_000, None), 19);
         assert_eq!(adaptive_fast_level(1_048_576, None), 19);
@@ -1822,12 +1834,22 @@ mod tests {
     }
 
     #[test]
+    fn test_adaptive_level_medium_data() {
+        // 1-16MB still gets level 19 — zstd levels 9-15 are a plateau
+        // (identical ratio on structured JSON), so we skip to 19.
+        assert_eq!(adaptive_fast_level(1_048_577, None), 19);
+        assert_eq!(adaptive_fast_level(5_000_000, None), 19);
+        assert_eq!(adaptive_fast_level(10_485_760, None), 19);
+        assert_eq!(adaptive_fast_level(16_777_216, None), 19);
+    }
+
+    #[test]
     fn test_adaptive_level_large_data() {
-        // 1MB-10MB should use level 13, >10MB should use level 9.
-        assert_eq!(adaptive_fast_level(1_048_577, None), 13);
-        assert_eq!(adaptive_fast_level(5_000_000, None), 13);
-        assert_eq!(adaptive_fast_level(10_485_760, None), 13);
-        assert_eq!(adaptive_fast_level(10_485_761, None), 9);
+        // 16-64MB uses level 16 (btultra breakpoint), >64MB uses level 9.
+        assert_eq!(adaptive_fast_level(16_777_217, None), 16);
+        assert_eq!(adaptive_fast_level(33_554_432, None), 16);
+        assert_eq!(adaptive_fast_level(67_108_864, None), 16);
+        assert_eq!(adaptive_fast_level(67_108_865, None), 9);
         assert_eq!(adaptive_fast_level(100_000_000, None), 9);
     }
 
