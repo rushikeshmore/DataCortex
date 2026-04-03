@@ -404,6 +404,7 @@ fn build_selective_columnar(
     // Build inline row data (row-major).
     let mut inline_data = Vec::new();
     if !inline_indices.is_empty() {
+        #[allow(clippy::needless_range_loop)]
         for row in 0..num_rows {
             for (ii, &col_idx) in inline_indices.iter().enumerate() {
                 inline_data.extend_from_slice(&columns[col_idx as usize][row]);
@@ -613,13 +614,7 @@ fn preprocess_grouped(
         let (col_data, group_metadata) = if all_extracted {
             build_uniform_columnar(template_parts, &columns, rows.len(), false)
         } else {
-            build_selective_columnar(
-                template_parts,
-                &columns,
-                &extract_mask,
-                rows.len(),
-                false,
-            )
+            build_selective_columnar(template_parts, &columns, &extract_mask, rows.len(), false)
         };
 
         group_outputs.push(GroupOutput {
@@ -1662,8 +1657,7 @@ fn reverse_selective_from_data(data: &[u8], sm: &SelectiveMetadata) -> Vec<u8> {
     }
 
     // Read extracted_data_len from first 4 bytes.
-    let extracted_data_len =
-        u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
+    let extracted_data_len = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
     if 4 + extracted_data_len > data.len() {
         return data.to_vec();
     }
@@ -2555,9 +2549,11 @@ mod tests {
         if let Some(result) = result {
             let restored = reverse(&result.data, &result.metadata);
             assert_eq!(
-                restored, data,
+                restored,
+                data,
                 "null-heavy 30-row roundtrip failed.\nOriginal len={}, Restored len={}\nOrig first 200: {:?}\nRest first 200: {:?}",
-                data.len(), restored.len(),
+                data.len(),
+                restored.len(),
                 String::from_utf8_lossy(&data[..data.len().min(200)]),
                 String::from_utf8_lossy(&restored[..restored.len().min(200)])
             );
@@ -2621,7 +2617,8 @@ mod tests {
         for i in 0..50 {
             let payload = format!(
                 "{{\"data\":\"unique_payload_{:04}\",\"extra\":\"padding_text_to_make_this_value_long_enough_to_exceed_the_128_byte_threshold_for_selective_columnar_detection_{:04}\"}}",
-                i, i * 7
+                i,
+                i * 7
             );
             data.extend_from_slice(
                 format!("{{\"type\":\"event\",\"payload\":{}}}\n", payload).as_bytes(),
@@ -2630,8 +2627,7 @@ mod tests {
         let result = preprocess(&data).expect("should preprocess");
         // Version byte should be 3 (selective).
         assert_eq!(
-            result.metadata[0],
-            METADATA_VERSION_SELECTIVE,
+            result.metadata[0], METADATA_VERSION_SELECTIVE,
             "expected selective columnar (version=3), got version={}",
             result.metadata[0]
         );
@@ -2664,7 +2660,8 @@ mod tests {
             data.extend_from_slice(
                 format!(
                     "{{\"id\":{},\"type\":\"pr\",\"payload\":{},\"org\":\"myorg\"}}\n",
-                    100 + i, body
+                    100 + i,
+                    body
                 )
                 .as_bytes(),
             );
@@ -2692,8 +2689,7 @@ mod tests {
         let result = preprocess(&data).expect("should preprocess");
         // Version should be 1 (uniform), not 3 (selective).
         assert_eq!(
-            result.metadata[0],
-            METADATA_VERSION_UNIFORM,
+            result.metadata[0], METADATA_VERSION_UNIFORM,
             "low-cardinality data should use uniform (version=1)"
         );
     }
@@ -2705,7 +2701,8 @@ mod tests {
         for i in 0..30 {
             let unique_msg = format!(
                 "A unique message for row {} with enough text to exceed the 128 byte threshold for selective columnar detection, adding padding here to be safe: extra_{:04}",
-                i, i * 13
+                i,
+                i * 13
             );
             data.extend_from_slice(
                 format!(
