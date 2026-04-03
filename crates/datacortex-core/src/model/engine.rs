@@ -420,8 +420,7 @@ impl CMEngine {
         // For raw data: line_pos provides position-within-line (column_index stays 0).
         // Combined: exactly one is active, providing the right signal for each format.
         let line_pos_q = quantize_line_pos(self.line_pos);
-        let pos_ctx = (line_pos_q as usize)
-            ^ ((self.column_index as usize & 0xF) << 2);
+        let pos_ctx = (line_pos_q as usize) ^ ((self.column_index as usize & 0xF) << 2);
         let apm7_ctx = (pos_ctx.wrapping_mul(67) + (c0 as usize & 0xFF))
             .wrapping_mul(67)
             .wrapping_add(bpos as usize)
