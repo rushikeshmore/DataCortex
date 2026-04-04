@@ -504,6 +504,56 @@ fn preprocess_uniform(
     }
 }
 
+/// Find the best discriminator column for schema clustering.
+/// A discriminator is a low-cardinality, short-valued column whose value predicts
+/// the schema of other columns (e.g., "type" in GitHub Archive events).
+/// Returns the column index, or None if no good discriminator exists.
+fn find_discriminator<'a>(parsed: &[Option<ParsedLine<'a>>]) -> Option<usize> {
+    use std::collections::HashSet;
+
+    // Sample up to 200 valid parsed lines.
+    let mut samples: Vec<&ParsedLine<'a>> = Vec::new();
+    for line in parsed.iter().flatten() {
+        samples.push(line);
+        if samples.len() >= 200 {
+            break;
+        }
+    }
+
+    if samples.len() < 10 {
+        return None;
+    }
+
+    // Use the minimum column count across all samples.
+    let num_cols = samples.iter().map(|s| s.1.len()).min().unwrap_or(0);
+    if num_cols == 0 {
+        return None;
+    }
+
+    let mut best_col = None;
+    let mut best_cardinality = usize::MAX;
+
+    for col_idx in 0..num_cols {
+        // Compute average value length — skip long values (nested objects).
+        let total_len: usize = samples.iter().map(|s| s.1[col_idx].len()).sum();
+        let avg_len = total_len / samples.len();
+        if avg_len > 30 {
+            continue;
+        }
+
+        let unique: HashSet<&[u8]> = samples.iter().map(|s| s.1[col_idx]).collect();
+        let cardinality = unique.len();
+
+        // Good discriminator: > 1 distinct value, < 1/3 of rows distinct.
+        if cardinality > 1 && cardinality < samples.len() / 3 && cardinality < best_cardinality {
+            best_col = Some(col_idx);
+            best_cardinality = cardinality;
+        }
+    }
+
+    best_col
+}
+
 /// Strategy 2: Group-by-schema — group rows by template, columnarize each group.
 ///
 /// Metadata format (version=2):
@@ -532,25 +582,62 @@ fn preprocess_grouped<'a>(
         return None;
     }
 
-    // Parse all lines and group by template (the template parts identify the schema).
-    // We use the template parts as the group key.
+    // Detect discriminator column for potential sub-grouping.
+    let parsed: Vec<Option<ParsedLine<'a>>> =
+        non_empty.iter().map(|&l| parse_line(l)).collect();
+    let disc_col = find_discriminator(&parsed);
+    drop(parsed);
+
+    // Try schema-only grouping first (always).
+    let result_no_disc = preprocess_grouped_core(non_empty, has_trailing_newline, None);
+
+    // If a discriminator exists, also try sub-grouped encoding and pick the winner.
+    if let Some(dc) = disc_col {
+        let result_disc = preprocess_grouped_core(non_empty, has_trailing_newline, Some(dc));
+        match (&result_no_disc, &result_disc) {
+            (Some((d1, m1)), Some((d2, m2))) => {
+                if d2.len() + m2.len() < d1.len() + m1.len() {
+                    return result_disc;
+                }
+                return result_no_disc;
+            }
+            (None, Some(_)) => return result_disc,
+            _ => return result_no_disc,
+        }
+    }
+
+    result_no_disc
+}
+
+/// Core grouped encoding: group by schema, optionally sub-group by discriminator,
+/// build columnar data per group with optional nested flatten.
+fn preprocess_grouped_core<'a>(
+    non_empty: &[&'a [u8]],
+    has_trailing_newline: bool,
+    disc_col: Option<usize>,
+) -> Option<(Vec<u8>, Vec<u8>)> {
+    // Parse all lines and group by template.
     let mut parsed: Vec<Option<ParsedLine<'a>>> = Vec::with_capacity(non_empty.len());
     for &line in non_empty {
         parsed.push(parse_line(line));
     }
 
-    // Group rows by template. Key = template parts (as bytes for hashing).
-    // We store groups as: template_key -> (template_parts, vec of (row_index, values)).
     let mut group_map: HashMap<Vec<u8>, SchemaGroup<'a>> = HashMap::new();
     let mut residual_indices: Vec<usize> = Vec::new();
 
     for (idx, parsed_line) in parsed.into_iter().enumerate() {
         if let Some((parts, values)) = parsed_line {
-            // Build a hashable key from the template parts.
             let mut key = Vec::new();
             for part in &parts {
                 key.extend_from_slice(&(part.len() as u32).to_le_bytes());
                 key.extend_from_slice(part);
+            }
+            // If discriminator column specified, include its value for sub-grouping.
+            if let Some(dc) = disc_col {
+                if dc < values.len() {
+                    key.push(0xFF);
+                    key.extend_from_slice(values[dc]);
+                }
             }
             group_map
                 .entry(key)
@@ -558,7 +645,6 @@ fn preprocess_grouped<'a>(
                 .1
                 .push((idx, values));
         } else {
-            // Unparseable line goes to residual.
             residual_indices.push(idx);
         }
     }
@@ -610,11 +696,37 @@ fn preprocess_grouped<'a>(
         let extract_mask = classify_columns(&columns, rows.len());
         let all_extracted = extract_mask.iter().all(|&e| e);
 
-        let (col_data, group_metadata) = if all_extracted {
+        let (mut col_data, mut group_metadata) = if all_extracted {
             build_uniform_columnar(template_parts, &columns, rows.len(), false)
         } else {
             build_selective_columnar(template_parts, &columns, &extract_mask, rows.len(), false)
         };
+
+        // Try nested object flatten for uniform groups.
+        // Decomposes nested JSON objects (e.g., payload, actor) into sub-columns
+        // for better compression when rows are schema-clustered.
+        if all_extracted {
+            if let Some((flat_data, nested_groups)) =
+                flatten_nested_columns(&col_data, rows.len())
+            {
+                let total_flat_cols = flat_data.split(|&b| b == COL_SEP).count();
+                let unflattened = unflatten_nested_columns(
+                    &flat_data,
+                    &nested_groups,
+                    rows.len(),
+                    total_flat_cols,
+                );
+                if unflattened == col_data {
+                    let nested_bytes = serialize_nested_info(&nested_groups);
+                    group_metadata.extend_from_slice(&nested_bytes);
+                    col_data = flat_data;
+                } else {
+                    group_metadata.push(0u8); // has_nested = 0
+                }
+            } else {
+                group_metadata.push(0u8); // has_nested = 0
+            }
+        }
 
         group_outputs.push(GroupOutput {
             row_indices,
@@ -1767,42 +1879,6 @@ fn reverse_selective_from_data(data: &[u8], sm: &SelectiveMetadata) -> Vec<u8> {
     output
 }
 
-/// Parse Strategy 1 metadata and return (parts, num_rows, num_cols, has_trailing_newline).
-/// Used by reverse_grouped to decode per-group metadata.
-fn parse_uniform_metadata(metadata: &[u8]) -> Option<(Vec<Vec<u8>>, usize, usize, bool)> {
-    if metadata.len() < 10 {
-        return None;
-    }
-    let mut pos = 1; // Skip version byte.
-    let num_rows = u32::from_le_bytes(metadata[pos..pos + 4].try_into().unwrap()) as usize;
-    pos += 4;
-    let num_cols = u16::from_le_bytes(metadata[pos..pos + 2].try_into().unwrap()) as usize;
-    pos += 2;
-    let has_trailing_newline = metadata[pos] != 0;
-    pos += 1;
-    let num_parts = u16::from_le_bytes(metadata[pos..pos + 2].try_into().unwrap()) as usize;
-    pos += 2;
-
-    let mut parts = Vec::with_capacity(num_parts);
-    for _ in 0..num_parts {
-        if pos + 2 > metadata.len() {
-            return None;
-        }
-        let part_len = u16::from_le_bytes(metadata[pos..pos + 2].try_into().unwrap()) as usize;
-        pos += 2;
-        if pos + part_len > metadata.len() {
-            return None;
-        }
-        parts.push(metadata[pos..pos + part_len].to_vec());
-        pos += part_len;
-    }
-
-    if parts.len() != num_cols + 1 || num_rows == 0 || num_cols == 0 {
-        return None;
-    }
-
-    Some((parts, num_rows, num_cols, has_trailing_newline))
-}
 
 /// Reverse Strategy 2: grouped schema.
 fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
@@ -1892,43 +1968,13 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
                 }
             }
         } else {
-            // Standard uniform group (version=1).
-            let (parts, num_rows, num_cols, _trailing) =
-                match parse_uniform_metadata(group_metadata) {
-                    Some(v) => v,
-                    None => return data.to_vec(),
-                };
-
-            if num_rows != group_row_count {
-                return data.to_vec();
-            }
-
-            let col_chunks: Vec<&[u8]> = group_data.split(|&b| b == COL_SEP).collect();
-            if col_chunks.len() != num_cols {
-                return data.to_vec();
-            }
-
-            let mut columns: Vec<Vec<&[u8]>> = Vec::with_capacity(num_cols);
-            for chunk in &col_chunks {
-                let vals: Vec<&[u8]> = chunk.split(|&b| b == VAL_SEP).collect();
-                if vals.len() != num_rows {
-                    return data.to_vec();
-                }
-                columns.push(vals);
-            }
-
+            // Standard uniform group — delegate to reverse_uniform which
+            // handles nested unflatten automatically.
+            let reconstructed = reverse_uniform(group_data, group_metadata);
+            let lines: Vec<&[u8]> = reconstructed.split(|&b| b == b'\n').collect();
             for (row_within_group, &original_idx) in row_indices.iter().enumerate() {
-                let mut line = Vec::new();
-                line.extend_from_slice(&parts[0]);
-                line.extend_from_slice(columns[0][row_within_group]);
-                for col in 1..num_cols {
-                    line.extend_from_slice(&parts[col]);
-                    line.extend_from_slice(columns[col][row_within_group]);
-                }
-                line.extend_from_slice(&parts[num_cols]);
-
-                if original_idx < total_rows {
-                    output_lines[original_idx] = Some(line);
+                if row_within_group < lines.len() && original_idx < total_rows {
+                    output_lines[original_idx] = Some(lines[row_within_group].to_vec());
                 }
             }
         }
@@ -2367,6 +2413,67 @@ mod tests {
         assert_eq!(result.metadata[0], METADATA_VERSION_GROUPED);
         let restored = reverse(&result.data, &result.metadata);
         assert_eq!(restored, data);
+    }
+
+    #[test]
+    fn grouped_nested_flatten_per_group() {
+        // Groups with nested objects should get per-group nested flatten.
+        // Two schemas (with/without extra field), nested objects in both.
+        let mut data = Vec::new();
+        for i in 0..30 {
+            if i % 3 == 0 {
+                // Schema B: 4 keys including nested + extra.
+                data.extend_from_slice(
+                    format!(
+                        r#"{{"id":{},"info":{{"a":{},"b":{}}},"tag":"b","extra":"yes"}}"#,
+                        i,
+                        i * 10,
+                        i * 20
+                    )
+                    .as_bytes(),
+                );
+            } else {
+                // Schema A: 3 keys including nested.
+                data.extend_from_slice(
+                    format!(
+                        r#"{{"id":{},"info":{{"a":{},"b":{}}},"tag":"a"}}"#,
+                        i,
+                        i * 10,
+                        i * 20
+                    )
+                    .as_bytes(),
+                );
+            }
+            data.push(b'\n');
+        }
+        let result = preprocess(&data).expect("should produce grouped transform");
+        assert_eq!(result.metadata[0], METADATA_VERSION_GROUPED);
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(restored, data, "grouped nested flatten roundtrip failed");
+    }
+
+    #[test]
+    fn grouped_discriminator_two_pass() {
+        // Discriminator sub-grouping should be tried and the smaller result picked.
+        // Build data with a discriminator column ("type") and varying nested payloads.
+        let mut data = Vec::new();
+        for i in 0..60 {
+            let etype = if i % 2 == 0 { "push" } else { "create" };
+            data.extend_from_slice(
+                format!(
+                    r#"{{"id":{},"type":"{}","payload":{{"ref":"r{}","size":{}}}}}"#,
+                    i, etype, i, i * 10
+                )
+                .as_bytes(),
+            );
+            data.push(b'\n');
+        }
+        let result = preprocess(&data).expect("should produce transform");
+        let restored = reverse(&result.data, &result.metadata);
+        assert_eq!(
+            restored, data,
+            "discriminator two-pass roundtrip failed"
+        );
     }
 
     // --- Nested decomposition tests ---
