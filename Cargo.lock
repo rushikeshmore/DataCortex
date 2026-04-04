@@ -271,6 +271,7 @@ version = "0.4.3"
 dependencies = [
  "brotli",
  "crc32fast",
+ "fsst-rs",
  "memchr",
  "rayon",
  "serde",
@@ -342,6 +343,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f9e65c593dd01ac77daad909ea4ad17f0d6d1776193fc8ea766356177abdad"
 dependencies = [
  "glob",
+]
+
+[[package]]
+name = "fsst-rs"
+version = "0.5.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdf65e16e100438be0030d113042e07a62bed67203998640ca6fae0404eed71e"
+dependencies = [
+ "rustc-hash",
 ]
 
 [[package]]
