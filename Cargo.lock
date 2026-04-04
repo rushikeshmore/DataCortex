@@ -271,6 +271,7 @@ version = "0.4.3"
 dependencies = [
  "brotli",
  "crc32fast",
+ "memchr",
  "rayon",
  "serde",
  "serde_json",

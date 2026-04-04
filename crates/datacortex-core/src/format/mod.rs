@@ -11,6 +11,8 @@ pub mod transform;
 pub mod typed_encoding;
 pub mod value_dict;
 
+use std::borrow::Cow;
+
 use crate::dcx::{FormatHint, Mode};
 use transform::{
     TRANSFORM_JSON_ARRAY_COLUMNAR, TRANSFORM_JSON_KEY_INTERN, TRANSFORM_NDJSON_COLUMNAR,
@@ -54,7 +56,7 @@ pub fn detect_from_extension(path: &str) -> Option<FormatHint> {
 /// (keys are already removed from the data stream by the columnar transform).
 pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, TransformChain) {
     let mut chain = TransformChain::new();
-    let mut current = data.to_vec();
+    let mut current: Cow<'_, [u8]> = Cow::Borrowed(data);
 
     // Track whether a uniform columnar transform was applied (for value dict chaining).
     // Uniform columnar = data is \x00/\x01-separated, downstream transforms are compatible.
@@ -70,7 +72,7 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
         if let Some(result) = ndjson::preprocess(&current) {
             let is_uniform_columnar = !result.metadata.is_empty() && result.metadata[0] == 1;
             chain.push(TRANSFORM_NDJSON_COLUMNAR, result.metadata);
-            current = result.data;
+            current = Cow::Owned(result.data);
             ndjson_transform_applied = true;
             columnar_applied = is_uniform_columnar;
         }
@@ -85,7 +87,7 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
         if let Some(result) = json_array::preprocess(&current) {
             let is_uniform = !result.metadata.is_empty() && result.metadata[0] == 1;
             chain.push(TRANSFORM_JSON_ARRAY_COLUMNAR, result.metadata);
-            current = result.data;
+            current = Cow::Owned(result.data);
             json_array_applied = true;
             columnar_applied = is_uniform;
         }
@@ -115,13 +117,13 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
                     num_rows,
                     total_flat_cols as usize,
                 );
-                if unflattened == current {
+                if unflattened == current.as_ref() {
                     let mut nested_meta = Vec::new();
                     nested_meta.extend_from_slice(&(num_rows as u32).to_le_bytes());
                     nested_meta.extend_from_slice(&total_flat_cols.to_le_bytes());
                     nested_meta.extend_from_slice(&ndjson::serialize_nested_info(&nested_groups));
                     chain.push(TRANSFORM_NESTED_FLATTEN, nested_meta);
-                    current = flat_data;
+                    current = Cow::Owned(flat_data);
                 }
                 // else: roundtrip not exact — skip nested flatten (data stays columnar
                 // without sub-column decomposition, still benefits from typed encoding
@@ -136,7 +138,7 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
     if columnar_applied && mode == Mode::Fast {
         if let Some(result) = typed_encoding::preprocess(&current) {
             chain.push(TRANSFORM_TYPED_ENCODING, result.metadata);
-            current = result.data;
+            current = Cow::Owned(result.data);
         }
     }
 
@@ -150,12 +152,12 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
     if columnar_applied {
         if let Some(result) = value_dict::preprocess(&current) {
             chain.push(TRANSFORM_VALUE_DICT, result.metadata);
-            current = result.data;
+            current = Cow::Owned(result.data);
         }
     }
 
     if columnar_applied || ndjson_transform_applied || json_array_applied {
-        return (current, chain);
+        return (current.into_owned(), chain);
     }
 
     // JSON key interning: Balanced/Max only (hurts Fast mode due to zstd redundancy).
@@ -164,33 +166,33 @@ pub fn preprocess(data: &[u8], format: FormatHint, mode: Mode) -> (Vec<u8>, Tran
         && let Some(result) = json::preprocess(&current)
     {
         chain.push(TRANSFORM_JSON_KEY_INTERN, result.metadata);
-        current = result.data;
+        current = Cow::Owned(result.data);
     }
 
-    (current, chain)
+    (current.into_owned(), chain)
 }
 
 /// Reverse preprocessing transforms (applied in reverse order).
 pub fn reverse_preprocess(data: &[u8], chain: &TransformChain) -> Vec<u8> {
-    let mut current = data.to_vec();
+    let mut current: Cow<'_, [u8]> = Cow::Borrowed(data);
 
     // Apply in reverse order.
     for record in chain.records.iter().rev() {
         match record.id {
             TRANSFORM_JSON_KEY_INTERN => {
-                current = json::reverse(&current, &record.metadata);
+                current = Cow::Owned(json::reverse(&current, &record.metadata));
             }
             TRANSFORM_NDJSON_COLUMNAR => {
-                current = ndjson::reverse(&current, &record.metadata);
+                current = Cow::Owned(ndjson::reverse(&current, &record.metadata));
             }
             TRANSFORM_JSON_ARRAY_COLUMNAR => {
-                current = json_array::reverse(&current, &record.metadata);
+                current = Cow::Owned(json_array::reverse(&current, &record.metadata));
             }
             TRANSFORM_VALUE_DICT => {
-                current = value_dict::reverse(&current, &record.metadata);
+                current = Cow::Owned(value_dict::reverse(&current, &record.metadata));
             }
             TRANSFORM_TYPED_ENCODING => {
-                current = typed_encoding::reverse(&current, &record.metadata);
+                current = Cow::Owned(typed_encoding::reverse(&current, &record.metadata));
             }
             TRANSFORM_NESTED_FLATTEN => {
                 // Metadata: num_rows (u32 LE) + total_flat_cols (u16 LE) + nested_info.
@@ -202,12 +204,12 @@ pub fn reverse_preprocess(data: &[u8], chain: &TransformChain) -> Vec<u8> {
                     if let Some((nested_groups, _)) =
                         ndjson::deserialize_nested_info(&record.metadata[6..])
                     {
-                        current = ndjson::unflatten_nested_columns(
+                        current = Cow::Owned(ndjson::unflatten_nested_columns(
                             &current,
                             &nested_groups,
                             num_rows,
                             total_flat_cols,
-                        );
+                        ));
                     }
                 }
             }
@@ -215,7 +217,7 @@ pub fn reverse_preprocess(data: &[u8], chain: &TransformChain) -> Vec<u8> {
         }
     }
 
-    current
+    current.into_owned()
 }
 
 // --- Detection helpers (unchanged from Phase 0) ---

@@ -447,13 +447,30 @@ fn encode_timestamp_column(values: &[&[u8]]) -> Option<Vec<u8>> {
     out.push(frac_digits);
     out.extend_from_slice(&(values.len() as u32).to_le_bytes());
 
-    // Delta encode: first value has delta=0, subsequent values are delta from prev.
+    // Delta-of-delta encoding: for regular-interval timestamps (e.g., every 1s),
+    // the delta-of-delta is 0, which encodes to a single byte (0x00).
+    // Gorilla (Facebook, VLDB 2015): "96% of timestamps compress to a single bit."
+    //
+    // Format flag: 0x01 = delta-of-delta (new), 0x00 = simple delta (legacy).
+    // Decoder checks this flag to determine which decoding mode to use.
+    out.push(0x01); // delta-of-delta flag
+
     let mut prev_micros = base_micros;
+    let mut prev_delta: i64 = 0;
 
     for (i, &micros) in parsed_micros.iter().enumerate() {
         let delta = micros as i64 - prev_micros as i64;
-        let zz = zigzag_encode(delta);
-        leb128_encode(zz, &mut out);
+        if i == 0 {
+            // First value: encode simple delta (from base).
+            let zz = zigzag_encode(delta);
+            leb128_encode(zz, &mut out);
+        } else {
+            // Subsequent values: encode delta-of-delta.
+            let dod = delta - prev_delta;
+            let zz = zigzag_encode(dod);
+            leb128_encode(zz, &mut out);
+        }
+        prev_delta = delta;
         if i > 0 {
             prev_micros = micros;
         }
@@ -463,6 +480,7 @@ fn encode_timestamp_column(values: &[&[u8]]) -> Option<Vec<u8>> {
 }
 
 /// Decode a timestamp column from delta+zigzag+LEB128 back to quoted ISO 8601 strings.
+/// Supports both simple delta (legacy, no flag byte) and delta-of-delta (flag=0x01).
 fn decode_timestamp_column(data: &[u8]) -> Vec<Vec<u8>> {
     // Read column header: base_value(8) + format_byte(1) + tz_offset(2) + frac_digits(1) + count(4) = 16 bytes
     if data.len() < 16 {
@@ -481,8 +499,15 @@ fn decode_timestamp_column(data: &[u8]) -> Vec<Vec<u8>> {
     let count = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
     pos += 4;
 
+    // Check for delta-of-delta flag byte (0x01). Legacy data has no flag byte.
+    let use_dod = pos < data.len() && data[pos] == 0x01;
+    if use_dod {
+        pos += 1;
+    }
+
     let mut result = Vec::with_capacity(count);
     let mut prev_micros = base_micros;
+    let mut prev_delta: i64 = 0;
 
     for i in 0..count {
         let (zz, new_pos) = match leb128_decode(data, pos) {
@@ -501,8 +526,26 @@ fn decode_timestamp_column(data: &[u8]) -> Vec<Vec<u8>> {
             }
         };
         pos = new_pos;
-        let delta = zigzag_decode(zz);
-        let micros = (prev_micros as i64 + delta) as u64;
+
+        let micros = if use_dod {
+            if i == 0 {
+                // First value: simple delta from base.
+                let delta = zigzag_decode(zz);
+                prev_delta = delta;
+                (prev_micros as i64 + delta) as u64
+            } else {
+                // Subsequent: delta-of-delta.
+                let dod = zigzag_decode(zz);
+                let delta = prev_delta + dod;
+                prev_delta = delta;
+                (prev_micros as i64 + delta) as u64
+            }
+        } else {
+            // Legacy simple delta.
+            let delta = zigzag_decode(zz);
+            (prev_micros as i64 + delta) as u64
+        };
+
         result.push(micros_to_iso8601(
             micros,
             format_byte,
