@@ -45,14 +45,15 @@ const SELECTIVE_MIN_AVG_LEN: usize = 128;
 const SELECTIVE_MAX_CARDINALITY: f64 = 0.7;
 
 /// A schema group: template parts + list of (row_index, parsed_values).
-type SchemaGroup = (Vec<Vec<u8>>, Vec<(usize, Vec<Vec<u8>>)>);
+/// Uses borrowed slices to avoid allocations during parsing.
+type SchemaGroup<'a> = (Vec<&'a [u8]>, Vec<(usize, Vec<&'a [u8]>)>);
 
 /// Extract the raw value bytes from a JSON line at a given position.
 /// `pos` should point to the first byte of the value (after `:`).
 /// Returns (value_bytes, end_position).
 ///
 /// Handles: strings, numbers, booleans, null, nested objects, nested arrays.
-fn extract_value(line: &[u8], mut pos: usize) -> Option<(Vec<u8>, usize)> {
+fn extract_value(line: &[u8], mut pos: usize) -> Option<(&[u8], usize)> {
     // Skip whitespace after colon.
     while pos < line.len() && line[pos].is_ascii_whitespace() {
         pos += 1;
@@ -74,7 +75,7 @@ fn extract_value(line: &[u8], mut pos: usize) -> Option<(Vec<u8>, usize)> {
                     escaped = true;
                 } else if line[pos] == b'"' {
                     pos += 1;
-                    return Some((line[start..pos].to_vec(), pos));
+                    return Some((&line[start..pos], pos));
                 }
                 pos += 1;
             }
@@ -110,7 +111,7 @@ fn extract_value(line: &[u8], mut pos: usize) -> Option<(Vec<u8>, usize)> {
             if depth != 0 || pos > line.len() {
                 return None; // Unterminated object.
             }
-            Some((line[start..pos].to_vec(), pos))
+            Some((&line[start..pos], pos))
         }
         b'[' => {
             // Nested array — match brackets, respecting strings.
@@ -141,7 +142,7 @@ fn extract_value(line: &[u8], mut pos: usize) -> Option<(Vec<u8>, usize)> {
             if depth != 0 || pos > line.len() {
                 return None; // Unterminated array.
             }
-            Some((line[start..pos].to_vec(), pos))
+            Some((&line[start..pos], pos))
         }
         _ => {
             // Number, boolean, null — scan until , or } or ] or whitespace.
@@ -155,7 +156,7 @@ fn extract_value(line: &[u8], mut pos: usize) -> Option<(Vec<u8>, usize)> {
             if pos == start {
                 None
             } else {
-                Some((line[start..pos].to_vec(), pos))
+                Some((&line[start..pos], pos))
             }
         }
     }
@@ -171,9 +172,9 @@ fn extract_value(line: &[u8], mut pos: usize) -> Option<(Vec<u8>, usize)> {
 ///
 /// Returns None if the line is not a flat-ish JSON object (we handle nested values
 /// as opaque blobs, but the top-level structure must be key:value pairs).
-type ParsedLine = (Vec<Vec<u8>>, Vec<Vec<u8>>);
+type ParsedLine<'a> = (Vec<&'a [u8]>, Vec<&'a [u8]>);
 
-fn parse_line(line: &[u8]) -> Option<ParsedLine> {
+fn parse_line(line: &[u8]) -> Option<ParsedLine<'_>> {
     let mut pos = 0;
 
     // Skip leading whitespace.
@@ -184,8 +185,8 @@ fn parse_line(line: &[u8]) -> Option<ParsedLine> {
         return None;
     }
 
-    let mut parts: Vec<Vec<u8>> = Vec::new();
-    let mut values: Vec<Vec<u8>> = Vec::new();
+    let mut parts: Vec<&[u8]> = Vec::new();
+    let mut values: Vec<&[u8]> = Vec::new();
     let mut part_start = 0;
 
     pos += 1; // Skip opening {.
@@ -202,7 +203,7 @@ fn parse_line(line: &[u8]) -> Option<ParsedLine> {
         // Check for closing brace (end of object).
         if line[pos] == b'}' {
             // Capture the final part: everything from part_start to end of line.
-            parts.push(line[part_start..].to_vec());
+            parts.push(&line[part_start..]);
             break;
         }
 
@@ -242,7 +243,7 @@ fn parse_line(line: &[u8]) -> Option<ParsedLine> {
         }
 
         // Everything from part_start up to here is a "template part".
-        parts.push(line[part_start..pos].to_vec());
+        parts.push(&line[part_start..pos]);
 
         // Extract the value.
         let (value, value_end) = extract_value(line, pos)?;
@@ -267,7 +268,7 @@ fn parse_line(line: &[u8]) -> Option<ParsedLine> {
             // Will be caught at the top of the loop next iteration — but we
             // need to NOT advance pos, so the } check above catches it.
             // Actually, let's just handle it here.
-            parts.push(line[part_start..].to_vec());
+            parts.push(&line[part_start..]);
             break;
         } else {
             return None; // Unexpected character.
@@ -298,8 +299,8 @@ fn split_lines(data: &[u8]) -> Vec<&[u8]> {
 /// Build columnar data from parsed lines that share the same template.
 /// Returns (col_data, metadata) for a uniform group.
 fn build_uniform_columnar(
-    template_parts: &[Vec<u8>],
-    columns: &[Vec<Vec<u8>>],
+    template_parts: &[&[u8]],
+    columns: &[Vec<&[u8]>],
     num_rows: usize,
     has_trailing_newline: bool,
 ) -> (Vec<u8>, Vec<u8>) {
@@ -338,7 +339,7 @@ fn build_uniform_columnar(
 /// Returns a bitmask: `true` = extract (column-major), `false` = inline (row-major).
 /// High-cardinality columns with long average values are kept inline to preserve
 /// inter-row locality that benefits zstd/brotli compression.
-fn classify_columns(columns: &[Vec<Vec<u8>>], num_rows: usize) -> Vec<bool> {
+fn classify_columns(columns: &[Vec<&[u8]>], num_rows: usize) -> Vec<bool> {
     use std::collections::HashSet;
     columns
         .iter()
@@ -346,7 +347,7 @@ fn classify_columns(columns: &[Vec<Vec<u8>>], num_rows: usize) -> Vec<bool> {
             if num_rows < 10 {
                 return true; // Too few rows to measure cardinality meaningfully
             }
-            let unique: HashSet<&[u8]> = col_values.iter().map(|v| v.as_slice()).collect();
+            let unique: HashSet<&[u8]> = col_values.iter().copied().collect();
             let cardinality_ratio = unique.len() as f64 / num_rows as f64;
             let avg_len = col_values.iter().map(|v| v.len()).sum::<usize>() / num_rows;
             // Inline only if BOTH high-cardinality AND long values
@@ -367,8 +368,8 @@ fn classify_columns(columns: &[Vec<Vec<u8>>], num_rows: usize) -> Vec<bool> {
 ///   version(3) + num_rows + num_total_cols + trailing_newline +
 ///   num_extracted + extracted_col_indices + template_parts
 fn build_selective_columnar(
-    template_parts: &[Vec<u8>],
-    columns: &[Vec<Vec<u8>>],
+    template_parts: &[&[u8]],
+    columns: &[Vec<&[u8]>],
     extract_mask: &[bool],
     num_rows: usize,
     has_trailing_newline: bool,
@@ -405,7 +406,7 @@ fn build_selective_columnar(
         #[allow(clippy::needless_range_loop)]
         for row in 0..num_rows {
             for (ii, &col_idx) in inline_indices.iter().enumerate() {
-                inline_data.extend_from_slice(&columns[col_idx as usize][row]);
+                inline_data.extend_from_slice(columns[col_idx as usize][row]);
                 if ii < inline_indices.len() - 1 {
                     inline_data.push(VAL_SEP);
                 }
@@ -457,9 +458,9 @@ fn preprocess_uniform(
         return None;
     }
 
-    let mut columns: Vec<Vec<Vec<u8>>> = Vec::with_capacity(num_cols);
+    let mut columns: Vec<Vec<&[u8]>> = Vec::with_capacity(num_cols);
     for v in &first_values {
-        columns.push(vec![v.clone()]);
+        columns.push(vec![*v]);
     }
 
     for &line in &non_empty[1..] {
@@ -473,7 +474,7 @@ fn preprocess_uniform(
             }
         }
         for (col, val) in values.iter().enumerate() {
-            columns[col].push(val.clone());
+            columns[col].push(*val);
         }
     }
 
@@ -523,8 +524,8 @@ fn preprocess_uniform(
 ///     data_len: u32 LE
 ///     data: [bytes]  (columnar data for this group)
 ///   residual_data: [bytes]  (raw lines joined by \n)
-fn preprocess_grouped(
-    non_empty: &[&[u8]],
+fn preprocess_grouped<'a>(
+    non_empty: &[&'a [u8]],
     has_trailing_newline: bool,
 ) -> Option<(Vec<u8>, Vec<u8>)> {
     if non_empty.len() < MIN_GROUP_ROWS {
@@ -533,14 +534,14 @@ fn preprocess_grouped(
 
     // Parse all lines and group by template (the template parts identify the schema).
     // We use the template parts as the group key.
-    let mut parsed: Vec<Option<ParsedLine>> = Vec::with_capacity(non_empty.len());
+    let mut parsed: Vec<Option<ParsedLine<'a>>> = Vec::with_capacity(non_empty.len());
     for &line in non_empty {
         parsed.push(parse_line(line));
     }
 
     // Group rows by template. Key = template parts (as bytes for hashing).
     // We store groups as: template_key -> (template_parts, vec of (row_index, values)).
-    let mut group_map: HashMap<Vec<u8>, SchemaGroup> = HashMap::new();
+    let mut group_map: HashMap<Vec<u8>, SchemaGroup<'a>> = HashMap::new();
     let mut residual_indices: Vec<usize> = Vec::new();
 
     for (idx, parsed_line) in parsed.into_iter().enumerate() {
@@ -563,7 +564,7 @@ fn preprocess_grouped(
     }
 
     // Separate groups into qualifying (>= MIN_GROUP_ROWS) and residual.
-    let mut groups: Vec<SchemaGroup> = Vec::new();
+    let mut groups: Vec<SchemaGroup<'a>> = Vec::new();
     for (_key, (template_parts, rows)) in group_map {
         if rows.len() >= MIN_GROUP_ROWS {
             groups.push((template_parts, rows));
@@ -595,13 +596,13 @@ fn preprocess_grouped(
 
     for (template_parts, rows) in &groups {
         let num_cols = template_parts.len() - 1;
-        let mut columns: Vec<Vec<Vec<u8>>> = (0..num_cols).map(|_| Vec::new()).collect();
+        let mut columns: Vec<Vec<&[u8]>> = (0..num_cols).map(|_| Vec::new()).collect();
         let mut row_indices: Vec<u32> = Vec::with_capacity(rows.len());
 
         for (idx, values) in rows {
             row_indices.push(*idx as u32);
             for (col, val) in values.iter().enumerate() {
-                columns[col].push(val.clone());
+                columns[col].push(*val);
             }
         }
 
@@ -940,7 +941,7 @@ pub(crate) fn parse_nested_object_with_template(
         // Use extract_value but we've already consumed whitespace.
         let (value, value_end) = extract_value(obj, value_start)?;
         pos = value_end;
-        pairs.push((key, value));
+        pairs.push((key, value.to_vec()));
 
         part_start = pos;
 
@@ -1031,7 +1032,7 @@ pub(crate) fn parse_nested_object_kv(obj: &[u8]) -> Option<Vec<(Vec<u8>, Vec<u8>
         // Extract the value.
         let (value, value_end) = extract_value(obj, pos)?;
         pos = value_end;
-        pairs.push((key, value));
+        pairs.push((key, value.to_vec()));
 
         // Skip whitespace.
         while pos < obj.len() && obj[pos].is_ascii_whitespace() {
