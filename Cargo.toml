@@ -23,6 +23,7 @@ rust-version = "1.85"
 datacortex-core = { path = "crates/datacortex-core", version = "0.4.3" }
 datacortex-neural = { path = "crates/datacortex-neural" }
 crc32fast = "1"
+memchr = "2"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

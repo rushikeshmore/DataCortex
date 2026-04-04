@@ -14,6 +14,7 @@ readme = "../../README.md"
 
 [dependencies]
 crc32fast = { workspace = true }
+memchr = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 zstd = { workspace = true }

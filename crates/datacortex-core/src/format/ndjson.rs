@@ -285,11 +285,9 @@ fn parse_line(line: &[u8]) -> Option<ParsedLine> {
 fn split_lines(data: &[u8]) -> Vec<&[u8]> {
     let mut lines: Vec<&[u8]> = Vec::new();
     let mut start = 0;
-    for i in 0..data.len() {
-        if data[i] == b'\n' {
-            lines.push(&data[start..i]);
-            start = i + 1;
-        }
+    for pos in memchr::memchr_iter(b'\n', data) {
+        lines.push(&data[start..pos]);
+        start = pos + 1;
     }
     if start < data.len() {
         lines.push(&data[start..]);
@@ -1555,7 +1553,20 @@ fn reverse_uniform_from_parts(
         columns.push(vals);
     }
 
-    let mut output = Vec::with_capacity(data.len() * 2);
+    // Pre-calculate exact output size to allocate once (avoid incremental realloc).
+    let template_size_per_row: usize = parts.iter().map(|p| p.len()).sum();
+    let values_total: usize = columns
+        .iter()
+        .map(|col| col.iter().map(|v| v.len()).sum::<usize>())
+        .sum();
+    let newline_count = if has_trailing_newline {
+        num_rows
+    } else {
+        num_rows - 1
+    };
+    let total_size = template_size_per_row * num_rows + values_total + newline_count;
+
+    let mut output = Vec::with_capacity(total_size);
     #[allow(clippy::needless_range_loop)]
     for row in 0..num_rows {
         output.extend_from_slice(&parts[0]);
