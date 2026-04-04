@@ -28,6 +28,11 @@ const VAL_SEP: u8 = 0x01;
 const METADATA_VERSION_UNIFORM: u8 = 1;
 const METADATA_VERSION_GROUPED: u8 = 2;
 const METADATA_VERSION_SELECTIVE: u8 = 3;
+/// Grouped sub-group version: uniform columnar with typed encoding applied.
+/// Reserved for future use — typed encoding in grouped path doesn't improve
+/// post-zstd ratio because zstd compresses raw text equally well.
+#[allow(dead_code)]
+const METADATA_VERSION_TYPED: u8 = 4;
 
 /// Minimum rows in a schema group for it to be columnarized (not residual).
 const MIN_GROUP_ROWS: usize = 5;
@@ -726,6 +731,7 @@ fn preprocess_grouped_core<'a>(
             } else {
                 group_metadata.push(0u8); // has_nested = 0
             }
+
         }
 
         group_outputs.push(GroupOutput {

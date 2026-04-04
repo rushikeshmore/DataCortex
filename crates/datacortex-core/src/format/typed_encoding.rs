@@ -7,7 +7,7 @@
 //!   - Boolean columns: bitmap packing (8 bools per byte)
 //!   - Timestamp columns: epoch-micros delta + zigzag + LEB128 varint
 //!   - Enum columns: dictionary + ordinal bytes
-//!   - String columns: quote-strip + length-prefix
+//!   - String columns: FSST symbol-table compression (≥32 strings) or quote-strip + length-prefix
 //!   - UUID columns: binary 16-byte packing
 //!   - Nullable columns: null bitmap + typed sub-encoding
 //!   - Everything else: raw passthrough (kept as \x01-separated text)
@@ -24,7 +24,7 @@
 //!
 //! [Per Column]
 //!   encoding_type: u8 (0=Raw, 1=DeltaVarint, 2=Bitmap, 3=NullBitmap+Typed,
-//!                       4=Timestamp, 5=Enum, 6=String, 7=Uuid)
+//!                       4=Timestamp, 5=Enum, 6=String, 7=Uuid, 8=FSST, 9=HexPrefix)
 //!   data_length: u32 LE
 //!   [column data bytes]
 //! ```
@@ -44,6 +44,7 @@ const ENC_TIMESTAMP: u8 = 4;
 const ENC_ENUM: u8 = 5;
 const ENC_STRING: u8 = 6;
 const ENC_UUID: u8 = 7;
+const ENC_FSST_STRING: u8 = 8;
 const ENC_HEX_PREFIX: u8 = 9;
 
 // ─── ZigZag + LEB128 Primitives ─────────────────────────────────────────────
@@ -728,6 +729,138 @@ fn decode_string_column(data: &[u8]) -> Vec<Vec<u8>> {
     result
 }
 
+// ─── FSST String Encoder (Symbol-Table Compression) ────────────────────────
+
+/// Minimum number of strings to attempt FSST encoding.
+/// Below this threshold, the symbol table overhead exceeds any compression gain.
+#[allow(dead_code)]
+const FSST_MIN_STRINGS: usize = 32;
+
+/// Encode a string column using FSST (Fast Static Symbol Table) compression.
+///
+/// NOTE: Currently not auto-selected because FSST pre-compression hurts
+/// downstream zstd compression (removes patterns zstd would exploit).
+/// Kept for forward-compatibility and potential future direct-access mode.
+#[allow(dead_code)]
+///
+/// Trains a symbol table on the unquoted string values, then compresses each
+/// string individually. The symbol table is serialized alongside the compressed
+/// data so that decoding is self-contained.
+///
+/// Format:
+/// ```text
+/// [num_symbols: u16 LE]
+/// [symbols: [u64 LE; num_symbols]]
+/// [symbol_lens: [u8; num_symbols]]
+/// [num_strings: u32 LE]
+/// [per string: compressed_len: u32 LE, compressed_bytes...]
+/// ```
+fn encode_fsst_string_column(values: &[&[u8]]) -> Vec<u8> {
+    // Strip quotes from all values for training and compression.
+    let stripped: Vec<&[u8]> = values
+        .iter()
+        .map(|v| {
+            if v.len() >= 2 && v[0] == b'"' && v[v.len() - 1] == b'"' {
+                &v[1..v.len() - 1]
+            } else {
+                *v
+            }
+        })
+        .collect();
+
+    // Train FSST compressor on the stripped strings.
+    let compressor = fsst::Compressor::train(&stripped);
+
+    // Serialize the symbol table.
+    let symbols = compressor.symbol_table();
+    let sym_lens = compressor.symbol_lengths();
+    let num_symbols = symbols.len() as u16;
+
+    // Header: symbol table size.
+    // Capacity estimate: 2 (num_symbols) + num_symbols * 9 + 4 (count) + compressed data.
+    let mut out = Vec::with_capacity(2 + (num_symbols as usize) * 9 + 4 + values.len() * 8);
+    out.extend_from_slice(&num_symbols.to_le_bytes());
+
+    // Write symbols as u64 LE values.
+    for sym in symbols {
+        out.extend_from_slice(&sym.to_u64().to_le_bytes());
+    }
+    // Write symbol lengths.
+    out.extend_from_slice(sym_lens);
+
+    // Compress each string and write count + length-prefixed compressed data.
+    out.extend_from_slice(&(stripped.len() as u32).to_le_bytes());
+    for s in &stripped {
+        let compressed = compressor.compress(s);
+        out.extend_from_slice(&(compressed.len() as u32).to_le_bytes());
+        out.extend_from_slice(&compressed);
+    }
+
+    out
+}
+
+/// Decode an FSST-compressed string column back to quoted text values.
+fn decode_fsst_string_column(data: &[u8]) -> Vec<Vec<u8>> {
+    if data.len() < 2 {
+        return decode_raw(data);
+    }
+
+    let mut pos = 0;
+
+    // Read symbol table.
+    let num_symbols = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
+    pos += 2;
+
+    // Each symbol is 8 bytes (u64 LE), plus 1 byte for length.
+    let sym_data_len = num_symbols * 8 + num_symbols;
+    if pos + sym_data_len > data.len() {
+        return decode_raw(data);
+    }
+
+    let mut symbols = Vec::with_capacity(num_symbols);
+    for _ in 0..num_symbols {
+        let val = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
+        symbols.push(fsst::Symbol::from_slice(&val.to_le_bytes()));
+        pos += 8;
+    }
+    let sym_lens = &data[pos..pos + num_symbols];
+    pos += num_symbols;
+
+    // Rebuild compressor and get decompressor.
+    let compressor = fsst::Compressor::rebuild_from(&symbols, sym_lens);
+    let decompressor = compressor.decompressor();
+
+    // Read string count.
+    if pos + 4 > data.len() {
+        return decode_raw(data);
+    }
+    let count = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+    pos += 4;
+
+    let mut result = Vec::with_capacity(count);
+    for _ in 0..count {
+        if pos + 4 > data.len() {
+            break;
+        }
+        let clen = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+        pos += 4;
+        if pos + clen > data.len() {
+            break;
+        }
+        let decompressed = decompressor.decompress(&data[pos..pos + clen]);
+        pos += clen;
+
+        // Re-add quotes.
+        let mut val = Vec::with_capacity(decompressed.len() + 2);
+        val.push(b'"');
+        val.extend_from_slice(&decompressed);
+        val.push(b'"');
+        result.push(val);
+    }
+
+    result
+}
+
 // ─── UUID Encoder (Binary 16-byte Packing) ─────────────────────────────────
 
 /// Parse a single hex character to its nibble value.
@@ -1002,6 +1135,10 @@ fn encode_nullable_column(values: &[&[u8]], sub_type: u8) -> Vec<u8> {
             let encoded = encode_string_column(&non_null_values);
             out.extend_from_slice(&encoded);
         }
+        ENC_FSST_STRING => {
+            let encoded = encode_fsst_string_column(&non_null_values);
+            out.extend_from_slice(&encoded);
+        }
         ENC_UUID => match encode_uuid_column(&non_null_values) {
             Some(encoded) => out.extend_from_slice(&encoded),
             None => {
@@ -1063,6 +1200,7 @@ fn decode_nullable_column(data: &[u8]) -> Vec<Vec<u8>> {
         ENC_TIMESTAMP => decode_timestamp_column(typed_data),
         ENC_ENUM => decode_enum_column(typed_data),
         ENC_STRING => decode_string_column(typed_data),
+        ENC_FSST_STRING => decode_fsst_string_column(typed_data),
         ENC_UUID => decode_uuid_column(typed_data),
         ENC_HEX_PREFIX => decode_hex_prefix_column(typed_data),
         _ => Vec::new(),
@@ -1393,6 +1531,7 @@ fn decode_column(enc_type: u8, col_data: &[u8]) -> Vec<Vec<u8>> {
         ENC_TIMESTAMP => decode_timestamp_column(col_data),
         ENC_ENUM => decode_enum_column(col_data),
         ENC_STRING => decode_string_column(col_data),
+        ENC_FSST_STRING => decode_fsst_string_column(col_data),
         ENC_UUID => decode_uuid_column(col_data),
         ENC_HEX_PREFIX => decode_hex_prefix_column(col_data),
         _ => decode_raw(col_data),
@@ -2573,5 +2712,64 @@ mod tests {
             long_str.as_bytes().to_vec(),
             "100KB string must roundtrip through string encoding"
         );
+    }
+
+    #[test]
+    fn test_fsst_string_roundtrip() {
+        // Generate enough strings to exercise FSST.
+        let strings: Vec<String> = (0..100)
+            .map(|i| format!("\"https://api.github.com/repos/user{}/project{}\"", i % 10, i))
+            .collect();
+        let values: Vec<&[u8]> = strings.iter().map(|s| s.as_bytes()).collect();
+
+        let encoded = encode_fsst_string_column(&values);
+        let decoded = decode_fsst_string_column(&encoded);
+
+        assert_eq!(decoded.len(), values.len());
+        for (i, (dec, orig)) in decoded.iter().zip(values.iter()).enumerate() {
+            assert_eq!(
+                dec, orig,
+                "FSST roundtrip mismatch at index {}: got {:?}, expected {:?}",
+                i,
+                String::from_utf8_lossy(dec),
+                String::from_utf8_lossy(orig),
+            );
+        }
+    }
+
+    #[test]
+    fn test_fsst_string_empty_and_short() {
+        // Single empty string.
+        let values: Vec<&[u8]> = vec![b"\"\""];
+        let encoded = encode_fsst_string_column(&values);
+        let decoded = decode_fsst_string_column(&encoded);
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(decoded[0], b"\"\"");
+
+        // Few short strings.
+        let vals = vec![b"\"a\"" as &[u8], b"\"bb\"", b"\"ccc\""];
+        let enc = encode_fsst_string_column(&vals);
+        let dec = decode_fsst_string_column(&enc);
+        assert_eq!(dec.len(), 3);
+        assert_eq!(dec[0], b"\"a\"");
+        assert_eq!(dec[1], b"\"bb\"");
+        assert_eq!(dec[2], b"\"ccc\"");
+    }
+
+    #[test]
+    fn test_fsst_decode_in_column_dispatch() {
+        // Verify ENC_FSST_STRING is handled by decode_column.
+        let strings: Vec<String> = (0..50)
+            .map(|i| format!("\"session_{}\"", i))
+            .collect();
+        let values: Vec<&[u8]> = strings.iter().map(|s| s.as_bytes()).collect();
+
+        let encoded = encode_fsst_string_column(&values);
+        let decoded = decode_column(ENC_FSST_STRING, &encoded);
+
+        assert_eq!(decoded.len(), values.len());
+        for (dec, orig) in decoded.iter().zip(values.iter()) {
+            assert_eq!(dec, orig);
+        }
     }
 }

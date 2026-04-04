@@ -20,6 +20,7 @@ serde_json = { workspace = true }
 zstd = { workspace = true }
 brotli = { workspace = true }
 rayon = { workspace = true }
+fsst-rs = "0.5.5"
 
 [features]
 default = []
