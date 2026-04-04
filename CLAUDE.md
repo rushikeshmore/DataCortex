@@ -22,7 +22,7 @@ Key modules:
 - `dcx.rs` -.dcx v3 file format
 
 ## Current Status
-**v0.4.3.** JSON/NDJSON focused. 381 tests. 93 commits. Published: crates.io (core + CLI v0.4.3), PyPI (datacortex v0.4.3). Site: datacortex-dcx.vercel.app.
+**v0.4.3+.** JSON/NDJSON focused. 390 tests. 105 commits. Published: crates.io (core + CLI v0.4.3), PyPI (datacortex v0.4.3). Site: datacortex-dcx.vercel.app.
 
 **Benchmark results:**
 | File | Size | DataCortex | zstd-19 | brotli-11 | vs best |
@@ -62,7 +62,7 @@ cargo clippy --all-targets -- -D warnings
 5. **Solo model test before mixing.** New CM models get solo bpb test first.
 6. **No external deps for parsing.** Manual ISO 8601, UUID, etc. parsing (no chrono, no regex).
 
-## Key Gotchas (47 total, see vault gotchas.md)
+## Key Gotchas (48 total, see vault gotchas.md)
 - **#35:** Typed encoding HURTS CM, HELPS zstd. Fast-mode-only.
 - **#33:** Columnar transform + strong CM = worse than raw + strong CM (confirmed with cmix).
 - **#34:** Value dict saves 55% raw but only 3% compressed (CM already predicts repetition).
@@ -70,6 +70,7 @@ cargo clippy --all-targets -- -D warnings
 - **#39:** Hex-to-binary removes Huffman-exploitable alphabet structure.
 - **#41:** Auto-fallback with 6+ paths is the key architecture.
 - **#44:** Mixed-type columns corrupt data if typed-encoded as String. Check `has_mixed_quoting()`.
+- **#48:** zstd levels 9-15 are a ratio plateau on structured JSON. Skip to 19 (≤16MB) or 16 (16-64MB).
 - Match model: rolling hash must be non-cumulative.
 - Multi-set mixer FAILS with <100 inputs.
 - η=2 for fine mixer (64K weights), η=4 for coarse (4K).
@@ -109,21 +110,21 @@ Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` i
 ## CodeCortex — Project Knowledge (auto-updated)
 
 ### Architecture
-**datacortex** — rust, python — 53 files, 1127 symbols
-- **Modules (4):** datacortex-core (21141loc), datacortex-cli (928loc), datacortex-neural (773loc), datacortex-python (213loc)
+**datacortex** — rust, python — 53 files, 1143 symbols
+- **Modules (4):** datacortex-core (21716loc), datacortex-cli (947loc), datacortex-neural (773loc), datacortex-python (213loc)
 
 ### Risk Map
 **High-risk files:**
-- `CLAUDE.md` — 40 changes, 5 bug-fixes, volatile
-- `.codecortex/constitution.md` — 34 changes, 4 bug-fixes, volatile
-- `.codecortex/cortex.yaml` — 34 changes, 4 bug-fixes, volatile
-- `.codecortex/graph.json` — 34 changes, 4 bug-fixes, volatile
-- `.codecortex/hotspots.md` — 34 changes, 4 bug-fixes, volatile
+- `CLAUDE.md` — 41 changes, 5 bug-fixes, volatile
+- `.codecortex/constitution.md` — 35 changes, 4 bug-fixes, volatile
+- `.codecortex/cortex.yaml` — 35 changes, 4 bug-fixes, volatile
+- `.codecortex/graph.json` — 35 changes, 4 bug-fixes, volatile
+- `.codecortex/hotspots.md` — 35 changes, 4 bug-fixes, volatile
 
 **Hidden couplings (co-change, no import):**
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (60% co-change)
-- `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` (86% co-change)
-- `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` (57% co-change)
+- `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` (75% co-change)
+- `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` (50% co-change)
 
 **Bug-prone files:**
 - `crates/datacortex-core/src/format/ndjson.rs` — 4 bug-fix commits
