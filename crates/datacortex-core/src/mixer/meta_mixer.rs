@@ -79,7 +79,7 @@ impl MetaMixer {
             / 256;
 
         // Blend table output with direct average (50/50).
-        let blended = (table_p as u64 + direct) / 2;
+        let blended = u64::midpoint(table_p as u64, direct);
         self.last_p = (blended as u32).clamp(1, 4095);
         self.last_p
     }

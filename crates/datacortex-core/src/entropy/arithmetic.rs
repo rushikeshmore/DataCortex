@@ -117,7 +117,7 @@ impl<'a> ArithmeticDecoder<'a> {
             + (range >> PROB_BITS) * (PROB_SCALE - p)
             + (((range & (PROB_SCALE - 1)) * (PROB_SCALE - p)) >> PROB_BITS);
 
-        let bit = if self.code > mid { 1u8 } else { 0u8 };
+        let bit = u8::from(self.code > mid);
 
         if bit != 0 {
             self.low = mid + 1;

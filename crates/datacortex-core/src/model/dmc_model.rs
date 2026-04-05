@@ -180,7 +180,7 @@ impl DmcInstance {
     /// Full reset when max_states is reached.
     fn reset(&mut self) {
         // Clear all states.
-        for s in self.states[..self.max_states].iter_mut() {
+        for s in &mut self.states[..self.max_states] {
             *s = DmcState::EMPTY;
         }
         self.init_states();
@@ -316,7 +316,7 @@ mod tests {
         let mut m1 = DmcModel::new_single();
         let mut m2 = DmcModel::new_single();
 
-        for &byte in data.iter() {
+        for &byte in data {
             for bpos in 0..8u8 {
                 let p1 = m1.predict();
                 let p2 = m2.predict();
@@ -346,7 +346,7 @@ mod tests {
         let mut m1 = DmcModel::new_forest();
         let mut m2 = DmcModel::new_forest();
 
-        for &byte in data.iter() {
+        for &byte in data {
             for bpos in 0..8u8 {
                 let p1 = m1.predict();
                 let p2 = m2.predict();

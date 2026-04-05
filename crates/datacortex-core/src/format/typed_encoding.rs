@@ -1511,8 +1511,8 @@ fn encode_column(values: &[&[u8]], col_type: &ColumnType) -> (u8, Vec<u8>) {
             // All-null column: store as raw passthrough.
             (ENC_RAW, encode_raw(values))
         }
-        // Float — raw passthrough (roundtrip risk).
-        _ => (ENC_RAW, encode_raw(values)),
+        // Float -- raw passthrough (roundtrip risk).
+        ColumnType::Float { .. } => (ENC_RAW, encode_raw(values)),
     }
 }
 
@@ -1552,7 +1552,7 @@ fn encode_raw(values: &[&[u8]]) -> Vec<u8> {
 
 /// Decode raw: split by \x01.
 fn decode_raw(data: &[u8]) -> Vec<Vec<u8>> {
-    data.split(|&b| b == VAL_SEP).map(|v| v.to_vec()).collect()
+    data.split(|&b| b == VAL_SEP).map(<[u8]>::to_vec).collect()
 }
 
 /// Decode an integer column by consuming all varints in the data.
@@ -1758,7 +1758,7 @@ mod tests {
         let values: Vec<Vec<u8>> = (100..=103)
             .map(|n: i64| n.to_string().into_bytes())
             .collect();
-        let val_refs: Vec<&[u8]> = values.iter().map(|v| v.as_slice()).collect();
+        let val_refs: Vec<&[u8]> = values.iter().map(std::vec::Vec::as_slice).collect();
 
         let encoded = encode_integer_column(&val_refs);
 
@@ -1991,9 +1991,9 @@ mod tests {
             .map(|i| format!("\"some_string_value_{}\"", i).into_bytes())
             .collect();
 
-        let int_refs: Vec<&[u8]> = ints.iter().map(|v| v.as_slice()).collect();
-        let bool_refs: Vec<&[u8]> = bools.iter().map(|v| v.as_slice()).collect();
-        let str_refs: Vec<&[u8]> = strs.iter().map(|v| v.as_slice()).collect();
+        let int_refs: Vec<&[u8]> = ints.iter().map(std::vec::Vec::as_slice).collect();
+        let bool_refs: Vec<&[u8]> = bools.iter().map(std::vec::Vec::as_slice).collect();
+        let str_refs: Vec<&[u8]> = strs.iter().map(std::vec::Vec::as_slice).collect();
 
         let data = build_columnar(&[&int_refs, &bool_refs, &str_refs]);
 
@@ -2068,7 +2068,7 @@ mod tests {
         );
         assert_eq!(
             restored_columnar,
-            columnar_data.to_vec(),
+            columnar_data.clone(),
             "restored columnar data does not match original"
         );
 
@@ -2385,7 +2385,7 @@ mod tests {
             );
             assert_eq!(
                 restored,
-                columnar.to_vec(),
+                columnar.clone(),
                 "real corpus typed roundtrip data mismatch"
             );
         }
@@ -2464,7 +2464,7 @@ mod tests {
             };
             values.push(v);
         }
-        let refs: Vec<&[u8]> = values.iter().map(|v| v.as_slice()).collect();
+        let refs: Vec<&[u8]> = values.iter().map(std::vec::Vec::as_slice).collect();
         let col_type = ColumnType::String { nullable: true };
         let (enc_type, enc_data) = encode_column(&refs, &col_type);
 
@@ -2557,7 +2557,7 @@ mod tests {
         let strs: Vec<Vec<u8>> = (0..203)
             .map(|i| edges[i % 7].to_string().into_bytes())
             .collect();
-        let refs: Vec<&[u8]> = strs.iter().map(|v| v.as_slice()).collect();
+        let refs: Vec<&[u8]> = strs.iter().map(std::vec::Vec::as_slice).collect();
 
         let encoded = encode_integer_column(&refs);
         let decoded = decode_integer_column(&encoded, refs.len());
@@ -2620,8 +2620,8 @@ mod tests {
             .map(|i| edges[i % 7].to_string().into_bytes())
             .collect();
         let col1: Vec<Vec<u8>> = (0..n).map(|i: usize| i.to_string().into_bytes()).collect();
-        let col0_refs: Vec<&[u8]> = col0.iter().map(|v| v.as_slice()).collect();
-        let col1_refs: Vec<&[u8]> = col1.iter().map(|v| v.as_slice()).collect();
+        let col0_refs: Vec<&[u8]> = col0.iter().map(std::vec::Vec::as_slice).collect();
+        let col1_refs: Vec<&[u8]> = col1.iter().map(std::vec::Vec::as_slice).collect();
         let columnar = build_columnar(&[&col0_refs, &col1_refs]);
 
         let result = preprocess(&columnar).expect("preprocess should succeed");
@@ -2726,7 +2726,7 @@ mod tests {
                 )
             })
             .collect();
-        let values: Vec<&[u8]> = strings.iter().map(|s| s.as_bytes()).collect();
+        let values: Vec<&[u8]> = strings.iter().map(std::string::String::as_bytes).collect();
 
         let encoded = encode_fsst_string_column(&values);
         let decoded = decode_fsst_string_column(&encoded);
@@ -2767,7 +2767,7 @@ mod tests {
     fn test_fsst_decode_in_column_dispatch() {
         // Verify ENC_FSST_STRING is handled by decode_column.
         let strings: Vec<String> = (0..50).map(|i| format!("\"session_{}\"", i)).collect();
-        let values: Vec<&[u8]> = strings.iter().map(|s| s.as_bytes()).collect();
+        let values: Vec<&[u8]> = strings.iter().map(std::string::String::as_bytes).collect();
 
         let encoded = encode_fsst_string_column(&values);
         let decoded = decode_column(ENC_FSST_STRING, &encoded);

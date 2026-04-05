@@ -435,7 +435,7 @@ mod tests {
                 i, i, i % 5, i
             ));
         }
-        json.push_str(r#"]}"#);
+        json.push_str(r"]}");
 
         let data = json.as_bytes();
 

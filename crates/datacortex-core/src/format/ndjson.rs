@@ -330,7 +330,7 @@ fn build_uniform_columnar(
     metadata.push(METADATA_VERSION_UNIFORM);
     metadata.extend_from_slice(&(num_rows as u32).to_le_bytes());
     metadata.extend_from_slice(&(num_cols as u16).to_le_bytes());
-    metadata.push(if has_trailing_newline { 1 } else { 0 });
+    metadata.push(u8::from(has_trailing_newline));
     metadata.extend_from_slice(&(template_parts.len() as u16).to_le_bytes());
     for part in template_parts {
         metadata.extend_from_slice(&(part.len() as u16).to_le_bytes());
@@ -433,7 +433,7 @@ fn build_selective_columnar(
     metadata.push(METADATA_VERSION_SELECTIVE);
     metadata.extend_from_slice(&(num_rows as u32).to_le_bytes());
     metadata.extend_from_slice(&(num_total_cols as u16).to_le_bytes());
-    metadata.push(if has_trailing_newline { 1 } else { 0 });
+    metadata.push(u8::from(has_trailing_newline));
     metadata.extend_from_slice(&(extracted_indices.len() as u16).to_le_bytes());
     for &idx in &extracted_indices {
         metadata.extend_from_slice(&idx.to_le_bytes());
@@ -758,7 +758,7 @@ fn preprocess_grouped_core<'a>(
     // Build the combined metadata.
     let mut metadata = Vec::new();
     metadata.push(METADATA_VERSION_GROUPED);
-    metadata.push(if has_trailing_newline { 1 } else { 0 });
+    metadata.push(u8::from(has_trailing_newline));
     metadata.extend_from_slice(&(non_empty.len() as u32).to_le_bytes());
     metadata.extend_from_slice(&(group_outputs.len() as u16).to_le_bytes());
 
@@ -930,7 +930,7 @@ pub(crate) fn flatten_nested_columns(
                     // null row — all sub-columns get null.
                     // These are NOT marked as absent (the whole column was null,
                     // not individual keys missing).
-                    for sc in sub_columns.iter_mut() {
+                    for sc in &mut sub_columns {
                         sc.push(b"null".to_vec());
                     }
                 }
@@ -1594,7 +1594,7 @@ fn reverse_uniform(data: &[u8], metadata: &[u8]) -> Vec<u8> {
         return data.to_vec();
     }
     let mut pos = 0;
-    let _version = metadata[pos];
+    // Skip version byte (reserved for format changes).
     pos += 1;
     let num_rows = u32::from_le_bytes(metadata[pos..pos + 4].try_into().unwrap()) as usize;
     pos += 4;
@@ -1670,7 +1670,7 @@ fn reverse_uniform_from_parts(
     }
 
     // Pre-calculate exact output size to allocate once (avoid incremental realloc).
-    let template_size_per_row: usize = parts.iter().map(|p| p.len()).sum();
+    let template_size_per_row: usize = parts.iter().map(std::vec::Vec::len).sum();
     let values_total: usize = columns
         .iter()
         .map(|col| col.iter().map(|v| v.len()).sum::<usize>())

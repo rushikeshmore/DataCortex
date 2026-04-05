@@ -228,7 +228,7 @@ fn deserialize_dict(data: &[u8]) -> Vec<Vec<u8>> {
         return vec![];
     }
     let mut pos = 0;
-    let _version = data[pos];
+    // Skip version byte (reserved for format changes).
     pos += 1;
     let num = u16::from_le_bytes([data[pos], data[pos + 1]]) as usize;
     pos += 2;

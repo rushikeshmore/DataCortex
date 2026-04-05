@@ -219,7 +219,7 @@ impl GruModel {
 
         // Bias update gate to slightly positive so it starts in "remember" mode
         // (z → 1 means keep old hidden state). Helps gradient flow early in training.
-        for b in self.b_z.iter_mut() {
+        for b in &mut self.b_z {
             *b = 1.0;
         }
         // Reset gate and candidate biases stay at 0.
@@ -340,7 +340,7 @@ impl GruModel {
 
         // Numerically stable softmax: subtract max before exp.
         let mut sum: f32 = 0.0;
-        for p in self.byte_probs.iter_mut() {
+        for p in &mut self.byte_probs {
             let e = (*p - max_logit).exp();
             *p = e;
             sum += e;
@@ -348,7 +348,7 @@ impl GruModel {
 
         // Normalize with epsilon guard.
         let inv_sum = 1.0 / (sum + 1e-30);
-        for p in self.byte_probs.iter_mut() {
+        for p in &mut self.byte_probs {
             *p *= inv_sum;
             // Clamp to avoid log(0) in training.
             if *p < 1e-8 {

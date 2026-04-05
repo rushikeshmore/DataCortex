@@ -120,7 +120,7 @@ pub fn reverse(data: &[u8], metadata: &[u8]) -> Vec<u8> {
     let mut mpos = 0;
 
     // Parse header.
-    let _version = metadata[mpos];
+    // Skip version byte (reserved for format changes).
     mpos += 1;
     if mpos + 2 > metadata.len() {
         return data.to_vec();

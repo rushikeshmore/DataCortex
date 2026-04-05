@@ -662,7 +662,7 @@ fn flatten_group_nested(
                     }
                 }
                 None => {
-                    for sc in sub_columns.iter_mut() {
+                    for sc in &mut sub_columns {
                         sc.push(b"null".to_vec());
                     }
                 }
@@ -1661,7 +1661,7 @@ fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
     // Determine per-element separators.
     // There are (total_elements - 1) separators between elements.
     let separators: Vec<&[u8]> = if let Some(ref per_elem) = per_element_separators {
-        per_elem.iter().map(|s| s.as_slice()).collect()
+        per_elem.iter().map(std::vec::Vec::as_slice).collect()
     } else {
         vec![default_separator.as_slice(); total_elements.saturating_sub(1)]
     };
@@ -1974,7 +1974,7 @@ mod tests {
                 ));
             }
         }
-        json.push_str(r#"]}"#);
+        json.push_str(r"]}");
 
         let data = json.as_bytes();
         let result = preprocess(data).expect("should produce grouped transform with residuals");

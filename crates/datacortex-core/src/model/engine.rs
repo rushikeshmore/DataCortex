@@ -834,7 +834,7 @@ mod tests {
         let mut e1 = CMEngine::new();
         let mut e2 = CMEngine::new();
 
-        for &byte in data.iter() {
+        for &byte in data {
             for bpos in 0..8 {
                 let p1 = e1.predict();
                 let p2 = e2.predict();

@@ -463,7 +463,7 @@ mod tests {
     fn byte_probs_sum_correctly() {
         let mut model = PpmModel::new();
         let data = b"the quick brown fox jumps over the lazy dog the cat sat on the mat";
-        for &byte in data.iter() {
+        for &byte in data {
             model.update_byte(byte);
         }
         model.compute_byte_probs();
@@ -497,7 +497,7 @@ mod tests {
         let mut m1 = PpmModel::new();
         let mut m2 = PpmModel::new();
 
-        for &byte in data.iter() {
+        for &byte in data {
             for bpos in 0..8u8 {
                 let c0 = if bpos == 0 {
                     1u32

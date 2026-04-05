@@ -38,7 +38,7 @@ impl APMStage {
     pub fn new(num_contexts: usize, blend_pct: u32) -> Self {
         // Initialize table with linear mapping: bin i → i * 4096 / (NUM_BINS - 1).
         let mut table = vec![[0u32; NUM_BINS]; num_contexts];
-        for ctx_row in table.iter_mut() {
+        for ctx_row in &mut table {
             for (i, entry) in ctx_row.iter_mut().enumerate() {
                 *entry = ((i as u64 * 4095 + (NUM_BINS as u64 - 1) / 2) / (NUM_BINS as u64 - 1))
                     .clamp(1, 4095) as u32;

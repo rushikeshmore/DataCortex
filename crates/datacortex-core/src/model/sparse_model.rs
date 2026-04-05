@@ -70,7 +70,7 @@ impl SparseModel {
         let p3 = self.smap_gap3.predict(state3);
 
         // Blend: average in probability space
-        ((p2 + p3) / 2).clamp(1, 4095)
+        u32::midpoint(p2, p3).clamp(1, 4095)
     }
 
     /// Update after observing bit.

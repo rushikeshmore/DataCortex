@@ -161,7 +161,7 @@ fn is_integer(val: &[u8]) -> bool {
     if val.is_empty() {
         return false;
     }
-    let start = if val[0] == b'-' { 1 } else { 0 };
+    let start = usize::from(val[0] == b'-');
     if start >= val.len() {
         return false;
     }
@@ -789,7 +789,7 @@ mod tests {
         let vals: Vec<Vec<u8>> = (0..300)
             .map(|i| format!("\"unique_value_{}\"", i).into_bytes())
             .collect();
-        let val_refs: Vec<&[u8]> = vals.iter().map(|v| v.as_slice()).collect();
+        let val_refs: Vec<&[u8]> = vals.iter().map(std::vec::Vec::as_slice).collect();
         let data = build_columnar(&[&val_refs]);
         let schema = infer_schema(&data);
         assert_eq!(schema.columns.len(), 1);
