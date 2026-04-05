@@ -7,12 +7,13 @@
 //!
 //! # Quick Start
 //!
-//! ```no_run
-//! use datacortex_core::{compress, decompress, Mode, FormatHint};
+//! ```
+//! use datacortex_core::codec::{compress_to_vec, decompress_from_slice};
+//! use datacortex_core::dcx::Mode;
 //!
 //! let data = br#"{"id":1,"name":"test"}"#;
-//! let compressed = compress(data, Mode::Fast, FormatHint::Auto).unwrap();
-//! let original = decompress(&compressed).unwrap();
+//! let compressed = compress_to_vec(data, Mode::Fast, None).unwrap();
+//! let original = decompress_from_slice(&compressed).unwrap();
 //! assert_eq!(data.as_slice(), original.as_slice());
 //! ```
 
