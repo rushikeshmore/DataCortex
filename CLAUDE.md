@@ -62,7 +62,7 @@ cargo clippy --all-targets -- -D warnings
 5. **Solo model test before mixing.** New CM models get solo bpb test first.
 6. **No external deps for parsing.** Manual ISO 8601, UUID, etc. parsing (no chrono, no regex).
 
-## Key Gotchas (48 total, see vault gotchas.md)
+## Key Gotchas (48 total)
 - **#35:** Typed encoding HURTS CM, HELPS zstd. Fast-mode-only.
 - **#33:** Columnar transform + strong CM = worse than raw + strong CM (confirmed with cmix).
 - **#34:** Value dict saves 55% raw but only 3% compressed (CM already predicts repetition).
@@ -95,14 +95,6 @@ cargo clippy --all-targets -- -D warnings
 - UUID: 38 bytes → 16 bytes binary
 - Float: raw passthrough (roundtrip risk)
 
-## Full Documentation (Obsidian Vault)
-All detailed docs in `Rushikesh OS/2. Projects/06. DataCortex/`:
-- `Build SOP's/gotchas.md` -47 institutional lessons
-- `Build SOP's/testing.md` -4-tier pre-publish gate (unit, corpus, adversarial agent, real-world)
-- `Build SOP's/deployment.md`, `coding.md`, `surfaces.md` -SOPs
-- `Plan-Next-Phase.md` -roadmap (Phase 1-4)
-- Session logs in `00. Logs/` (8 sessions, Mar 15-27)
-
 ## Commits
 Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` in commit messages.
 
@@ -111,15 +103,15 @@ Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` in commit mess
 
 ### Architecture
 **datacortex** — rust, python — 53 files, 1154 symbols
-- **Modules (4):** datacortex-core (22143loc), datacortex-cli (976loc), datacortex-neural (773loc), datacortex-python (224loc)
+- **Modules (4):** datacortex-core (22144loc), datacortex-cli (976loc), datacortex-neural (773loc), datacortex-python (224loc)
 
 ### Risk Map
 **High-risk files:**
-- `CLAUDE.md` — 45 changes, 5 bug-fixes, volatile
-- `.codecortex/constitution.md` — 36 changes, 4 bug-fixes, volatile
-- `.codecortex/cortex.yaml` — 36 changes, 4 bug-fixes, volatile
-- `.codecortex/graph.json` — 36 changes, 4 bug-fixes, volatile
-- `.codecortex/hotspots.md` — 36 changes, 4 bug-fixes, volatile
+- `CLAUDE.md` — 46 changes, 5 bug-fixes, volatile
+- `.codecortex/constitution.md` — 37 changes, 4 bug-fixes, volatile
+- `.codecortex/cortex.yaml` — 37 changes, 4 bug-fixes, volatile
+- `.codecortex/graph.json` — 37 changes, 4 bug-fixes, volatile
+- `.codecortex/hotspots.md` — 37 changes, 4 bug-fixes, volatile
 
 **Hidden couplings (co-change, no import):**
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (55% co-change)
