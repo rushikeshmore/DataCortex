@@ -1,3 +1,32 @@
+// Lint policy (see STYLE.md for rationale).
+#![warn(clippy::pedantic)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::cast_lossless,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_possible_truncation,
+    clippy::too_many_lines,
+    clippy::similar_names,
+    clippy::unreadable_literal,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::needless_pass_by_value,
+    clippy::must_use_candidate,
+    clippy::wildcard_imports,
+    clippy::struct_excessive_bools,
+    clippy::if_not_else,
+    clippy::uninlined_format_args,
+    clippy::manual_let_else,
+    clippy::redundant_else,
+    clippy::match_same_arms,
+    clippy::single_match_else,
+    clippy::fn_params_excessive_bools,
+    clippy::format_push_string,
+    clippy::items_after_statements
+)]
+
 use std::fs;
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -45,7 +74,7 @@ struct Cli {
     #[arg(short, long, global = true)]
     verbose: bool,
 
-    /// Path to GGUF model for neural Max mode (or set DATACORTEX_MODEL env var)
+    /// Path to GGUF model for neural Max mode (or set `DATACORTEX_MODEL` env var)
     #[arg(long, global = true)]
     model_path: Option<String>,
 }
@@ -182,7 +211,7 @@ fn cmd_train_dict(
         );
     }
 
-    let refs: Vec<&[u8]> = sample_data.iter().map(|d| d.as_slice()).collect();
+    let refs: Vec<&[u8]> = sample_data.iter().map(Vec::as_slice).collect();
     let start = Instant::now();
     let dict = train_dict(&refs, max_size)?;
     let elapsed = start.elapsed();
@@ -541,10 +570,10 @@ fn cmd_bench(
     }
 
     let mut entries: Vec<_> = fs::read_dir(dir)?
-        .filter_map(|e| e.ok())
+        .filter_map(Result::ok)
         .filter(|e| e.path().is_file())
         .collect();
-    entries.sort_by_key(|e| e.path());
+    entries.sort_by_key(std::fs::DirEntry::path);
 
     if entries.is_empty() {
         if !quiet {

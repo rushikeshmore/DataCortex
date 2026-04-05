@@ -1,4 +1,17 @@
-use std::io::Cursor;
+// Lint policy (see STYLE.md for rationale).
+#![warn(clippy::pedantic)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    clippy::needless_pass_by_value,
+    clippy::uninlined_format_args,
+    clippy::wildcard_imports,
+    clippy::used_underscore_binding
+)]
+
+use std::io::{Cursor, Write};
 
 use datacortex_core::dcx::{DcxHeader, FormatHint, Mode};
 use pyo3::exceptions::PyValueError;
@@ -19,10 +32,9 @@ fn parse_mode(mode: &str) -> PyResult<Mode> {
 
 fn parse_format(format: &str) -> PyResult<FormatHint> {
     match format.to_lowercase().as_str() {
-        "auto" | "" => Ok(FormatHint::Generic),
         "json" => Ok(FormatHint::Json),
         "ndjson" | "jsonl" => Ok(FormatHint::Ndjson),
-        "generic" => Ok(FormatHint::Generic),
+        "auto" | "" | "generic" => Ok(FormatHint::Generic),
         _ => Err(PyValueError::new_err(format!(
             "unknown format: '{}' (expected: auto, json, ndjson, generic)",
             format
@@ -71,8 +83,8 @@ fn decompress(data: &[u8]) -> PyResult<Vec<u8>> {
 /// Compress a file to .dcx format.
 ///
 /// Args:
-///     input_path: Path to the input file.
-///     output_path: Path for the compressed output file.
+///     `input_path`: Path to the input file.
+///     `output_path`: Path for the compressed output file.
 ///     mode: Compression mode - "fast" (default), "balanced", or "max".
 ///     level: Optional zstd level override (fast mode only).
 #[pyfunction]
@@ -97,7 +109,6 @@ fn compress_file(
     datacortex_core::compress_with_options(&data, m, Some(fmt), None, level, &mut out)
         .map_err(|e| PyValueError::new_err(format!("compression failed: {}", e)))?;
 
-    use std::io::Write;
     out.flush()
         .map_err(|e| PyValueError::new_err(format!("flush failed: {}", e)))?;
 
@@ -107,8 +118,8 @@ fn compress_file(
 /// Decompress a .dcx file back to the original.
 ///
 /// Args:
-///     input_path: Path to the .dcx file.
-///     output_path: Path for the decompressed output file.
+///     `input_path`: Path to the .dcx file.
+///     `output_path`: Path for the decompressed output file.
 #[pyfunction]
 fn decompress_file(input_path: &str, output_path: &str) -> PyResult<()> {
     let file = std::fs::File::open(input_path)
@@ -130,7 +141,7 @@ fn decompress_file(input_path: &str, output_path: &str) -> PyResult<()> {
 ///     data: Compressed .dcx bytes.
 ///
 /// Returns:
-///     Dict with mode, format, original_size, compressed_size, crc32, entropy_coder.
+///     Dict with mode, format, `original_size`, `compressed_size`, crc32, `entropy_coder`.
 #[pyfunction]
 fn info(py: Python, data: &[u8]) -> PyResult<Py<PyDict>> {
     let mut cursor = Cursor::new(data);

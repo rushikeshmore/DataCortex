@@ -38,9 +38,10 @@
 //!   \x00 = column separator
 //!   \x01 = value separator within a column
 
+use std::collections::HashMap;
+
 use super::ndjson;
 use super::transform::TransformResult;
-use std::collections::HashMap;
 
 const COL_SEP: u8 = 0x00;
 const VAL_SEP: u8 = 0x01;

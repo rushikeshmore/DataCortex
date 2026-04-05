@@ -54,7 +54,7 @@
     clippy::fn_params_excessive_bools,
     clippy::trivially_copy_pass_by_ref,
     clippy::verbose_bit_mask,
-    clippy::format_push_string,
+    clippy::format_push_string
 )]
 
 pub mod codec;

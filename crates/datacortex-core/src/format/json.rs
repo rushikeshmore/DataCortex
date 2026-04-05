@@ -8,8 +8,9 @@
 //!   \x00 + 0xFD + u16 LE    → extended key reference (253..65535)
 //!   \x00 + 0xFE              → literal null byte (escape)
 
-use super::transform::TransformResult;
 use std::collections::HashMap;
+
+use super::transform::TransformResult;
 
 const ESCAPE: u8 = 0x00;
 const ESCAPE_EXTENDED: u8 = 0xFD;

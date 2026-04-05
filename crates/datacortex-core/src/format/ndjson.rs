@@ -20,8 +20,9 @@
 //!   \x00 = column separator (cannot appear in valid JSON text)
 //!   \x01 = value separator within a column (cannot appear in valid JSON)
 
-use super::transform::TransformResult;
 use std::collections::HashMap;
+
+use super::transform::TransformResult;
 
 const COL_SEP: u8 = 0x00;
 const VAL_SEP: u8 = 0x01;
