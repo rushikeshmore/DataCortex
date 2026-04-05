@@ -22,8 +22,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/rushikeshmore/DataCortex"
+Homepage = "https://datacortex-dcx.vercel.app"
 Repository = "https://github.com/rushikeshmore/DataCortex"
+Issues = "https://github.com/rushikeshmore/DataCortex/issues"
+Documentation = "https://github.com/rushikeshmore/DataCortex#python-api"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]

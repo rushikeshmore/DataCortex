@@ -10,7 +10,7 @@ authors.workspace = true
 rust-version.workspace = true
 keywords = ["compression", "json", "ndjson", "lossless", "columnar"]
 categories = ["compression", "encoding"]
-readme = "../../README.md"
+readme = "README.md"
 
 [dependencies]
 crc32fast = { workspace = true }

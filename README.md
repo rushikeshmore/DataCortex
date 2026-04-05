@@ -1,50 +1,64 @@
 # DataCortex
 
-The best standalone JSON/NDJSON compressor. Beats zstd-19 and brotli-11 on every file tested.
+[![Crates.io](https://img.shields.io/crates/v/datacortex-cli)](https://crates.io/crates/datacortex-cli)
+[![PyPI](https://img.shields.io/pypi/v/datacortex)](https://pypi.org/project/datacortex/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[Site](https://datacortex-dcx.vercel.app) | [crates.io](https://crates.io/crates/datacortex-cli) | [PyPI](https://pypi.org/project/datacortex/) | [Docs](https://github.com/rushikeshmore/DataCortex)
+Lossless compression for JSON and NDJSON. Beats zstd-19 and brotli-11 on every file tested.
 
-DataCortex auto-infers your JSON schema, applies columnar reorg + type-specific encoding, then picks the optimal entropy coder (zstd or brotli). No schema files, no database, no configuration. Just `datacortex compress data.json`.
+```bash
+cargo install datacortex-cli        # Rust
+pip install datacortex               # Python
+```
+
+## Quick Start
+
+```bash
+datacortex compress logs.ndjson                   # compress (auto-detects format)
+datacortex decompress logs.ndjson.dcx output.json  # decompress (byte-exact)
+datacortex bench corpus/ -m fast --compare         # benchmark against zstd
+```
 
 ## Benchmarks
 
-**Fast mode** vs the best general-purpose compressors:
+Compression ratio (higher = smaller output):
 
 | File | Size | DataCortex | zstd -19 | brotli -11 | vs best |
 |------|------|-----------|----------|------------|---------|
-| NDJSON (analytics) | 107 KB | **22.0x** | 15.6x | 16.6x | **+32%** |
-| NDJSON (10K rows) | 3.3 MB | **27.8x** | 16.0x | 16.4x | **+70%** |
-| JSON API response | 36 KB | **16.0x** | 13.2x | 15.0x | **+7%** |
+| k8s structured logs | 9.9 MB | **~40x** | 18.9x | - | **+113%** |
+| NDJSON (10K rows) | 3.3 MB | **27.2x** | 16.0x | 16.4x | **+66%** |
+| nginx access logs | 9.5 MB | **~28x** | 17.3x | - | **+62%** |
+| NDJSON (analytics) | 107 KB | **21.7x** | 15.6x | 16.6x | **+31%** |
+| Event tickets | 1.7 MB | **221.6x** | 176.0x | 190.0x | **+16%** |
 | Twitter API (nested) | 617 KB | **19.7x** | 16.7x | 18.9x | **+4%** |
-| Event tickets (repetitive) | 1.7 MB | **221.7x** | 176.0x | 190.0x | **+17%** |
 
-On larger structured logs:
+Throughput (Apple M-series, Fast mode, release build):
 
-| Data | Size | DataCortex | zstd -19 | Advantage |
-|------|------|-----------|----------|-----------|
-| k8s structured logs (100K rows) | 9.9 MB | **~40x** | 18.9x | **+113%** |
-| nginx access logs (100K rows) | 9.5 MB | **~28x** | 17.3x | **+62%** |
+| File | Encode | Decode |
+|------|--------|--------|
+| NDJSON 10K rows (3.3 MB) | 4.1 MB/s | 176 MB/s |
+| GH Archive (10 MB) | 3.2 MB/s | 574 MB/s |
+| Twitter API (617 KB) | 2.3 MB/s | 384 MB/s |
+| Event tickets (1.7 MB) | 8.6 MB/s | 1124 MB/s |
 
-> Higher is better. DataCortex wins on every file. Lossless, byte-exact decompression guaranteed.
+All results are byte-exact lossless roundtrips.
 
-## Performance
+## When to Use DataCortex
 
-Throughput on an Apple M-series chip (Fast mode, single run, release build):
+- Batch compression of JSON/NDJSON log files for cold storage
+- Reducing S3/GCS storage costs for structured log data
+- Any workload where compression ratio matters more than encode speed
+- NDJSON pipelines with uniform or semi-uniform schemas
 
-| File | Size | Ratio | Encode | Decode |
-|------|------|-------|--------|--------|
-| NDJSON (10K rows) | 3.3 MB | 27.6x | 4.1 MB/s | 176 MB/s |
-| GH Archive (diverse) | 10.0 MB | 7.8x | 3.2 MB/s | 574 MB/s |
-| Twitter API | 617 KB | 19.7x | 2.3 MB/s | 384 MB/s |
-| Event tickets | 1.7 MB | 221.6x | 8.6 MB/s | 1124 MB/s |
+## When NOT to Use DataCortex
 
-**Decode is near-instant** (176-1124 MB/s). Encode trades speed for 2x better compression vs zstd. For throughput-critical pipelines, DataCortex is best suited as a batch compressor for log storage, not a real-time codec.
-
-Run `datacortex bench corpus/ -m fast --compare` to measure on your hardware.
+- Real-time streaming where encode latency matters (encode is 2-8 MB/s)
+- Binary data, images, or arbitrary text (use zstd directly)
+- Files under 1 KB (overhead exceeds benefit)
 
 ## Installation
 
-**Rust:**
+**Rust CLI:**
 ```bash
 cargo install datacortex-cli
 ```
@@ -66,52 +80,37 @@ Requires Rust 1.85+.
 ## Usage
 
 ```bash
-# Compress (auto-detects format, picks best compression)
+# Compress (auto-detects JSON/NDJSON)
 datacortex compress data.ndjson
 datacortex compress api-response.json
-datacortex compress logs.ndjson -m fast          # explicit fast mode
 
 # Decompress
 datacortex decompress data.dcx output.ndjson
 
 # Streaming (pipe-friendly)
 cat logs.ndjson | datacortex compress - -o compressed.dcx
-datacortex decompress compressed.dcx -o -        # stdout
+datacortex decompress compressed.dcx -o -
 
-# Chunked compression (for large NDJSON)
+# Chunked compression for large NDJSON
 datacortex compress logs.ndjson -o out.dcx --chunk-rows 10000
 
-# Custom dictionary (for known schemas)
+# Custom dictionary for known schemas
 datacortex train-dict corpus/*.ndjson --output my.dict
 datacortex compress logs.ndjson --dict my.dict
 
-# Benchmark against zstd
-datacortex bench corpus/ -m fast --compare
-
-# Higher compression (slower)
+# Higher compression
 datacortex compress data.ndjson -m fast --level 19
 
-# Inspect a .dcx file
+# Inspect compressed files
 datacortex info data.dcx
 ```
 
-## Compression modes
-
-| Mode | Engine | Best for |
-|------|--------|----------|
-| **fast** (default) | Columnar + typed encoding + zstd/brotli | JSON/NDJSON (best ratio at high speed) |
-| **balanced** | Context mixing (CM) engine | General text, small files |
-| **max** | CM with larger context maps | Maximum compression |
-
-**Fast mode** is recommended for JSON/NDJSON. It runs the full preprocessing pipeline (schema inference, columnar reorg, typed encoding) then picks the best entropy coder automatically.
-
-**Balanced/Max modes** use a bit-level context mixing engine with 13 specialized models. Better for general text but slower.
-
-## Python
+## Python API
 
 ```python
 import datacortex
 
+# Compress/decompress bytes
 compressed = datacortex.compress(json_bytes, mode="fast")
 original = datacortex.decompress(compressed)
 
@@ -119,28 +118,56 @@ original = datacortex.decompress(compressed)
 datacortex.compress_file("logs.ndjson", "logs.dcx", mode="fast")
 datacortex.decompress_file("logs.dcx", "logs.json")
 
-# Format detection
-fmt = datacortex.detect_format(data)  # "ndjson", "json", "generic"
+# Inspect and detect
+info = datacortex.detect_format(data)  # "ndjson", "json", "generic"
 ```
 
-## How it works
+See [PyPI](https://pypi.org/project/datacortex/) for full Python documentation.
 
-1. **Format detection** - auto-identifies JSON, NDJSON, or generic data
-2. **Schema inference** - discovers column types (integer, boolean, timestamp, enum, string, etc.)
-3. **Columnar reorg** - transposes row-oriented NDJSON into column-oriented layout
-4. **Type-specific encoding** - delta+varint for integers, bitmaps for booleans, epoch deltas for timestamps
-5. **Auto-fallback** - tries 6+ compression paths (zstd, brotli, with/without preprocessing) and picks the smallest
+## How It Works
+
+1. **Format detection** -- identifies JSON, NDJSON, or generic data
+2. **Schema inference** -- discovers column types (integer, boolean, timestamp, enum, string, float, UUID)
+3. **Columnar reorg** -- transposes row-oriented NDJSON into column-oriented layout
+4. **Type-specific encoding** -- delta+varint for integers, bitmaps for booleans, epoch deltas for timestamps
+5. **Auto-fallback** -- tries 6+ compression paths (zstd, brotli, with/without preprocessing) and picks the smallest output
 
 No schema files. No configuration. Fully automatic.
+
+## Compression Modes
+
+| Mode | Engine | Best for |
+|------|--------|----------|
+| **fast** (default) | Columnar + typed encoding + zstd/brotli | JSON/NDJSON |
+| **balanced** | Context mixing (CM) engine | General text, small files |
+| **max** | CM with larger context maps | Maximum compression |
+
+## Technical Background
+
+DataCortex builds on ideas from columnar storage (Parquet, BtrBlocks), context mixing (PAQ/cmix), and format-aware preprocessing. Key techniques:
+
+- Columnar transform with schema-based grouping for diverse NDJSON
+- Selective columnar encoding (high-cardinality columns stay row-major)
+- Per-column typed encoding: delta-varint integers, bitmap booleans, frequency-sorted enum dictionaries
+- Adaptive zstd compression levels tuned for structured JSON
+- FSST string compression support (decode-ready, reserved for future use)
+
+Research references: ALP (SIGMOD 2024), FSST (VLDB 2020), BtrBlocks (SIGMOD 2023), CLP (OSDI 2021).
 
 ## Development
 
 ```bash
 cargo test                                      # 390 tests
-cargo clippy --all-targets -- -D warnings       # lint (0 warnings)
+cargo clippy --all-targets -- -D warnings       # lint
 cargo fmt --check                               # formatting
-cargo build --release                           # optimized build
 ```
+
+## Links
+
+- [Site](https://datacortex-dcx.vercel.app)
+- [crates.io](https://crates.io/crates/datacortex-cli)
+- [PyPI](https://pypi.org/project/datacortex/)
+- [GitHub](https://github.com/rushikeshmore/DataCortex)
 
 ## License
 

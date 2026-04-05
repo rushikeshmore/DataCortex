@@ -588,8 +588,7 @@ fn preprocess_grouped<'a>(
     }
 
     // Detect discriminator column for potential sub-grouping.
-    let parsed: Vec<Option<ParsedLine<'a>>> =
-        non_empty.iter().map(|&l| parse_line(l)).collect();
+    let parsed: Vec<Option<ParsedLine<'a>>> = non_empty.iter().map(|&l| parse_line(l)).collect();
     let disc_col = find_discriminator(&parsed);
     drop(parsed);
 
@@ -711,8 +710,7 @@ fn preprocess_grouped_core<'a>(
         // Decomposes nested JSON objects (e.g., payload, actor) into sub-columns
         // for better compression when rows are schema-clustered.
         if all_extracted {
-            if let Some((flat_data, nested_groups)) =
-                flatten_nested_columns(&col_data, rows.len())
+            if let Some((flat_data, nested_groups)) = flatten_nested_columns(&col_data, rows.len())
             {
                 let total_flat_cols = flat_data.split(|&b| b == COL_SEP).count();
                 let unflattened = unflatten_nested_columns(
@@ -731,7 +729,6 @@ fn preprocess_grouped_core<'a>(
             } else {
                 group_metadata.push(0u8); // has_nested = 0
             }
-
         }
 
         group_outputs.push(GroupOutput {
@@ -1885,7 +1882,6 @@ fn reverse_selective_from_data(data: &[u8], sm: &SelectiveMetadata) -> Vec<u8> {
     output
 }
 
-
 /// Reverse Strategy 2: grouped schema.
 fn reverse_grouped(data: &[u8], metadata: &[u8]) -> Vec<u8> {
     if metadata.len() < 8 {
@@ -2468,7 +2464,10 @@ mod tests {
             data.extend_from_slice(
                 format!(
                     r#"{{"id":{},"type":"{}","payload":{{"ref":"r{}","size":{}}}}}"#,
-                    i, etype, i, i * 10
+                    i,
+                    etype,
+                    i,
+                    i * 10
                 )
                 .as_bytes(),
             );
@@ -2476,10 +2475,7 @@ mod tests {
         }
         let result = preprocess(&data).expect("should produce transform");
         let restored = reverse(&result.data, &result.metadata);
-        assert_eq!(
-            restored, data,
-            "discriminator two-pass roundtrip failed"
-        );
+        assert_eq!(restored, data, "discriminator two-pass roundtrip failed");
     }
 
     // --- Nested decomposition tests ---

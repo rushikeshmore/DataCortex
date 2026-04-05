@@ -2718,7 +2718,13 @@ mod tests {
     fn test_fsst_string_roundtrip() {
         // Generate enough strings to exercise FSST.
         let strings: Vec<String> = (0..100)
-            .map(|i| format!("\"https://api.github.com/repos/user{}/project{}\"", i % 10, i))
+            .map(|i| {
+                format!(
+                    "\"https://api.github.com/repos/user{}/project{}\"",
+                    i % 10,
+                    i
+                )
+            })
             .collect();
         let values: Vec<&[u8]> = strings.iter().map(|s| s.as_bytes()).collect();
 
@@ -2728,7 +2734,8 @@ mod tests {
         assert_eq!(decoded.len(), values.len());
         for (i, (dec, orig)) in decoded.iter().zip(values.iter()).enumerate() {
             assert_eq!(
-                dec, orig,
+                dec,
+                orig,
                 "FSST roundtrip mismatch at index {}: got {:?}, expected {:?}",
                 i,
                 String::from_utf8_lossy(dec),
@@ -2759,9 +2766,7 @@ mod tests {
     #[test]
     fn test_fsst_decode_in_column_dispatch() {
         // Verify ENC_FSST_STRING is handled by decode_column.
-        let strings: Vec<String> = (0..50)
-            .map(|i| format!("\"session_{}\"", i))
-            .collect();
+        let strings: Vec<String> = (0..50).map(|i| format!("\"session_{}\"", i)).collect();
         let values: Vec<&[u8]> = strings.iter().map(|s| s.as_bytes()).collect();
 
         let encoded = encode_fsst_string_column(&values);
