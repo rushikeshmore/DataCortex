@@ -111,24 +111,24 @@ Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` in commit mess
 
 ### Architecture
 **datacortex** — rust, python — 53 files, 1154 symbols
-- **Modules (4):** datacortex-core (22085loc), datacortex-cli (947loc), datacortex-neural (773loc), datacortex-python (213loc)
+- **Modules (4):** datacortex-core (22140loc), datacortex-cli (947loc), datacortex-neural (773loc), datacortex-python (213loc)
 
 ### Risk Map
 **High-risk files:**
-- `CLAUDE.md` — 43 changes, 5 bug-fixes, volatile
+- `CLAUDE.md` — 44 changes, 5 bug-fixes, volatile
 - `.codecortex/constitution.md` — 35 changes, 4 bug-fixes, volatile
 - `.codecortex/cortex.yaml` — 35 changes, 4 bug-fixes, volatile
 - `.codecortex/graph.json` — 35 changes, 4 bug-fixes, volatile
 - `.codecortex/hotspots.md` — 35 changes, 4 bug-fixes, volatile
 
 **Hidden couplings (co-change, no import):**
-- `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (57% co-change)
-- `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` (75% co-change)
-- `crates/datacortex-core/src/model/engine.rs` ↔ `crates/datacortex-core/src/model/mod.rs` (50% co-change)
+- `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (55% co-change)
+- `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` (71% co-change)
+- `crates/datacortex-cli/src/main.rs` ↔ `crates/datacortex-core/src/lib.rs` (54% co-change)
 
 **Bug-prone files:**
-- `crates/datacortex-core/src/format/ndjson.rs` — 4 bug-fix commits
-- `.../datacortex-core/src/format/typed_encoding.rs` — 4 bug-fix commits
+- `crates/datacortex-core/src/format/ndjson.rs` — 5 bug-fix commits
+- `.../datacortex-core/src/format/typed_encoding.rs` — 5 bug-fix commits
 - `.codecortex/symbols.json` — 4 bug-fix commits
 
 ### Before Editing
