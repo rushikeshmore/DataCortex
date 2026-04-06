@@ -994,8 +994,17 @@ pub fn compress_with_all_options<W: Write>(
                 });
 
                 // Path C: raw + brotli (TEXT mode).
+                // Quality tiers: q11 ≤1MB, q10 1-16MB, q9 >16MB.
+                // q10 is ~10x faster than q11 with only ~3% ratio loss, keeping
+                // wall time competitive with zstd-19.
                 s.spawn(|_| {
-                    let q = if data.len() <= 1_048_576 { 11 } else { 9 };
+                    let q = if data.len() <= 1_048_576 {
+                        11
+                    } else if data.len() <= 16_777_216 {
+                        10
+                    } else {
+                        9
+                    };
                     if let Ok(compressed) = brotli_compress(data, q, BROTLI_MODE_TEXT) {
                         let total = 32 + compressed.len();
                         results
@@ -1009,6 +1018,8 @@ pub fn compress_with_all_options<W: Write>(
                 s.spawn(|_| {
                     let max_q = if preprocessed.len() <= 1_048_576 {
                         11
+                    } else if preprocessed.len() <= 16_777_216 {
+                        10
                     } else {
                         9
                     };
@@ -1036,7 +1047,13 @@ pub fn compress_with_all_options<W: Write>(
                 // Path E: embedded metadata + brotli (GENERIC mode, dual quality).
                 if let Some(ref ep) = embedded_payload {
                     s.spawn(|_| {
-                        let max_q = if ep.len() <= 1_048_576 { 11 } else { 9 };
+                        let max_q = if ep.len() <= 1_048_576 {
+                            11
+                        } else if ep.len() <= 16_777_216 {
+                            10
+                        } else {
+                            9
+                        };
                         let qualities: &[u32] = if max_q == 11 {
                             &[11, 10]
                         } else {
