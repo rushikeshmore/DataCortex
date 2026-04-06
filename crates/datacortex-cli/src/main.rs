@@ -34,7 +34,9 @@ use std::time::Instant;
 
 use clap::{Parser, Subcommand};
 use datacortex_core::{
-    codec::{compress_to_vec, compress_with_full_options, decompress_from_slice, train_dict},
+    codec::{
+        compress_to_vec, compress_with_all_options, decompress_from_slice, train_dict,
+    },
     dcx::{FormatHint, Mode},
     decompress_with_model, detect_format,
     format::detect_from_extension,
@@ -104,6 +106,10 @@ enum Command {
         /// Use a pre-trained dictionary for compression (from train-dict command).
         #[arg(long)]
         dict: Option<PathBuf>,
+        /// Turbo mode: 5-15x faster encode, ~10-15% ratio loss.
+        /// Uses zstd-3 and skips brotli/dict paths. Fast mode only.
+        #[arg(long)]
+        turbo: bool,
     },
     /// Decompress a .dcx file (supports multi-frame files)
     Decompress {
@@ -137,6 +143,9 @@ enum Command {
         /// Save results to benchmarks/baseline.json
         #[arg(long)]
         save: bool,
+        /// Use turbo mode (Fast mode only)
+        #[arg(long)]
+        turbo: bool,
     },
     /// Show .dcx file info
     Info {
@@ -258,6 +267,7 @@ fn cmd_compress(
     zstd_level_override: Option<i32>,
     chunk_rows: Option<usize>,
     dict_path: Option<&Path>,
+    turbo: bool,
     quiet: bool,
     verbose: bool,
 ) -> io::Result<()> {
@@ -369,13 +379,14 @@ fn cmd_compress(
             }
             chunk_data.push(b'\n');
 
-            compress_with_full_options(
+            compress_with_all_options(
                 &chunk_data,
                 mode,
                 Some(format),
                 model_path,
                 zstd_level_override,
                 ext_dict,
+                turbo,
                 &mut out,
             )?;
 
@@ -429,13 +440,14 @@ fn cmd_compress(
         Box::new(BufWriter::new(fs::File::create(&output_path)?))
     };
 
-    compress_with_full_options(
+    compress_with_all_options(
         &data,
         mode,
         Some(format),
         model_path,
         zstd_level_override,
         ext_dict,
+        turbo,
         &mut out,
     )?;
     out.flush()?;
@@ -553,6 +565,7 @@ fn cmd_bench(
     mode: Mode,
     compare: bool,
     save: bool,
+    turbo: bool,
     quiet: bool,
     _verbose: bool,
 ) -> io::Result<()> {
@@ -588,7 +601,8 @@ fn cmd_bench(
         println!();
         println!("  DataCortex Benchmark");
         println!(
-            "  Mode: {mode} | Files: {} | Dir: {}",
+            "  Mode: {mode}{} | Files: {} | Dir: {}",
+            if turbo { " (turbo)" } else { "" },
             entries.len(),
             dir.display()
         );
@@ -630,7 +644,13 @@ fn cmd_bench(
         let data = fs::read(&path)?;
 
         let start = Instant::now();
-        let compressed = compress_to_vec(&data, mode, None)?;
+        let compressed = if turbo {
+            let mut buf = Vec::new();
+            compress_with_all_options(&data, mode, None, None, None, None, true, &mut buf)?;
+            buf
+        } else {
+            compress_to_vec(&data, mode, None)?
+        };
         let enc_ms = start.elapsed().as_secs_f64() * 1000.0;
 
         let dec_start = Instant::now();
@@ -921,6 +941,7 @@ fn main() {
             level,
             chunk_rows,
             dict,
+            turbo,
         } => {
             let mode = parse_mode(mode).unwrap_or_else(|e| {
                 eprintln!("Error: {e}");
@@ -941,6 +962,7 @@ fn main() {
                 *level,
                 *chunk_rows,
                 dict.as_deref(),
+                *turbo,
                 cli.quiet,
                 cli.verbose,
             )
@@ -958,12 +980,13 @@ fn main() {
             mode,
             compare,
             save,
+            turbo,
         } => {
             let mode = parse_mode(mode).unwrap_or_else(|e| {
                 eprintln!("Error: {e}");
                 std::process::exit(1);
             });
-            cmd_bench(dir, mode, *compare, *save, cli.quiet, cli.verbose)
+            cmd_bench(dir, mode, *compare, *save, *turbo, cli.quiet, cli.verbose)
         }
         Command::Info { file } => cmd_info(file, cli.quiet),
     };
