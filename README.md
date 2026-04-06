@@ -15,31 +15,33 @@ pip install datacortex               # Python
 
 ```bash
 datacortex compress logs.ndjson                   # compress (auto-detects format)
+datacortex compress logs.ndjson --turbo            # turbo: 30-55x faster encode
 datacortex decompress logs.ndjson.dcx output.json  # decompress (byte-exact)
 datacortex bench corpus/ -m fast --compare         # benchmark against zstd
 ```
 
 ## Benchmarks
 
-Compression ratio (higher = smaller output):
+Compression ratio (smaller output = better):
 
 | File | Size | DataCortex | zstd -19 | brotli -11 | vs best |
 |------|------|-----------|----------|------------|---------|
 | k8s structured logs | 9.9 MB | **~40x** | 18.9x | - | **+113%** |
-| NDJSON (10K rows) | 3.3 MB | **27.2x** | 16.0x | 16.4x | **+66%** |
+| NDJSON (10K rows) | 3.3 MB | **27.9x** | 9.0x | 16.4x | **+70%** |
 | nginx access logs | 9.5 MB | **~28x** | 17.3x | - | **+62%** |
 | NDJSON (analytics) | 107 KB | **21.7x** | 15.6x | 16.6x | **+31%** |
 | Event tickets | 1.7 MB | **221.6x** | 176.0x | 190.0x | **+16%** |
+| GH Archive (10 MB) | 10 MB | **8.0x** | 7.5x | 7.7x | **+4%** |
 | Twitter API (nested) | 617 KB | **19.7x** | 16.7x | 18.9x | **+4%** |
 
-Throughput (Apple M-series, Fast mode, release build):
+Throughput (Apple M-series, release build):
 
-| File | Encode | Decode |
-|------|--------|--------|
-| NDJSON 10K rows (3.3 MB) | 4.1 MB/s | 176 MB/s |
-| GH Archive (10 MB) | 3.2 MB/s | 574 MB/s |
-| Twitter API (617 KB) | 2.3 MB/s | 384 MB/s |
-| Event tickets (1.7 MB) | 8.6 MB/s | 1124 MB/s |
+| File | Turbo Encode | Normal Encode | Decode |
+|------|-------------|---------------|--------|
+| GH Archive (10 MB) | **169 MB/s** | 2.7 MB/s | 396 MB/s |
+| NDJSON 10K rows (3.3 MB) | **68 MB/s** | 2.3 MB/s | 174 MB/s |
+| Event tickets (1.7 MB) | **36 MB/s** | 8.1 MB/s | 1124 MB/s |
+| Twitter API (617 KB) | **87 MB/s** | 2.2 MB/s | 377 MB/s |
 
 All results are byte-exact lossless roundtrips.
 
@@ -47,12 +49,12 @@ All results are byte-exact lossless roundtrips.
 
 - Batch compression of JSON/NDJSON log files for cold storage
 - Reducing S3/GCS storage costs for structured log data
+- Real-time pipelines with `--turbo` (99 MB/s average encode)
 - Any workload where compression ratio matters more than encode speed
 - NDJSON pipelines with uniform or semi-uniform schemas
 
 ## When NOT to Use DataCortex
 
-- Real-time streaming where encode latency matters (encode is 2-8 MB/s)
 - Binary data, images, or arbitrary text (use zstd directly)
 - Files under 1 KB (overhead exceeds benefit)
 
@@ -84,6 +86,9 @@ Requires Rust 1.85+.
 datacortex compress data.ndjson
 datacortex compress api-response.json
 
+# Turbo mode: 30-55x faster encode, ~2% ratio tradeoff
+datacortex compress data.ndjson --turbo
+
 # Decompress
 datacortex decompress data.dcx output.ndjson
 
@@ -98,8 +103,8 @@ datacortex compress logs.ndjson -o out.dcx --chunk-rows 10000
 datacortex train-dict corpus/*.ndjson --output my.dict
 datacortex compress logs.ndjson --dict my.dict
 
-# Higher compression
-datacortex compress data.ndjson -m fast --level 19
+# Benchmark with turbo comparison
+datacortex bench corpus/ -m fast --compare --turbo
 
 # Inspect compressed files
 datacortex info data.dcx
@@ -130,17 +135,20 @@ See [PyPI](https://pypi.org/project/datacortex/) for full Python documentation.
 2. **Schema inference** -- discovers column types (integer, boolean, timestamp, enum, string, float, UUID)
 3. **Columnar reorg** -- transposes row-oriented NDJSON into column-oriented layout
 4. **Type-specific encoding** -- delta+varint for integers, bitmaps for booleans, epoch deltas for timestamps
-5. **Auto-fallback** -- tries 6+ compression paths (zstd, brotli, with/without preprocessing) and picks the smallest output
+5. **Auto-fallback** -- tries 6+ compression paths (zstd, brotli, with/without preprocessing) and picks the smallest output. Turbo mode runs 2 optimized paths for maximum speed.
 
 No schema files. No configuration. Fully automatic.
 
 ## Compression Modes
 
-| Mode | Engine | Best for |
-|------|--------|----------|
-| **fast** (default) | Columnar + typed encoding + zstd/brotli | JSON/NDJSON |
-| **balanced** | Context mixing (CM) engine | General text, small files |
-| **max** | CM with larger context maps | Maximum compression |
+| Mode | Engine | Encode Speed | Best for |
+|------|--------|-------------|----------|
+| **fast** (default) | Columnar + typed encoding + zstd/brotli | 2-8 MB/s | Best ratio on JSON/NDJSON |
+| **fast --turbo** | Columnar + typed encoding + zstd-3 | **99 MB/s** | Speed-sensitive pipelines |
+| **balanced** | Context mixing (CM) engine | ~0.5 MB/s | General text, small files |
+| **max** | CM with larger context maps | ~0.3 MB/s | Maximum compression |
+
+Turbo mode produces the same `.dcx` format -- decompression is identical regardless of which mode was used to compress.
 
 ## Technical Background
 
@@ -157,7 +165,7 @@ Research references: ALP (SIGMOD 2024), FSST (VLDB 2020), BtrBlocks (SIGMOD 2023
 ## Development
 
 ```bash
-cargo test                                      # 390 tests
+cargo test                                      # 393 tests
 cargo clippy --all-targets -- -D warnings       # lint
 cargo fmt --check                               # formatting
 ```

@@ -22,24 +22,31 @@ Key modules:
 - `dcx.rs` -.dcx v3 file format
 
 ## Current Status
-**v0.5.0.** JSON/NDJSON focused. 390 tests. 113 commits. Published: crates.io (core + CLI v0.5.0), PyPI (datacortex v0.5.0). Site: datacortex-dcx.vercel.app.
+**v0.6.0.** JSON/NDJSON focused. 393 tests. Published: crates.io (core + CLI), PyPI (datacortex). Site: datacortex-dcx.vercel.app.
 
 **Benchmark results:**
 | File | Size | DataCortex | zstd-19 | brotli-11 | vs best |
 |------|------|-----------|---------|-----------|---------|
 | NDJSON analytics | 107 KB | **22.0x** | 15.6x | 16.6x | **+32%** |
-| NDJSON 10K rows | 3.3 MB | **27.8x** | 16.0x | 16.4x | **+70%** |
+| NDJSON 10K rows | 3.3 MB | **27.9x** | 9.0x | 16.4x | **+70%** |
 | k8s logs 100K rows | 9.9 MB | **~40x** | 18.9x | - | **+113%** |
+| GH Archive | 10 MB | **8.0x** | 7.5x | 7.7x | **+4%** |
 | Twitter API | 617 KB | **19.7x** | 16.7x | 18.9x | **+4%** |
 | Event tickets | 1.7 MB | **221.7x** | 176.0x | 190.0x | **+17%** |
-| JSON API response | 36 KB | **16.0x** | 13.2x | 15.0x | **+7%** |
+
+**Throughput (v0.6.0):**
+- Turbo mode: **99 MB/s** encode average (169 MB/s on GH Archive 10MB)
+- Normal Fast: 2.7 MB/s encode (best ratio)
+- Decode: 327-430 MB/s
 
 ## Dual Pipeline (Gotcha #35)
 - **Fast mode:** columnar → typed encoding → zstd dict → auto-fallback (6+ paths: zstd/brotli × raw/preprocessed/embedded). Parallel via rayon.
+- **Fast mode (turbo):** columnar → typed encoding → 2 paths (preprocessed+zstd-3, raw+zstd-3). 30-55x faster.
 - **Balanced mode:** columnar → CM engine (no typed encoding). Typed encoding HURTS CM.
 - **Max mode:** same as Balanced with larger context maps.
 
-## Features (v0.5.0)
+## Features (v0.6.0)
+- **Turbo mode** (`--turbo`): 99 MB/s encode, ~2% ratio tradeoff. Same .dcx format.
 - Streaming stdin/stdout (`compress - -o -`)
 - Chunked compression (`--chunk-rows N`)
 - Custom dictionary training (`train-dict` command + `--dict` flag)
@@ -50,7 +57,7 @@ Key modules:
 ## Build & Test
 ```bash
 cargo build --release
-cargo test                    # 390 tests (<5s for lib, minutes for integration)
+cargo test                    # 393 tests (<5s for lib, minutes for integration)
 cargo clippy --all-targets -- -D warnings
 ```
 
@@ -62,7 +69,7 @@ cargo clippy --all-targets -- -D warnings
 5. **Solo model test before mixing.** New CM models get solo bpb test first.
 6. **No external deps for parsing.** Manual ISO 8601, UUID, etc. parsing (no chrono, no regex).
 
-## Key Gotchas (48 total)
+## Key Gotchas (51 total)
 - **#35:** Typed encoding HURTS CM, HELPS zstd. Fast-mode-only.
 - **#33:** Columnar transform + strong CM = worse than raw + strong CM (confirmed with cmix).
 - **#34:** Value dict saves 55% raw but only 3% compressed (CM already predicts repetition).
@@ -71,6 +78,9 @@ cargo clippy --all-targets -- -D warnings
 - **#41:** Auto-fallback with 6+ paths is the key architecture.
 - **#44:** Mixed-type columns corrupt data if typed-encoded as String. Check `has_mixed_quoting()`.
 - **#48:** zstd levels 9-15 are a ratio plateau on structured JSON. Skip to 19 (≤16MB) or 16 (16-64MB).
+- **#49:** zstd-19 is the absolute bottleneck for encode speed. Turbo mode uses zstd-3.
+- **#50:** Turbo needs only 2 paths (preprocessed+zstd-3, raw+zstd-3). No brotli, no dict.
+- **#51:** Preprocessing advantage persists at low zstd levels. Turbo still beats raw zstd-3 by 14%.
 - Match model: rolling hash must be non-cumulative.
 - Multi-set mixer FAILS with <100 inputs.
 - η=2 for fine mixer (64K weights), η=4 for coarse (4K).
@@ -102,21 +112,21 @@ Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` in commit mess
 ## CodeCortex — Project Knowledge (auto-updated)
 
 ### Architecture
-**datacortex** — rust, python — 53 files, 1154 symbols
-- **Modules (4):** datacortex-core (22144loc), datacortex-cli (976loc), datacortex-neural (773loc), datacortex-python (224loc)
+**datacortex** — rust, python — 53 files, 1160 symbols
+- **Modules (4):** datacortex-core (22291loc), datacortex-cli (999loc), datacortex-neural (773loc), datacortex-python (224loc)
 
 ### Risk Map
 **High-risk files:**
-- `CLAUDE.md` — 46 changes, 5 bug-fixes, volatile
+- `CLAUDE.md` — 47 changes, 5 bug-fixes, volatile
+- `.codecortex/cortex.yaml` — 38 changes, 4 bug-fixes, volatile
 - `.codecortex/constitution.md` — 37 changes, 4 bug-fixes, volatile
-- `.codecortex/cortex.yaml` — 37 changes, 4 bug-fixes, volatile
 - `.codecortex/graph.json` — 37 changes, 4 bug-fixes, volatile
 - `.codecortex/hotspots.md` — 37 changes, 4 bug-fixes, volatile
 
 **Hidden couplings (co-change, no import):**
 - `crates/datacortex-core/src/format/mod.rs` ↔ `crates/datacortex-core/src/format/transform.rs` (55% co-change)
 - `crates/datacortex-core/src/mixer/dual_mixer.rs` ↔ `crates/datacortex-core/src/model/engine.rs` (71% co-change)
-- `crates/datacortex-cli/src/main.rs` ↔ `crates/datacortex-core/src/lib.rs` (57% co-change)
+- `crates/datacortex-cli/src/main.rs` ↔ `crates/datacortex-core/src/lib.rs` (60% co-change)
 
 **Bug-prone files:**
 - `crates/datacortex-core/src/format/ndjson.rs` — 5 bug-fix commits
