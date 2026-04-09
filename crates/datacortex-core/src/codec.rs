@@ -875,9 +875,7 @@ pub fn compress_with_all_options<W: Write>(
                     raw
                 }
                 (Err(e), Err(_)) => {
-                    return Err(io::Error::other(format!(
-                        "turbo compression failed: {e}"
-                    )));
+                    return Err(io::Error::other(format!("turbo compression failed: {e}")));
                 }
             }
         }
@@ -1425,7 +1423,16 @@ pub fn compress_turbo<W: Write>(
     format_override: Option<FormatHint>,
     output: &mut W,
 ) -> io::Result<()> {
-    compress_with_all_options(data, Mode::Fast, format_override, None, None, None, true, output)
+    compress_with_all_options(
+        data,
+        Mode::Fast,
+        format_override,
+        None,
+        None,
+        None,
+        true,
+        output,
+    )
 }
 
 /// Compress to Vec in turbo mode (convenience).
@@ -1520,8 +1527,12 @@ mod tests {
         let mut data = Vec::new();
         for i in 0..200 {
             data.extend_from_slice(
-                format!("{{\"id\":{},\"type\":\"PushEvent\",\"name\":\"user{}\"}}\n", i, i % 20)
-                    .as_bytes(),
+                format!(
+                    "{{\"id\":{},\"type\":\"PushEvent\",\"name\":\"user{}\"}}\n",
+                    i,
+                    i % 20
+                )
+                .as_bytes(),
             );
         }
         let turbo = compress_to_vec_turbo(&data, Some(FormatHint::Ndjson)).unwrap();

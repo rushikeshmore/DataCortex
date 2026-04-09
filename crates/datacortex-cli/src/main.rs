@@ -34,9 +34,7 @@ use std::time::Instant;
 
 use clap::{Parser, Subcommand};
 use datacortex_core::{
-    codec::{
-        compress_to_vec, compress_with_all_options, decompress_from_slice, train_dict,
-    },
+    codec::{compress_to_vec, compress_with_all_options, decompress_from_slice, train_dict},
     dcx::{FormatHint, Mode},
     decompress_with_model, detect_format,
     format::detect_from_extension,

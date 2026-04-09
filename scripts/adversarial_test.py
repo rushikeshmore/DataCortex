@@ -34,7 +34,7 @@ def test(name, rows, timeout=30):
         rt_path = f"{fname}.{mode}.rt"
         try:
             r = subprocess.run(
-                [DCX, "compress", fname, dcx_path, "-m", mode],
+                [DCX, "compress", fname, "-o", dcx_path, "-m", mode],
                 capture_output=True, text=True, timeout=timeout,
             )
             if r.returncode != 0:
