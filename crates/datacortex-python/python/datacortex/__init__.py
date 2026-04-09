@@ -8,6 +8,9 @@ Usage:
     compressed = datacortex.compress(json_bytes)
     original = datacortex.decompress(compressed)
 
+    # Turbo mode: ~30x faster encode, ~2% ratio tradeoff
+    fast = datacortex.compress(json_bytes, turbo=True)
+
     datacortex.compress_file("data.json", "data.dcx")
     datacortex.decompress_file("data.dcx", "data.json")
 

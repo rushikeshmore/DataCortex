@@ -49,12 +49,19 @@ fn parse_format(format: &str) -> PyResult<FormatHint> {
 ///     mode: Compression mode - "fast" (default), "balanced", or "max".
 ///     format: Format hint - "auto" (default), "json", "ndjson", "generic".
 ///     level: Optional zstd level override (fast mode only).
+///     turbo: Use turbo mode for ~30x faster encode with ~2% ratio loss (fast mode only).
 ///
 /// Returns:
 ///     Compressed bytes in .dcx format.
 #[pyfunction]
-#[pyo3(signature = (data, mode="fast", format="auto", level=None))]
-fn compress(data: &[u8], mode: &str, format: &str, level: Option<i32>) -> PyResult<Vec<u8>> {
+#[pyo3(signature = (data, mode="fast", format="auto", level=None, turbo=false))]
+fn compress(
+    data: &[u8],
+    mode: &str,
+    format: &str,
+    level: Option<i32>,
+    turbo: bool,
+) -> PyResult<Vec<u8>> {
     let m = parse_mode(mode)?;
     let fmt = parse_format(format)?;
     let fmt_override = if fmt == FormatHint::Generic {
@@ -63,8 +70,13 @@ fn compress(data: &[u8], mode: &str, format: &str, level: Option<i32>) -> PyResu
         Some(fmt)
     };
 
-    datacortex_core::codec::compress_to_vec_with_options(data, m, fmt_override, None, level)
-        .map_err(|e| PyValueError::new_err(format!("compression failed: {}", e)))
+    if turbo {
+        datacortex_core::codec::compress_to_vec_turbo(data, fmt_override)
+            .map_err(|e| PyValueError::new_err(format!("compression failed: {}", e)))
+    } else {
+        datacortex_core::codec::compress_to_vec_with_options(data, m, fmt_override, None, level)
+            .map_err(|e| PyValueError::new_err(format!("compression failed: {}", e)))
+    }
 }
 
 /// Decompress .dcx data back to the original bytes.
@@ -87,13 +99,15 @@ fn decompress(data: &[u8]) -> PyResult<Vec<u8>> {
 ///     `output_path`: Path for the compressed output file.
 ///     mode: Compression mode - "fast" (default), "balanced", or "max".
 ///     level: Optional zstd level override (fast mode only).
+///     turbo: Use turbo mode for ~30x faster encode with ~2% ratio loss (fast mode only).
 #[pyfunction]
-#[pyo3(signature = (input_path, output_path, mode="fast", level=None))]
+#[pyo3(signature = (input_path, output_path, mode="fast", level=None, turbo=false))]
 fn compress_file(
     input_path: &str,
     output_path: &str,
     mode: &str,
     level: Option<i32>,
+    turbo: bool,
 ) -> PyResult<()> {
     let data = std::fs::read(input_path)
         .map_err(|e| PyValueError::new_err(format!("cannot read '{}': {}", input_path, e)))?;
@@ -106,8 +120,17 @@ fn compress_file(
             PyValueError::new_err(format!("cannot create '{}': {}", output_path, e))
         })?);
 
-    datacortex_core::compress_with_options(&data, m, Some(fmt), None, level, &mut out)
-        .map_err(|e| PyValueError::new_err(format!("compression failed: {}", e)))?;
+    datacortex_core::codec::compress_with_all_options(
+        &data,
+        m,
+        Some(fmt),
+        None,
+        level,
+        None,
+        turbo,
+        &mut out,
+    )
+    .map_err(|e| PyValueError::new_err(format!("compression failed: {}", e)))?;
 
     out.flush()
         .map_err(|e| PyValueError::new_err(format!("flush failed: {}", e)))?;

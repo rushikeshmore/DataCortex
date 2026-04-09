@@ -21,8 +21,11 @@ import datacortex
 with open("logs.ndjson", "rb") as f:
     data = f.read()
 
-compressed = datacortex.compress(data, mode="fast")
+compressed = datacortex.compress(data)
 print(f"Ratio: {len(data) / len(compressed):.1f}x")
+
+# Turbo mode: ~30x faster encode, ~2% ratio tradeoff
+fast = datacortex.compress(data, turbo=True)
 
 # Decompress (byte-exact)
 original = datacortex.decompress(compressed)
@@ -31,13 +34,16 @@ assert original == data
 
 ## API Reference
 
-### compress(data, mode="fast")
+### compress(data, mode="fast", format="auto", level=None, turbo=False)
 
 Compress bytes. Returns compressed bytes in .dcx format.
 
 **Args:**
 - `data` (bytes): Input data (JSON, NDJSON, or generic text)
 - `mode` (str): `"fast"` (default), `"balanced"`, or `"max"`
+- `format` (str): `"auto"` (default), `"json"`, `"ndjson"`, `"generic"`
+- `level` (int, optional): zstd level override (fast mode only)
+- `turbo` (bool): Use turbo mode for ~30x faster encode (fast mode only)
 
 **Returns:** bytes
 
@@ -50,7 +56,7 @@ Decompress .dcx bytes. Returns the original data, byte-exact.
 
 **Returns:** bytes
 
-### compress_file(input_path, output_path, mode="fast")
+### compress_file(input_path, output_path, mode="fast", level=None, turbo=False)
 
 Compress a file to .dcx format.
 
@@ -58,6 +64,8 @@ Compress a file to .dcx format.
 - `input_path` (str): Path to the input file
 - `output_path` (str): Path for the compressed output
 - `mode` (str): `"fast"`, `"balanced"`, or `"max"`
+- `level` (int, optional): zstd level override (fast mode only)
+- `turbo` (bool): Use turbo mode for ~30x faster encode (fast mode only)
 
 ### decompress_file(input_path, output_path)
 
@@ -83,24 +91,26 @@ Inspect compressed .dcx data.
 **Args:**
 - `data` (bytes): Compressed .dcx data
 
-**Returns:** dict with keys: `mode`, `format`, `original_size`, `compressed_size`, `ratio`
+**Returns:** dict with keys: `mode`, `format`, `original_size`, `compressed_size`, `crc32`, `entropy_coder`
 
 ## Compression Modes
 
-| Mode | Engine | Best for |
-|------|--------|----------|
-| `"fast"` | Columnar + typed encoding + zstd/brotli | JSON/NDJSON (recommended) |
-| `"balanced"` | Context mixing engine | General text |
-| `"max"` | CM with larger context maps | Maximum compression |
+| Mode | Engine | Speed | Best for |
+|------|--------|-------|----------|
+| `"fast"` | Columnar + typed encoding + zstd/brotli | 2.7 MB/s encode | Best ratio on JSON/NDJSON |
+| `"fast"` + `turbo=True` | Columnar + typed encoding + zstd-3 | **99 MB/s encode** | Speed-sensitive pipelines |
+| `"balanced"` | Context mixing engine | <1 MB/s | General text |
+| `"max"` | CM with larger context maps | <1 MB/s | Maximum compression |
 
-## Benchmarks
+## Benchmarks (v0.6.0)
 
-| File | Size | DataCortex | zstd -19 | vs zstd |
-|------|------|-----------|----------|---------|
-| k8s structured logs | 9.9 MB | ~40x | 18.9x | +113% |
-| NDJSON 10K rows | 3.3 MB | 27.2x | 16.0x | +70% |
-| nginx access logs | 9.5 MB | ~28x | 17.3x | +62% |
-| Twitter API | 617 KB | 19.7x | 16.7x | +18% |
+| File | Size | DataCortex | zstd -19 | vs zstd | Turbo Encode |
+|------|------|-----------|----------|---------|-------------|
+| k8s structured logs | 9.9 MB | ~40x | 18.9x | **+113%** | -- |
+| NDJSON 10K rows | 3.3 MB | 27.9x | 16.0x | **+68%** | 68 MB/s |
+| GH Archive | 10 MB | 8.0x | 6.3x | **+26%** | 169 MB/s |
+| Twitter API | 617 KB | 19.7x | 14.7x | **+34%** | 87 MB/s |
+| Event tickets | 1.7 MB | 221.7x | 189.8x | **+17%** | 36 MB/s |
 
 ## CLI
 

@@ -794,6 +794,7 @@ pub fn compress_with_full_options<W: Write>(
 ///   - Result: 5-15x faster encode with ~10-15% ratio loss
 ///
 /// The output .dcx format is identical -- decompression is unchanged.
+#[allow(clippy::too_many_arguments)]
 pub fn compress_with_all_options<W: Write>(
     data: &[u8],
     mode: Mode,
