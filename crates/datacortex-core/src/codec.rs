@@ -68,15 +68,15 @@ fn dict_chunk_size(data_len: usize) -> usize {
 }
 
 /// Maximum dictionary size based on input data size.
-/// Kept relatively small to minimize overhead. The dictionary primes each chunk's
-/// compressor context, so even a small dict provides most of the benefit.
+/// Research shows 32-64 KB is optimal for NDJSON; previous 4-16 KB was too conservative.
+/// Larger dicts capture more repeated patterns (key names, enum values, URL prefixes).
 fn dict_max_size(data_len: usize) -> usize {
     if data_len > 4_194_304 {
-        16_384 // 16 KB for > 4 MB
+        65_536 // 64 KB for > 4 MB
     } else if data_len > 1_048_576 {
-        8_192 // 8 KB for 1 - 4 MB
+        32_768 // 32 KB for 1 - 4 MB
     } else {
-        4_096 // 4 KB for smaller files
+        16_384 // 16 KB for smaller files
     }
 }
 
@@ -148,8 +148,11 @@ fn try_dict_compress(data: &[u8], level: i32, plain_size: usize) -> Option<Vec<u
     // Split data into fixed-size chunks for per-chunk compression.
     let chunks = split_into_chunks(data, chunk_size);
 
-    // Compress each chunk independently with the dictionary.
-    let mut compressor = zstd::bulk::Compressor::with_dictionary(level, &dict).ok()?;
+    // Use prepared EncoderDictionary (CDict) for faster per-chunk compression.
+    // This digests the dictionary once and reuses it across all chunks,
+    // instead of re-digesting on every compress() call.
+    let encoder_dict = zstd::dict::EncoderDictionary::copy(&dict, level);
+    let mut compressor = zstd::bulk::Compressor::with_prepared_dictionary(&encoder_dict).ok()?;
     let mut compressed_chunks: Vec<Vec<u8>> = Vec::with_capacity(chunks.len());
     for chunk in &chunks {
         let cc = compressor.compress(chunk).ok()?;
@@ -221,8 +224,9 @@ fn decompress_with_dict(payload: &[u8], capacity: usize) -> std::io::Result<Vec<
         u32::from_le_bytes(payload[pos..pos + 4].try_into().expect("4-byte slice")) as usize;
     pos += 4;
 
-    // Prepare decompressor with dictionary.
-    let mut decompressor = zstd::bulk::Decompressor::with_dictionary(dict_bytes)
+    // Use prepared DecoderDictionary (DDict) for faster per-chunk decompression.
+    let decoder_dict = zstd::dict::DecoderDictionary::copy(dict_bytes);
+    let mut decompressor = zstd::bulk::Decompressor::with_prepared_dictionary(&decoder_dict)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
     let mut output = Vec::with_capacity(capacity);
@@ -841,13 +845,29 @@ pub fn compress_with_all_options<W: Write>(
         // the 4-byte length prefix + raw metadata nearly for free.
         Mode::Fast if turbo => {
             // Turbo mode: speed-optimized Fast mode.
-            // Only 2 paths (preprocessed+zstd-3, raw+zstd-3), no brotli, no dict.
-            // 5-15x faster encode with ~10-15% ratio loss vs max-ratio Fast mode.
+            // 3 paths (preprocessed+zstd-3, raw+zstd-3, preprocessed+zstd-3+dict).
+            // No brotli. Dict path adds ~1ms training overhead but can improve ratio
+            // significantly on repetitive NDJSON (k8s logs, API responses).
             let level = zstd_level_override.unwrap_or(3);
 
-            let (comp_pre, comp_raw) = rayon::join(
-                || zstd::bulk::compress(&preprocessed, level),
-                || zstd::bulk::compress(data, level),
+            let preprocessed_ref = &preprocessed;
+            let ((comp_pre, comp_raw), comp_dict) = rayon::join(
+                || {
+                    rayon::join(
+                        || zstd::bulk::compress(preprocessed_ref, level),
+                        || zstd::bulk::compress(data, level),
+                    )
+                },
+                || {
+                    // Dict path: only attempt if data is large enough.
+                    if preprocessed_ref.len() >= DICT_MIN_DATA_SIZE {
+                        // Use a large plain_size so try_dict_compress always returns
+                        // a result if training succeeds; we compare totals below.
+                        try_dict_compress(preprocessed_ref, level, usize::MAX)
+                    } else {
+                        None
+                    }
+                },
             );
 
             let meta_size = if transform_metadata.len() > 64 {
@@ -858,24 +878,35 @@ pub fn compress_with_all_options<W: Write>(
                 transform_metadata.len()
             };
 
-            match (comp_pre, comp_raw) {
-                (Ok(pre), Ok(raw)) => {
-                    let pre_total = 32 + meta_size + pre.len();
-                    let raw_total = 32 + raw.len();
-                    if raw_total < pre_total {
-                        use_raw_fallback = true;
-                        raw
-                    } else {
-                        pre
-                    }
+            // Pick smallest among the 3 paths.
+            let pre_result = comp_pre.ok().map(|pre| {
+                let total = 32 + meta_size + pre.len();
+                (pre, total, false, false) // (data, total, is_dict, is_raw)
+            });
+            let raw_result = comp_raw.ok().map(|raw| {
+                let total = 32 + raw.len();
+                (raw, total, false, true)
+            });
+            let dict_result = comp_dict.map(|dict_payload| {
+                let total = 32 + meta_size + dict_payload.len();
+                (dict_payload, total, true, false)
+            });
+
+            let best = [pre_result, raw_result, dict_result]
+                .into_iter()
+                .flatten()
+                .min_by_key(|r| r.1);
+
+            match best {
+                Some((data, _, is_dict, is_raw)) => {
+                    use_dict = is_dict;
+                    use_raw_fallback = is_raw;
+                    data
                 }
-                (Ok(pre), Err(_)) => pre,
-                (Err(_), Ok(raw)) => {
-                    use_raw_fallback = true;
-                    raw
-                }
-                (Err(e), Err(_)) => {
-                    return Err(io::Error::other(format!("turbo compression failed: {e}")));
+                None => {
+                    return Err(io::Error::other(
+                        "turbo compression failed: all paths failed",
+                    ));
                 }
             }
         }
@@ -917,11 +948,12 @@ pub fn compress_with_all_options<W: Write>(
                 s.spawn(|_| {
                     if let Ok(plain) = zstd::bulk::compress(&preprocessed, level) {
                         let (compressed, is_dict) = if let Some(ext_dict) = external_dict {
-                            // Use externally provided dictionary.
+                            // Use externally provided dictionary with prepared CDict.
                             let chunk_size = dict_chunk_size(preprocessed.len());
                             let chunks = split_into_chunks(&preprocessed, chunk_size);
+                            let encoder_dict = zstd::dict::EncoderDictionary::copy(ext_dict, level);
                             if let Ok(mut compressor) =
-                                zstd::bulk::Compressor::with_dictionary(level, ext_dict)
+                                zstd::bulk::Compressor::with_prepared_dictionary(&encoder_dict)
                             {
                                 let mut ok = true;
                                 let mut cc_list = Vec::with_capacity(chunks.len());
