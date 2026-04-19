@@ -1493,6 +1493,15 @@ pub fn raw_zstd_compress(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
     zstd::bulk::compress(data, level).map_err(io::Error::other)
 }
 
+/// Compress raw data with brotli at a given quality (for benchmark comparison).
+///
+/// Uses `BROTLI_MODE_TEXT` (mode 1), the standard mode for UTF-8 / JSON input.
+/// Quality is clamped to `0..=11`; quality 11 is brotli's highest ratio setting
+/// and matches the baseline we compare DataCortex against in outreach material.
+pub fn raw_brotli_compress(data: &[u8], quality: u32) -> io::Result<Vec<u8>> {
+    brotli_compress(data, quality.min(11), BROTLI_MODE_TEXT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

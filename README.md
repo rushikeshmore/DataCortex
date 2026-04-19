@@ -18,6 +18,7 @@ datacortex compress logs.ndjson                   # compress (auto-detects forma
 datacortex compress logs.ndjson --turbo            # turbo: 30-55x faster encode
 datacortex decompress logs.ndjson.dcx output.json  # decompress (byte-exact)
 datacortex bench corpus/ -m fast --compare         # benchmark against zstd
+datacortex bench corpus/ -m fast --compare --brotli # add brotli-q11 column
 ```
 
 ## Benchmarks

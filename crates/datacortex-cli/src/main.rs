@@ -38,7 +38,7 @@ use datacortex_core::{
     dcx::{FormatHint, Mode},
     decompress_with_model, detect_format,
     format::detect_from_extension,
-    raw_zstd_compress, read_header,
+    raw_brotli_compress, raw_zstd_compress, read_header,
 };
 
 #[derive(Parser)]
@@ -138,6 +138,9 @@ enum Command {
         /// Show zstd comparison column
         #[arg(long)]
         compare: bool,
+        /// Show brotli-q11 comparison column (slow: brotli-q11 runs per file)
+        #[arg(long)]
+        brotli: bool,
         /// Save results to benchmarks/baseline.json
         #[arg(long)]
         save: bool,
@@ -558,10 +561,12 @@ fn cmd_decompress(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_bench(
     dir: &Path,
     mode: Mode,
     compare: bool,
+    brotli: bool,
     save: bool,
     turbo: bool,
     quiet: bool,
@@ -594,6 +599,13 @@ fn cmd_bench(
     }
 
     let show_zstd = compare || mode == Mode::Fast;
+    let show_brotli = brotli;
+
+    // Column widths for each optional comparison block. Kept as locals so the
+    // header separator length stays in sync with the per-row format strings.
+    let base_width = if show_zstd { 107 } else { 84 };
+    let brotli_extra = if show_brotli { 19 } else { 0 };
+    let sep_width = base_width + brotli_extra;
 
     if !quiet {
         println!();
@@ -604,34 +616,38 @@ fn cmd_bench(
             entries.len(),
             dir.display()
         );
+        if show_brotli {
+            println!("  Note: brotli-q11 is slow; comparison adds several seconds per MB.");
+        }
         println!();
 
         if show_zstd {
-            println!(
-                "  {:<24} {:>8} {:>8} {:>7} {:>9} {:>9} {:>8} {:>8} {:>8}",
-                "File",
-                "Original",
-                "DCX",
-                "bpb",
-                "Enc MB/s",
-                "Dec MB/s",
-                "zstd",
-                "vs zstd",
-                "Format"
+            print!(
+                "  {:<24} {:>8} {:>8} {:>7} {:>9} {:>9} {:>8} {:>8}",
+                "File", "Original", "DCX", "bpb", "Enc MB/s", "Dec MB/s", "zstd", "vs zstd",
             );
-            println!("  {}", "-".repeat(107));
+            if show_brotli {
+                print!(" {:>9} {:>9}", "brotli", "vs brotli");
+            }
+            println!(" {:>8}", "Format");
+            println!("  {}", "-".repeat(sep_width));
         } else {
-            println!(
-                "  {:<24} {:>8} {:>8} {:>7} {:>9} {:>9} {:>8}",
-                "File", "Original", "DCX", "bpb", "Enc MB/s", "Dec MB/s", "Format"
+            print!(
+                "  {:<24} {:>8} {:>8} {:>7} {:>9} {:>9}",
+                "File", "Original", "DCX", "bpb", "Enc MB/s", "Dec MB/s",
             );
-            println!("  {}", "-".repeat(84));
+            if show_brotli {
+                print!(" {:>9} {:>9}", "brotli", "vs brotli");
+            }
+            println!(" {:>8}", "Format");
+            println!("  {}", "-".repeat(sep_width));
         }
     }
 
     let mut total_original: u64 = 0;
     let mut total_compressed: u64 = 0;
     let mut total_raw_zstd: u64 = 0;
+    let mut total_raw_brotli: u64 = 0;
     let mut total_enc_ms: f64 = 0.0;
     let mut total_dec_ms: f64 = 0.0;
     let mut results = Vec::new();
@@ -680,7 +696,8 @@ fn cmd_bench(
         total_enc_ms += enc_ms;
         total_dec_ms += dec_ms;
 
-        if show_zstd {
+        // Optional zstd comparison.
+        let zstd_stats = if show_zstd {
             let zstd_level = match mode {
                 Mode::Fast => 3,
                 Mode::Balanced => 19,
@@ -698,12 +715,36 @@ fn cmd_bench(
             } else {
                 (1.0 - comp_size as f64 / raw_size as f64) * 100.0
             };
-
             total_raw_zstd += raw_size;
+            Some((raw_size, raw_bpb, delta_pct))
+        } else {
+            None
+        };
 
-            if !quiet {
-                println!(
-                    "  {:<24} {:>8} {:>8} {:>6.2}  {:>8.1} {:>8.1}  {:>8} {:>+6.1}% {:>8}",
+        // Optional brotli-q11 comparison. Slow, so gated behind the flag.
+        let brotli_stats = if show_brotli {
+            let raw = raw_brotli_compress(&data, 11)?;
+            let raw_size = raw.len() as u64;
+            let raw_bpb = if orig_size == 0 {
+                0.0
+            } else {
+                (raw_size as f64 * 8.0) / orig_size as f64
+            };
+            let delta_pct = if raw_size == 0 {
+                0.0
+            } else {
+                (1.0 - comp_size as f64 / raw_size as f64) * 100.0
+            };
+            total_raw_brotli += raw_size;
+            Some((raw_size, raw_bpb, delta_pct))
+        } else {
+            None
+        };
+
+        if !quiet {
+            if let Some((raw_size, _, delta_pct)) = zstd_stats {
+                print!(
+                    "  {:<24} {:>8} {:>8} {:>6.2}  {:>8.1} {:>8.1}  {:>8} {:>+6.1}%",
                     name,
                     format_size(orig_size),
                     format_size(comp_size),
@@ -712,50 +753,60 @@ fn cmd_bench(
                     dec_mbs,
                     format_size(raw_size),
                     delta_pct,
-                    detected,
                 );
-            }
-
-            results.push(serde_json::json!({
-                "file": name,
-                "original_bytes": orig_size,
-                "compressed_bytes": comp_size,
-                "bpb": (bpb * 1000.0).round() / 1000.0,
-                "raw_zstd_bytes": raw_size,
-                "raw_zstd_bpb": (raw_bpb * 1000.0).round() / 1000.0,
-                "improvement_pct": (delta_pct * 10.0).round() / 10.0,
-                "encode_mb_s": (enc_mbs * 10.0).round() / 10.0,
-                "decode_mb_s": (dec_mbs * 10.0).round() / 10.0,
-                "encode_ms": (enc_ms * 100.0).round() / 100.0,
-                "decode_ms": (dec_ms * 100.0).round() / 100.0,
-                "format": detected.to_string(),
-            }));
-        } else {
-            if !quiet {
-                println!(
-                    "  {:<24} {:>8} {:>8} {:>6.3}  {:>8.1} {:>8.1} {:>8}",
+            } else {
+                print!(
+                    "  {:<24} {:>8} {:>8} {:>6.3}  {:>8.1} {:>8.1}",
                     name,
                     format_size(orig_size),
                     format_size(comp_size),
                     bpb,
                     enc_mbs,
                     dec_mbs,
-                    detected,
                 );
             }
-
-            results.push(serde_json::json!({
-                "file": name,
-                "original_bytes": orig_size,
-                "compressed_bytes": comp_size,
-                "bpb": (bpb * 1000.0).round() / 1000.0,
-                "encode_mb_s": (enc_mbs * 10.0).round() / 10.0,
-                "decode_mb_s": (dec_mbs * 10.0).round() / 10.0,
-                "encode_ms": (enc_ms * 100.0).round() / 100.0,
-                "decode_ms": (dec_ms * 100.0).round() / 100.0,
-                "format": detected.to_string(),
-            }));
+            if let Some((raw_size, _, delta_pct)) = brotli_stats {
+                print!(" {:>9} {:>+8.1}%", format_size(raw_size), delta_pct);
+            }
+            println!(" {:>8}", detected);
         }
+
+        let mut row = serde_json::json!({
+            "file": name,
+            "original_bytes": orig_size,
+            "compressed_bytes": comp_size,
+            "bpb": (bpb * 1000.0).round() / 1000.0,
+            "encode_mb_s": (enc_mbs * 10.0).round() / 10.0,
+            "decode_mb_s": (dec_mbs * 10.0).round() / 10.0,
+            "encode_ms": (enc_ms * 100.0).round() / 100.0,
+            "decode_ms": (dec_ms * 100.0).round() / 100.0,
+            "format": detected.to_string(),
+        });
+        if let Some((raw_size, raw_bpb, delta_pct)) = zstd_stats {
+            let obj = row.as_object_mut().unwrap();
+            obj.insert("raw_zstd_bytes".to_string(), serde_json::json!(raw_size));
+            obj.insert(
+                "raw_zstd_bpb".to_string(),
+                serde_json::json!((raw_bpb * 1000.0).round() / 1000.0),
+            );
+            obj.insert(
+                "improvement_pct".to_string(),
+                serde_json::json!((delta_pct * 10.0).round() / 10.0),
+            );
+        }
+        if let Some((raw_size, raw_bpb, delta_pct)) = brotli_stats {
+            let obj = row.as_object_mut().unwrap();
+            obj.insert("raw_brotli_bytes".to_string(), serde_json::json!(raw_size));
+            obj.insert(
+                "raw_brotli_bpb".to_string(),
+                serde_json::json!((raw_bpb * 1000.0).round() / 1000.0),
+            );
+            obj.insert(
+                "vs_brotli_pct".to_string(),
+                serde_json::json!((delta_pct * 10.0).round() / 10.0),
+            );
+        }
+        results.push(row);
     }
 
     let total_bpb = if total_original == 0 {
@@ -776,14 +827,14 @@ fn cmd_bench(
     };
 
     if !quiet {
+        println!("  {}", "-".repeat(sep_width));
         if show_zstd {
-            println!("  {}", "-".repeat(107));
             let total_delta = if total_raw_zstd == 0 {
                 0.0
             } else {
                 (1.0 - total_compressed as f64 / total_raw_zstd as f64) * 100.0
             };
-            println!(
+            print!(
                 "  {:<24} {:>8} {:>8} {:>6.2}  {:>8.1} {:>8.1}  {:>8} {:>+6.1}%",
                 "TOTAL",
                 format_size(total_original),
@@ -795,8 +846,7 @@ fn cmd_bench(
                 total_delta,
             );
         } else {
-            println!("  {}", "-".repeat(84));
-            println!(
+            print!(
                 "  {:<24} {:>8} {:>8} {:>6.3}  {:>8.1} {:>8.1}",
                 "TOTAL",
                 format_size(total_original),
@@ -806,6 +856,19 @@ fn cmd_bench(
                 total_dec_mbs,
             );
         }
+        if show_brotli {
+            let total_delta = if total_raw_brotli == 0 {
+                0.0
+            } else {
+                (1.0 - total_compressed as f64 / total_raw_brotli as f64) * 100.0
+            };
+            print!(
+                " {:>9} {:>+8.1}%",
+                format_size(total_raw_brotli),
+                total_delta,
+            );
+        }
+        println!();
 
         let overall_ratio = if total_original == 0 {
             0.0
@@ -823,7 +886,7 @@ fn cmd_bench(
     }
 
     if save {
-        let baseline = serde_json::json!({
+        let mut baseline = serde_json::json!({
             "mode": mode.to_string(),
             "version": env!("CARGO_PKG_VERSION"),
             "files": results,
@@ -831,6 +894,18 @@ fn cmd_bench(
             "total_compressed_bytes": total_compressed,
             "total_bpb": (total_bpb * 1000.0).round() / 1000.0,
         });
+        if show_zstd {
+            baseline.as_object_mut().unwrap().insert(
+                "total_raw_zstd_bytes".to_string(),
+                serde_json::json!(total_raw_zstd),
+            );
+        }
+        if show_brotli {
+            baseline.as_object_mut().unwrap().insert(
+                "total_raw_brotli_bytes".to_string(),
+                serde_json::json!(total_raw_brotli),
+            );
+        }
 
         let baseline_path = Path::new("benchmarks/baseline.json");
         if let Some(parent) = baseline_path.parent() {
@@ -977,6 +1052,7 @@ fn main() {
             dir,
             mode,
             compare,
+            brotli,
             save,
             turbo,
         } => {
@@ -984,7 +1060,16 @@ fn main() {
                 eprintln!("Error: {e}");
                 std::process::exit(1);
             });
-            cmd_bench(dir, mode, *compare, *save, *turbo, cli.quiet, cli.verbose)
+            cmd_bench(
+                dir,
+                mode,
+                *compare,
+                *brotli,
+                *save,
+                *turbo,
+                cli.quiet,
+                cli.verbose,
+            )
         }
         Command::Info { file } => cmd_info(file, cli.quiet),
     };
