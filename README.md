@@ -171,8 +171,6 @@ cargo fmt --check                               # formatting
 ```
 
 ## Links
-
-- [Site](https://datacortex-dcx.vercel.app)
 - [crates.io](https://crates.io/crates/datacortex-cli)
 - [PyPI](https://pypi.org/project/datacortex/)
 - [GitHub](https://github.com/rushikeshmore/DataCortex)
